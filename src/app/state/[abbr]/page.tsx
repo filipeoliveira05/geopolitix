@@ -1,0 +1,60 @@
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import type { Metadata } from "next";
+import { getStateName, isValidStateAbbr } from "@/lib/states";
+import { getMockStateSummary } from "@/lib/mock-states";
+import {
+  getCurrentSenators,
+  getCurrentRepresentatives,
+  getSenateHistory,
+} from "@/lib/legislators-data";
+import { StateTabs } from "@/components/StateTabs";
+
+export async function generateMetadata(
+  props: PageProps<"/state/[abbr]">,
+): Promise<Metadata> {
+  const { abbr: rawAbbr } = await props.params;
+  const abbr = rawAbbr.toUpperCase();
+  const name = getStateName(abbr);
+  return { title: name ? `${name} (${abbr}) — Geopolitix` : "Geopolitix" };
+}
+
+export default async function StatePage(props: PageProps<"/state/[abbr]">) {
+  const { abbr: rawAbbr } = await props.params;
+  const abbr = rawAbbr.toUpperCase();
+
+  if (!isValidStateAbbr(abbr)) {
+    notFound();
+  }
+
+  const name = getStateName(abbr)!;
+  const summary = getMockStateSummary(abbr);
+
+  return (
+    <div className="mx-auto w-full max-w-3xl flex-1 p-6 sm:p-10">
+      <Link
+        href="/"
+        className="text-sm text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200"
+      >
+        ← Back to map
+      </Link>
+
+      <h1 className="mt-2 text-3xl font-semibold">
+        {name} <span className="text-zinc-400 dark:text-zinc-600">({abbr})</span>
+      </h1>
+
+      <div className="mt-6">
+        <StateTabs
+          abbr={abbr}
+          name={name}
+          governor={summary?.governor ?? null}
+          capital={summary?.capital ?? null}
+          population={summary?.population ?? null}
+          senators={getCurrentSenators(abbr)}
+          representatives={getCurrentRepresentatives(abbr)}
+          senateHistory={getSenateHistory(abbr)}
+        />
+      </div>
+    </div>
+  );
+}

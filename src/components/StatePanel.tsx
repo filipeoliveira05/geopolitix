@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { getMockStateSummary } from "@/lib/mock-states";
 import {
   getCurrentSenators,
@@ -29,6 +30,12 @@ export function StatePanel({ abbr }: { abbr: string | null }) {
             {summary.population.toLocaleString()}
           </p>
         )}
+        <Link
+          href={`/state/${abbr}`}
+          className="mt-1 inline-block text-sm text-blue-600 hover:underline dark:text-blue-400"
+        >
+          View full state page →
+        </Link>
       </div>
 
       <div>

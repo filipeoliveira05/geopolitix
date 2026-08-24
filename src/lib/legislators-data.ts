@@ -39,31 +39,49 @@ const data = legislatorsData as LegislatorsFile;
 
 const legislatorsById = new Map(data.legislators.map((l) => [l.id, l]));
 
-export type CurrentMember = {
+export type TermWithLegislator = {
   legislator: Legislator;
   term: Term;
 };
 
-function getCurrentTerms(stateAbbr: string, chamber: Chamber): CurrentMember[] {
+function getTerms(
+  stateAbbr: string,
+  chamber: Chamber,
+  { currentOnly }: { currentOnly: boolean },
+): TermWithLegislator[] {
   return data.terms
     .filter(
-      (t) => t.stateId === stateAbbr && t.chamber === chamber && t.isCurrent,
+      (t) =>
+        t.stateId === stateAbbr &&
+        t.chamber === chamber &&
+        (!currentOnly || t.isCurrent),
     )
     .map((term) => {
       const legislator = legislatorsById.get(term.legislatorId);
       if (!legislator) return null;
       return { legislator, term };
     })
-    .filter((m): m is CurrentMember => m !== null);
+    .filter((m): m is TermWithLegislator => m !== null);
 }
 
-export function getCurrentSenators(stateAbbr: string): CurrentMember[] {
-  return getCurrentTerms(stateAbbr, "senate");
+export function getCurrentSenators(stateAbbr: string): TermWithLegislator[] {
+  return getTerms(stateAbbr, "senate", { currentOnly: true });
 }
 
-export function getCurrentRepresentatives(stateAbbr: string): CurrentMember[] {
-  return getCurrentTerms(stateAbbr, "house").sort(
+export function getCurrentRepresentatives(stateAbbr: string): TermWithLegislator[] {
+  return getTerms(stateAbbr, "house", { currentOnly: true }).sort(
     (a, b) => (a.term.district ?? 0) - (b.term.district ?? 0),
+  );
+}
+
+/**
+ * All Senate terms ever held for a state (current + past), newest first.
+ * The plan's History tab (§5) only calls for senators/governors over time —
+ * House history isn't in scope there, so no equivalent getter for the House.
+ */
+export function getSenateHistory(stateAbbr: string): TermWithLegislator[] {
+  return getTerms(stateAbbr, "senate", { currentOnly: false }).sort((a, b) =>
+    b.term.startDate.localeCompare(a.term.startDate),
   );
 }
 
