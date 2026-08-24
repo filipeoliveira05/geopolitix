@@ -13,6 +13,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import { getDistrictsGeoJson, type DistrictFeatureProperties } from "@/lib/districts-geo";
 import { getCurrentRepsByDistrictKey } from "@/lib/legislators-data";
 import { getSenateSplitGeoJson, getSenateHalfIdsByState } from "@/lib/senate-split-geo";
+import { PARTY_COLORS, FALLBACK_PARTY_STYLE } from "@/lib/party-colors";
 import type { FeatureCollection, Geometry } from "geojson";
 
 // MapLibre resolves its worker script relative to its own bundled module's
@@ -38,18 +39,15 @@ const SENATE_LINE_LAYER_ID = "us-senate-line";
 type MapMode = "states" | "districts";
 
 // Shared by the districts and senate fill layers — both color by party.
+// Built from src/lib/party-colors.ts (also used by PartyBadge.tsx) rather
+// than hardcoding hex values here, so the map and the text badges can't
+// silently drift out of sync.
 function partyFillColor(): ExpressionSpecification {
-  return [
-    "match",
-    ["get", "party"],
-    "Democrat",
-    "#2563eb",
-    "Republican",
-    "#dc2626",
-    "Independent",
-    "#71717a",
-    "#a1a1aa",
-  ];
+  const stops = Object.entries(PARTY_COLORS).flatMap(([party, { hex }]) => [party, hex]);
+  // Built dynamically from PARTY_COLORS, so TS can't verify the exact
+  // "match" tuple shape the way it can for a literal array — the shape is
+  // correct at runtime (party name / hex pairs + a trailing fallback).
+  return ["match", ["get", "party"], ...stops, FALLBACK_PARTY_STYLE.hex] as unknown as ExpressionSpecification;
 }
 
 type DistrictProperties = DistrictFeatureProperties & {
