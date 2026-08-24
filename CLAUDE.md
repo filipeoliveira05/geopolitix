@@ -39,6 +39,46 @@ geography/quiz work while Phase 1 is incomplete unless the user asks.
   `governors`, `races_2026`, `cities`, `sports_teams`, `sync_logs`) — treat table/field names
   there as a draft, not gospel; adjust as implementation reveals better shapes, but keep the
   plan doc in sync if the model changes meaningfully.
+- **Sync script pattern, established and in use:** `scripts/sync/*.mjs` — each pulls from one
+  public source (no API key/account) and writes a committed JSON file into `src/data/`. These
+  are dev-time stand-ins for the real Supabase tables + sync jobs, not the real thing; commit
+  the output like any other source-controlled file. So far: `npm run sync:legislators`
+  (Congress members/terms, `src/data/legislators.json`) and `npm run sync:districts` (House
+  boundaries, `src/data/districts.json`). Follow this same shape for governors/geography/sports
+  sync scripts later.
+- **The plan's districts source is stale — don't use it without re-checking.** Plan §3 points
+  at `unitedstates/districts` (GitHub) for congressional district boundaries; its last *full
+  nationwide* set is from 2016, pre-2020-census redistricting (later folders are single-state
+  off-cycle updates only — PA/NC/NJ). Using it would draw wrong shapes/district counts against
+  current legislator data. `scripts/sync/districts.mjs` uses the Census Bureau's cartographic
+  boundary file for the 119th Congress instead — current, official, still no key needed. If
+  `unitedstates/districts` ever gets a real update, it's fine to reconsider, but verify the
+  "full nationwide set" year first, the same way this was caught.
+- **Derived/joined geometry lives in `src/lib/*-geo.ts`, not in a sync script.** Anything that
+  combines two already-synced datasets — `districts-geo.ts` joining district shapes to current
+  reps' party, `senate-split-geo.ts` splitting a state's real geometry (via `@turf/intersect`,
+  not just its bounding box) into per-senator halves — is computed client-side at read time and
+  memoized (module-level cache), not precomputed by a sync script. It recomputes automatically
+  whenever the underlying synced JSON changes; no separate regeneration step.
+
+## UI conventions
+
+- **Party colors, fixed across the app:** Democrat blue (`#2563eb` / Tailwind `blue-600`),
+  Republican red (`#dc2626` / `red-600`), Independent/other grey (`#71717a` / `zinc-500`).
+  Defined once for text UI in `src/components/PartyBadge.tsx` (renders `(D)`/`(R)`/`(I)`/`(?)`)
+  and duplicated as a MapLibre `match` expression in `partyFillColor()`
+  (`src/components/UsMap.tsx`) for the map's fill layers — there's no single source of truth
+  between the two, so if the palette ever changes, update both.
+- **Map has two modes, not three:** "States" (Senate delegation — the state-level chamber) and
+  "Districts" (House delegation — the district-level chamber). Senate was briefly its own
+  third mode; folded into "States" since a state IS its Senate delegation, the same way a
+  district IS its one House member. Don't re-split these without being asked.
+- A state's two senators can't both get a flat `fill-color` (a district has one occupant, a
+  state has two) — `senate-split-geo.ts` clips the state's real polygon into two halves along a
+  diagonal (senior senator top-left, junior bottom-right) only when the senators differ in
+  party; same-party states render as one solid color, since a split would just be two
+  triangles of the same color. This was a deliberate, explicit call from the user — don't
+  revert to always-split without asking.
 
 ## Open decisions
 
@@ -104,18 +144,36 @@ to re-verify still exist in `node_modules/maplibre-gl/dist/`.
 
 ## Status
 
-Base Next.js + Tailwind + TypeScript scaffold in place (App Router, ESLint). Home page
-(`src/app/page.tsx`) renders an interactive MapLibre US-states map
-(`src/components/UsMap.tsx`) with click-to-select and a side panel
-(`src/components/StatePanel.tsx`) showing:
-- **Senators/House representatives** — real, current, all 50 states + DC. Synced from
-  `unitedstates/congress-legislators` (public, no API key) via
-  `npm run sync:legislators` (`scripts/sync/legislators.mjs`) into the committed
-  `src/data/legislators.json`, read through `src/lib/legislators-data.ts`. Re-run the sync
-  script to refresh; it's a manual/dev-time stand-in for the eventual Supabase
-  `legislators`/`terms` tables + sync job (plan §4, §6), not a live query.
-- **Governor + capital/population** — still mock (`src/lib/mock-states.ts`), only
-  CA/TX/NY/FL populated. Real governors need an OpenStates sync (plan §3), not done yet.
+Base Next.js + Tailwind + TypeScript scaffold in place (App Router, ESLint). No Supabase
+project yet (blocked on the user regaining GitHub 2FA access) — everything below reads from
+committed JSON in `src/data/`, produced by the `scripts/sync/*.mjs` scripts, as a stand-in.
 
-No Supabase project (blocked on the user regaining GitHub 2FA access), no districts/geometry
-sync, no other pages built yet.
+**Home page** (`src/app/page.tsx` + `src/components/UsMap.tsx`): interactive MapLibre map,
+two modes (see UI conventions above) —
+- **States** (default): current Senate delegation per state, split by party where the two
+  senators differ.
+- **Districts**: current House delegation, one color per district.
+
+Clicking either mode selects a state (districts additionally track which district, outlined
+on the map and highlighted in the side panel's rep list). The side panel
+(`src/components/StatePanel.tsx`) shows current governor/capital/population (mock,
+`src/lib/mock-states.ts`, only CA/TX/NY/FL populated — real governors need an OpenStates sync,
+plan §3, not done) and current senators/House reps (real), plus a link to:
+
+**`/state/[abbr]` page** (`src/app/state/[abbr]/page.tsx` + `src/components/StateTabs.tsx`):
+four tabs per plan §5 — current representation (real); history (real Senate term history back
+to statehood, via `getSenateHistory()`; governors history not synced, noted as such); geography
+(mock capital/population; cities/sports flagged "Phase 2, not built"); 2026 midterms
+(placeholder — no race data source implemented, plan's open decision §8).
+
+**Synced data**, all via `npm run sync:<name>`, all public sources, no API keys/accounts:
+- `legislators.json` (`sync:legislators`) — current + historical Senate terms from
+  `unitedstates/congress-legislators`, read through `src/lib/legislators-data.ts`.
+- `districts.json` (`sync:districts`) — current (119th Congress) House district boundaries
+  from the Census Bureau (not `unitedstates/districts` — see Data conventions above for why),
+  read through `src/lib/districts-geo.ts`.
+- `fips-to-abbr.json` — static FIPS↔state-abbreviation reference table, shared by both scripts
+  and `src/lib/state-fips.ts`.
+
+Not started: Supabase project/schema, governors sync (OpenStates), geography/sports sync,
+`races_2026` data, quiz (Phase 3).
