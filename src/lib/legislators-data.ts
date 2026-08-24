@@ -85,6 +85,22 @@ export function getSenateHistory(stateAbbr: string): TermWithLegislator[] {
   );
 }
 
+/**
+ * Current House member keyed by "STATE-DISTRICT" (e.g. "CA-12", "WY-0" for
+ * at-large) — for joining onto district geometry (src/lib/districts-geo.ts)
+ * so the map's district layer can be colored/labeled by current occupant.
+ */
+export function getCurrentRepsByDistrictKey(): Map<string, TermWithLegislator> {
+  const map = new Map<string, TermWithLegislator>();
+  for (const term of data.terms) {
+    if (term.chamber !== "house" || !term.isCurrent || term.district === null) continue;
+    const legislator = legislatorsById.get(term.legislatorId);
+    if (!legislator) continue;
+    map.set(`${term.stateId}-${term.district}`, { legislator, term });
+  }
+  return map;
+}
+
 export function legislatorFullName(legislator: Legislator): string {
   return [legislator.firstName, legislator.lastName].filter(Boolean).join(" ");
 }

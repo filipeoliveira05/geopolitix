@@ -6,8 +6,15 @@ import {
   legislatorFullName,
 } from "@/lib/legislators-data";
 import { PartyBadge } from "@/components/PartyBadge";
+import { RepresentativesList } from "@/components/RepresentativesList";
 
-export function StatePanel({ abbr }: { abbr: string | null }) {
+type StatePanelProps = {
+  abbr: string | null;
+  /** District clicked on the map's districts layer, if any — highlights the matching row below. */
+  selectedDistrict?: number | null;
+};
+
+export function StatePanel({ abbr, selectedDistrict = null }: StatePanelProps) {
   if (!abbr) {
     return (
       <div className="p-6 text-sm text-zinc-500 dark:text-zinc-400">
@@ -78,14 +85,10 @@ export function StatePanel({ abbr }: { abbr: string | null }) {
           House representatives
         </h3>
         {representatives.length > 0 ? (
-          <ul className="mt-1 flex max-h-64 flex-col gap-1 overflow-y-auto">
-            {representatives.map(({ legislator, term }) => (
-              <li key={legislator.id}>
-                {term.district === 0 ? "At-large" : `District ${term.district}`}
-                : {legislatorFullName(legislator)} <PartyBadge party={term.party} />
-              </li>
-            ))}
-          </ul>
+          <RepresentativesList
+            representatives={representatives}
+            selectedDistrict={selectedDistrict}
+          />
         ) : (
           <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
             No representative data.
