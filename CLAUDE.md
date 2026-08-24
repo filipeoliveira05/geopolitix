@@ -47,5 +47,10 @@ Flag these to the user when work touches them instead of silently picking an ans
 
 ## Status
 
-Base Next.js + Tailwind + TypeScript scaffold in place (App Router, ESLint). No Supabase
-project, no MapLibre integration, no data model or pages built yet.
+Base Next.js + Tailwind + TypeScript scaffold in place (App Router, ESLint). Home page
+(`src/app/page.tsx`) renders an interactive MapLibre US-states map
+(`src/components/UsMap.tsx`) with click-to-select and a side panel
+(`src/components/StatePanel.tsx`) backed by mock political data
+(`src/lib/mock-states.ts`, only CA/TX/NY/FL populated) — a stand-in for Supabase until a
+project exists (blocked on the user regaining GitHub 2FA access). No Supabase project, no
+real data sync, no other pages built yet.
