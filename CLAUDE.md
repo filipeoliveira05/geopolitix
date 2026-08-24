@@ -102,7 +102,15 @@ to re-verify still exist in `node_modules/maplibre-gl/dist/`.
 Base Next.js + Tailwind + TypeScript scaffold in place (App Router, ESLint). Home page
 (`src/app/page.tsx`) renders an interactive MapLibre US-states map
 (`src/components/UsMap.tsx`) with click-to-select and a side panel
-(`src/components/StatePanel.tsx`) backed by mock political data
-(`src/lib/mock-states.ts`, only CA/TX/NY/FL populated) — a stand-in for Supabase until a
-project exists (blocked on the user regaining GitHub 2FA access). No Supabase project, no
-real data sync, no other pages built yet.
+(`src/components/StatePanel.tsx`) showing:
+- **Senators/House representatives** — real, current, all 50 states + DC. Synced from
+  `unitedstates/congress-legislators` (public, no API key) via
+  `npm run sync:legislators` (`scripts/sync/legislators.mjs`) into the committed
+  `src/data/legislators.json`, read through `src/lib/legislators-data.ts`. Re-run the sync
+  script to refresh; it's a manual/dev-time stand-in for the eventual Supabase
+  `legislators`/`terms` tables + sync job (plan §4, §6), not a live query.
+- **Governor + capital/population** — still mock (`src/lib/mock-states.ts`), only
+  CA/TX/NY/FL populated. Real governors need an OpenStates sync (plan §3), not done yet.
+
+No Supabase project (blocked on the user regaining GitHub 2FA access), no districts/geometry
+sync, no other pages built yet.
