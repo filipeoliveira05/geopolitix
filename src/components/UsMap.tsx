@@ -7,11 +7,12 @@ import {
   type StyleSpecification,
   type LngLatBoundsLike,
   type MapLayerMouseEvent,
+  type ExpressionSpecification,
 } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
-import { getUsStatesGeoJson } from "@/lib/us-states-geo";
 import { getDistrictsGeoJson, type DistrictFeatureProperties } from "@/lib/districts-geo";
 import { getCurrentRepsByDistrictKey } from "@/lib/legislators-data";
+import { getSenateSplitGeoJson, getSenateHalfIdsByState } from "@/lib/senate-split-geo";
 import type { FeatureCollection, Geometry } from "geojson";
 
 // MapLibre resolves its worker script relative to its own bundled module's
@@ -21,15 +22,35 @@ import type { FeatureCollection, Geometry } from "geojson";
 // (run via `postinstall`) copies the matching worker script into `public/`.
 setWorkerUrl("/maplibre-gl-worker.mjs");
 
-const STATES_SOURCE_ID = "us-states";
-const STATES_FILL_LAYER_ID = "us-states-fill";
-const STATES_LINE_LAYER_ID = "us-states-line";
-
 const DISTRICTS_SOURCE_ID = "us-districts";
 const DISTRICTS_FILL_LAYER_ID = "us-districts-fill";
 const DISTRICTS_LINE_LAYER_ID = "us-districts-line";
 
+// The "States" mode shows each state's current Senate delegation (split by
+// party where the two senators differ) — the Senate is the state-level
+// chamber, the way the House is the district-level one shown in "Districts"
+// mode. Source/layer ids keep the "senate" name since that's what the data
+// actually is; the UI-facing mode/button label is "States".
+const SENATE_SOURCE_ID = "us-senate";
+const SENATE_FILL_LAYER_ID = "us-senate-fill";
+const SENATE_LINE_LAYER_ID = "us-senate-line";
+
 type MapMode = "states" | "districts";
+
+// Shared by the districts and senate fill layers — both color by party.
+function partyFillColor(): ExpressionSpecification {
+  return [
+    "match",
+    ["get", "party"],
+    "Democrat",
+    "#2563eb",
+    "Republican",
+    "#dc2626",
+    "Independent",
+    "#71717a",
+    "#a1a1aa",
+  ];
+}
 
 type DistrictProperties = DistrictFeatureProperties & {
   party: string | null;
@@ -138,45 +159,6 @@ export function UsMap({ selectedAbbr, onSelectState }: UsMapProps) {
     mapRef.current = map;
 
     map.on("load", () => {
-      map.addSource(STATES_SOURCE_ID, {
-        type: "geojson",
-        data: getUsStatesGeoJson(),
-        promoteId: "fips",
-      });
-
-      map.addLayer({
-        id: STATES_FILL_LAYER_ID,
-        type: "fill",
-        source: STATES_SOURCE_ID,
-        paint: {
-          "fill-color": "#60a5fa",
-          "fill-opacity": [
-            "case",
-            ["boolean", ["feature-state", "selected"], false],
-            0.75,
-            ["boolean", ["feature-state", "hover"], false],
-            0.55,
-            0.3,
-          ],
-        },
-      });
-
-      map.addLayer({
-        id: STATES_LINE_LAYER_ID,
-        type: "line",
-        source: STATES_SOURCE_ID,
-        paint: {
-          "line-color": "#1e3a8a",
-          "line-width": 1,
-        },
-      });
-
-      setupHover(map, STATES_SOURCE_ID, STATES_FILL_LAYER_ID);
-      map.on("click", STATES_FILL_LAYER_ID, (e: MapLayerMouseEvent) => {
-        const abbr = e.features?.[0]?.properties?.abbr as string | undefined;
-        onSelectStateRef.current(abbr ?? null);
-      });
-
       map.addSource(DISTRICTS_SOURCE_ID, {
         type: "geojson",
         data: getDistrictsWithReps(),
@@ -189,17 +171,7 @@ export function UsMap({ selectedAbbr, onSelectState }: UsMapProps) {
         source: DISTRICTS_SOURCE_ID,
         layout: { visibility: "none" },
         paint: {
-          "fill-color": [
-            "match",
-            ["get", "party"],
-            "Democrat",
-            "#2563eb",
-            "Republican",
-            "#dc2626",
-            "Independent",
-            "#71717a",
-            "#a1a1aa",
-          ],
+          "fill-color": partyFillColor(),
           "fill-opacity": [
             "case",
             ["boolean", ["feature-state", "selected"], false],
@@ -257,6 +229,88 @@ export function UsMap({ selectedAbbr, onSelectState }: UsMapProps) {
 
         onSelectStateRef.current(stateId ?? null, district ?? null);
       });
+
+      map.addSource(SENATE_SOURCE_ID, {
+        type: "geojson",
+        data: getSenateSplitGeoJson(),
+        promoteId: "id",
+      });
+
+      map.addLayer({
+        id: SENATE_FILL_LAYER_ID,
+        type: "fill",
+        source: SENATE_SOURCE_ID,
+        // Visible by default — "states" (Senate coloring) is the initial mode.
+        paint: {
+          "fill-color": partyFillColor(),
+          "fill-opacity": [
+            "case",
+            ["boolean", ["feature-state", "selected"], false],
+            0.95,
+            ["boolean", ["feature-state", "hover"], false],
+            0.85,
+            0.6,
+          ],
+        },
+      });
+
+      map.addLayer({
+        id: SENATE_LINE_LAYER_ID,
+        type: "line",
+        source: SENATE_SOURCE_ID,
+        paint: {
+          "line-color": [
+            "case",
+            ["boolean", ["feature-state", "selected"], false],
+            "#0f172a",
+            "#ffffff",
+          ],
+          "line-width": [
+            "case",
+            ["boolean", ["feature-state", "selected"], false],
+            3,
+            0.5,
+          ],
+        },
+      });
+
+      // Each state is 1-2 features here (one per senator's half, or one
+      // "whole" feature if it has fewer than 2 current senators) — hover and
+      // selection should highlight every half belonging to the state under
+      // the cursor together, not just the single half being pointed at.
+      const senateHalfIdsByState = getSenateHalfIdsByState();
+      let hoveredSenateStateId: string | undefined;
+
+      map.on("mousemove", SENATE_FILL_LAYER_ID, (e: MapLayerMouseEvent) => {
+        const stateId = e.features?.[0]?.properties?.stateId as string | undefined;
+        if (!stateId || hoveredSenateStateId === stateId) return;
+
+        if (hoveredSenateStateId) {
+          for (const id of senateHalfIdsByState.get(hoveredSenateStateId) ?? []) {
+            map.setFeatureState({ source: SENATE_SOURCE_ID, id }, { hover: false });
+          }
+        }
+        hoveredSenateStateId = stateId;
+        for (const id of senateHalfIdsByState.get(stateId) ?? []) {
+          map.setFeatureState({ source: SENATE_SOURCE_ID, id }, { hover: true });
+        }
+        map.getCanvas().style.cursor = "pointer";
+      });
+
+      map.on("mouseleave", SENATE_FILL_LAYER_ID, () => {
+        if (hoveredSenateStateId) {
+          for (const id of senateHalfIdsByState.get(hoveredSenateStateId) ?? []) {
+            map.setFeatureState({ source: SENATE_SOURCE_ID, id }, { hover: false });
+          }
+        }
+        hoveredSenateStateId = undefined;
+        map.getCanvas().style.cursor = "";
+      });
+
+      map.on("click", SENATE_FILL_LAYER_ID, (e: MapLayerMouseEvent) => {
+        const stateId = e.features?.[0]?.properties?.stateId as string | undefined;
+        onSelectStateRef.current(stateId ?? null);
+      });
     });
 
     return () => {
@@ -271,12 +325,12 @@ export function UsMap({ selectedAbbr, onSelectState }: UsMapProps) {
     if (!map) return;
 
     const applyMode = () => {
-      const statesVisibility = mode === "states" ? "visible" : "none";
       const districtsVisibility = mode === "districts" ? "visible" : "none";
-      map.setLayoutProperty(STATES_FILL_LAYER_ID, "visibility", statesVisibility);
-      map.setLayoutProperty(STATES_LINE_LAYER_ID, "visibility", statesVisibility);
+      const statesVisibility = mode === "states" ? "visible" : "none";
       map.setLayoutProperty(DISTRICTS_FILL_LAYER_ID, "visibility", districtsVisibility);
       map.setLayoutProperty(DISTRICTS_LINE_LAYER_ID, "visibility", districtsVisibility);
+      map.setLayoutProperty(SENATE_FILL_LAYER_ID, "visibility", statesVisibility);
+      map.setLayoutProperty(SENATE_LINE_LAYER_ID, "visibility", statesVisibility);
     };
 
     if (map.isStyleLoaded()) {
@@ -293,18 +347,19 @@ export function UsMap({ selectedAbbr, onSelectState }: UsMapProps) {
     if (!map) return;
 
     const applySelection = () => {
-      const source = map.getSource(STATES_SOURCE_ID);
-      if (!source) return;
-      const data = getUsStatesGeoJson();
-      for (const f of data.features) {
-        map.setFeatureState(
-          { source: STATES_SOURCE_ID, id: f.properties.fips },
-          { selected: f.properties.abbr === selectedAbbr },
-        );
+      const senateSource = map.getSource(SENATE_SOURCE_ID);
+      if (!senateSource) return;
+      for (const [stateId, ids] of getSenateHalfIdsByState()) {
+        for (const id of ids) {
+          map.setFeatureState(
+            { source: SENATE_SOURCE_ID, id },
+            { selected: stateId === selectedAbbr },
+          );
+        }
       }
 
-      // The selected state changed via some other path (states layer,
-      // side panel) — the previously-highlighted district, if any, no
+      // The selected state changed via some other path (side panel, states
+      // layer itself) — the previously-highlighted district, if any, no
       // longer belongs to the selected state, so clear its highlight too.
       const selectedDistrict = selectedDistrictRef.current;
       if (selectedDistrict && selectedDistrict.stateId !== selectedAbbr) {
@@ -350,6 +405,20 @@ export function UsMap({ selectedAbbr, onSelectState }: UsMapProps) {
           <LegendRow color="#dc2626" label="Republican" />
           <LegendRow color="#71717a" label="Independent" />
           <LegendRow color="#a1a1aa" label="No data" />
+        </div>
+      )}
+
+      {mode === "states" && (
+        <div className="absolute bottom-3 left-3 flex flex-col gap-1 rounded-md border border-zinc-300 bg-white/90 p-2 text-xs text-zinc-700 shadow-sm dark:border-zinc-700 dark:bg-zinc-900/90 dark:text-zinc-300">
+          <div className="font-medium">Current senators&apos; party</div>
+          <LegendRow color="#2563eb" label="Democrat" />
+          <LegendRow color="#dc2626" label="Republican" />
+          <LegendRow color="#71717a" label="Independent" />
+          <LegendRow color="#a1a1aa" label="No data / no senators" />
+          <div className="mt-1 text-zinc-500 dark:text-zinc-400">
+            Split states show both senators — senior senator top-left,
+            junior bottom-right.
+          </div>
         </div>
       )}
     </div>
