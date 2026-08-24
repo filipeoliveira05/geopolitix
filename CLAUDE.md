@@ -65,10 +65,11 @@ geography/quiz work while Phase 1 is incomplete unless the user asks.
 
 - **Party colors, fixed across the app:** Democrat blue (`#2563eb` / Tailwind `blue-600`),
   Republican red (`#dc2626` / `red-600`), Independent/other grey (`#71717a` / `zinc-500`).
-  Defined once for text UI in `src/components/PartyBadge.tsx` (renders `(D)`/`(R)`/`(I)`/`(?)`)
-  and duplicated as a MapLibre `match` expression in `partyFillColor()`
-  (`src/components/UsMap.tsx`) for the map's fill layers — there's no single source of truth
-  between the two, so if the palette ever changes, update both.
+  Single source of truth: `src/lib/party-colors.ts` (`PARTY_COLORS`, `partyStyle()`). Consumed
+  by `src/components/PartyBadge.tsx` (text UI, renders `(D)`/`(R)`/`(I)`/`(?)`) and by
+  `partyFillColor()` in `src/components/UsMap.tsx` (built from the same table into a MapLibre
+  `match` expression for the map's fill layers). Change the palette in `party-colors.ts` only —
+  don't hardcode a party hex/class anywhere else.
 - **Map has two modes, not three:** "States" (Senate delegation — the state-level chamber) and
   "Districts" (House delegation — the district-level chamber). Senate was briefly its own
   third mode; folded into "States" since a state IS its Senate delegation, the same way a
