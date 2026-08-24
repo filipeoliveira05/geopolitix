@@ -63,16 +63,21 @@ and don't skip straight to "looks right" without actually loading the page:
      `--with-deps` — this sandbox has no root, and Chromium runs fine without the OS deps).
      `playwright` itself isn't a project dependency; install it in the scratchpad dir
      (`npm init -y && npm install playwright`), not in `package.json`.
-   - Start the server in the background and poll the port instead of sleeping:
-     `(npm run dev > /tmp/geopolitix-dev.log 2>&1 &)` then
-     `timeout 30 bash -c 'until curl -sf http://localhost:3000 >/dev/null; do sleep 1; done'`.
-   - **Before restarting on a port, actually confirm it's free**: `curl` succeeding against
-     "READY" can be a *stale* server from a previous run answering, not the one you just
-     started — `npm run dev &`'s `$!` is only the npm wrapper, it doesn't forward signals to
-     the real `next-server` child, so `kill $!` / a bare port-based `kill` can silently fail
-     while a background start keeps failing with `EADDRINUSE` into its own log. Verify with
-     `ss -ltnp | grep <port>` (or `lsof -i:<port>`) and kill the actual PID it names before
-     trusting a fresh start.
+   - **Port 3000 is the user's — they keep `npm run dev` running themselves so they can watch
+     it live.** Never start, restart, or kill anything on 3000. Check first
+     (`ss -ltnp | grep 3000` or `curl -sf http://localhost:3000`); if something's answering,
+     point the browser script straight at `http://localhost:3000` and go. If nothing's
+     answering, ask the user to start `npm run dev` rather than starting it yourself.
+   - For a one-off **production build** check (rare — most verification is against their dev
+     server), use a different port so you never collide with 3000, e.g.
+     `(PORT=3001 npm run start > /tmp/geopolitix-start.log 2>&1 &)` then poll it. Same
+     stale-server caution applies there: `curl` succeeding can be a stale server answering,
+     not the one you just started — `npm run start &`'s `$!` is only the npm wrapper, it
+     doesn't forward signals to the real `next-server` child, so a bare port-based `kill` can
+     silently fail while a background start keeps failing with `EADDRINUSE` into its own log.
+     Verify with `ss -ltnp | grep <port>` and kill the actual PID it names before trusting a
+     fresh start — but only ever on the port you're using for this (3001 or similar), never
+     3000.
    - Drive it with a small `playwright` script (`chromium.launch({ args: ["--no-sandbox"] })`):
      `page.goto(url, { waitUntil: "load" })` — **not** `"networkidle"`, which hangs
      indefinitely against Next dev's HMR websocket. `waitForSelector` on something
