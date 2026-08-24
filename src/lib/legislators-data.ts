@@ -29,7 +29,7 @@ export type Term = {
 };
 
 type LegislatorsFile = {
-  source: string;
+  sources: string[];
   generatedAt: string;
   legislators: Legislator[];
   terms: Term[];
