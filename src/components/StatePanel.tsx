@@ -4,6 +4,7 @@ import {
   getCurrentRepresentatives,
   legislatorFullName,
 } from "@/lib/legislators-data";
+import { PartyBadge } from "@/components/PartyBadge";
 
 export function StatePanel({ abbr }: { abbr: string | null }) {
   if (!abbr) {
@@ -36,10 +37,7 @@ export function StatePanel({ abbr }: { abbr: string | null }) {
         </h3>
         {summary ? (
           <p className="mt-1">
-            {summary.governor.name}{" "}
-            <span className="text-zinc-500 dark:text-zinc-400">
-              ({summary.governor.party})
-            </span>
+            {summary.governor.name} <PartyBadge party={summary.governor.party} />
           </p>
         ) : (
           <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
@@ -57,10 +55,7 @@ export function StatePanel({ abbr }: { abbr: string | null }) {
           <ul className="mt-1 flex flex-col gap-1">
             {senators.map(({ legislator, term }) => (
               <li key={legislator.id}>
-                {legislatorFullName(legislator)}{" "}
-                <span className="text-zinc-500 dark:text-zinc-400">
-                  ({term.party})
-                </span>
+                {legislatorFullName(legislator)} <PartyBadge party={term.party} />
               </li>
             ))}
           </ul>
@@ -80,10 +75,7 @@ export function StatePanel({ abbr }: { abbr: string | null }) {
             {representatives.map(({ legislator, term }) => (
               <li key={legislator.id}>
                 {term.district === 0 ? "At-large" : `District ${term.district}`}
-                : {legislatorFullName(legislator)}{" "}
-                <span className="text-zinc-500 dark:text-zinc-400">
-                  ({term.party})
-                </span>
+                : {legislatorFullName(legislator)} <PartyBadge party={term.party} />
               </li>
             ))}
           </ul>
