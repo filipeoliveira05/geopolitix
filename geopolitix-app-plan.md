@@ -176,9 +176,11 @@ would use the same shape if hand-curated competitive races are added later.
 - `office` (enum: `house` | `senate` | `governor`)
 - `state_id` (FK → `states`)
 - `district_id` (FK → `districts`, nullable)
-- `candidates` (array/related table: name, party, incumbent yes/no)
+- `candidates` — implemented as a related table, `race_candidates` (`race_id` FK, `name`,
+  `party`, `is_incumbent`), not a JSON array column — lets `winner_candidate_id` reference a
+  real row instead of duplicating candidate data.
 - `status` (enum: `open` | `called`)
-- `winner_candidate_id` (nullable, filled in when `status = called`)
+- `winner_candidate_id` (FK → `race_candidates`, nullable, filled in when `status = called`)
 - `last_synced_at`
 
 ### `cities`
@@ -281,12 +283,29 @@ requires being at the primary machine (where Claude Code runs and the local comm
 4. ~~Request a congress.gov API key~~ — **not needed for now.** `congress-legislators` already covers everything currently planned for `legislators` + `terms` (House and Senate, current and historical, no key required). The congress.gov API only becomes relevant if a future feature needs data `congress-legislators` doesn't have — roll call votes, bill text, committee activity (see the `congress` repo entry in §3's org inventory) — which is out of scope for now. Revisit only if/when that feature is actually planned.
 
 **Require the primary machine (where Claude Code runs):**
-5. Show the updated `OPEN_QUESTIONS.md` and this plan doc to Claude Code — can happen any time after sitting down at the primary machine; doing it early in the session means Claude Code has full context (including the GitHub/Supabase progress from steps 1–2) before touching code.
-6. Push the existing local commits to the GitHub repository created in step 1.
-7. Create the schema in Supabase as a versioned migration via Claude Code (not manually in the SQL Editor) — decided in favor of keeping the schema as committed code from the start, consistent with how the rest of the project is handled (JSON stand-ins, sync scripts, etc.), rather than creating tables by hand in the browser and reconciling them into code later.
+5. ~~Show the updated `OPEN_QUESTIONS.md` and this plan doc to Claude Code~~ — **done.**
+6. ~~Push the existing local commits to the GitHub repository created in step 1~~ — **done**
+   (`origin` → `github.com/filipeoliveira05/geopolitix`, `main` pushed and tracked).
+7. ~~Create the schema in Supabase as a versioned migration via Claude Code~~ — **done.**
+   Supabase CLI run via `npx` (not installed as a project dependency), project linked with
+   `supabase link`, schema written as `supabase/migrations/20260826072946_init_schema.sql`
+   covering all of §4's tables, applied with `supabase db push`. One draft-schema call made
+   during implementation: `races_2026.candidates` modeled as a related table
+   (`race_candidates`, FK'd from `races_2026.winner_candidate_id`) rather than a JSON array
+   column, so a confirmed winner references a real row instead of duplicating candidate data.
 8. Create/connect the Vercel project, importing the GitHub repo — do this **after** step 6, not before: Vercel needs code in the repo to produce a working first deploy.
-9. Enable Vercel Deployment Protection (decided in `OPEN_QUESTIONS.md` #2) — needs the Vercel project from step 8 to exist first.
-10. Connect Supabase environment variables (URL + keys) to both Vercel and local `.env.local` — this connection step doesn't appear elsewhere in the plan and is easy to forget.
+9. ~~Enable Vercel Deployment Protection~~ — **done.** Password Protection turned out to require
+   Vercel Pro ($150/mo) — not worth it for a personal app with no secret data. Using the free
+   **Vercel Authentication** instead (visitors must be logged into Vercel and a team member);
+   revisit and make the deployment public later if this login friction isn't worth it, since
+   there's nothing actually sensitive in the app's data to protect.
+10. ~~Connect Supabase environment variables (URL + keys) to both Vercel and local
+    `.env.local`~~ — **done.** `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+    (Config type — safe to expose, the anon key only grants read access governed by RLS) and
+    `SUPABASE_SERVICE_ROLE_KEY` (Secret type, no `NEXT_PUBLIC_` prefix — server-side only) are
+    set on Vercel (Production + Preview) and in local `.env.local`. Redeployed to pick them up.
+    Nothing to verify in the browser yet — the app still reads from the JSON stand-in until
+    step 11 migrates the sync scripts.
 11. Only after 6–10: have Claude Code migrate the `scripts/sync/*.mjs` JSON stand-ins to real Supabase tables + cron jobs, per the Data strategy in §2.
 
 ---
@@ -314,6 +333,9 @@ requires being at the primary machine (where Claude Code runs and the local comm
 ## 9. Open Decisions (to validate during implementation)
 
 - ~~Definitive source for `races_2026`~~ — **resolved**: Wikipedia infobox parsing via the MediaWiki API, scoped to Senate and Governors only (House excluded from automated sync in the MVP). See §3 for the mechanism and rationale.
-- Whether/when to introduce user authentication (e.g., for saving quiz progress) — not included in the MVP.
+- ~~Whether/when to introduce user authentication~~ — **resolved**: no user auth system for
+  now (personal-use app, nothing to save per-user yet). The public deployment itself is gated
+  by free Vercel Authentication instead (plan §7 step 9), not app-level auth. Revisit only if
+  something worth saving per-user (e.g. quiz progress) gets built.
 - Final choice between MapLibre GL JS and Mapbox GL JS (recommendation: MapLibre, to avoid dependency on Mapbox API keys/costs).
 - Level of detail for Congress history to show in the MVP (e.g., limit to a certain starting year, or include the full record back to 1789).

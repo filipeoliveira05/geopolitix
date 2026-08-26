@@ -105,9 +105,13 @@ geography/quiz work while Phase 1 is incomplete unless the user asks.
 
 Most items in plan §9 are now resolved (`OPEN_QUESTIONS.md`):
 - **Auth: none, deliberately.** This is a personal-use app — no user accounts/login flow.
-  Instead, enable **Vercel Deployment Protection** (single shared password on the deployment)
-  once the Vercel project exists (plan §7 step 9), so the public URL isn't discoverable by
-  strangers. Revisit only if something worth saving per-user (e.g. quiz progress) gets built.
+  The deployment itself is gated instead: **Vercel Authentication** is enabled on the Vercel
+  project (plan §7 step 9) — free, requires being logged into Vercel in the browser. Password
+  Protection (a shared password, no Vercel login needed) was the original plan but turned out
+  to need Vercel Pro ($150/mo), not worth it here. There's nothing actually sensitive in the
+  app's data (all public political/geo sources), so making the deployment public later instead
+  is a reasonable option if the login friction isn't worth it — not just a fallback. Revisit
+  real app-level auth only if something worth saving per-user (e.g. quiz progress) gets built.
 - **Congress history depth: full history everywhere**, same as Senate's existing
   `getSenateHistory()` (back to statehood) — for House and Governors once synced, too. This is
   a UI task, not a scope one: add filtering/structuring (collapse by default, group by decade
@@ -181,12 +185,19 @@ to re-verify still exist in `node_modules/maplibre-gl/dist/`.
 
 ## Status
 
-Base Next.js + Tailwind + TypeScript scaffold in place (App Router, ESLint). The GitHub repo
-and Supabase project have been created (from the browser, not yet connected to this machine)
-— see plan §7 for the remaining infra checklist (push local commits, create the schema as a
-migration, connect Vercel + env vars, migrate sync scripts to real Supabase tables/cron).
-Until that lands, everything below reads from committed JSON in `src/data/`, produced by the
-`scripts/sync/*.mjs` scripts, as a stand-in.
+Base Next.js + Tailwind + TypeScript scaffold in place (App Router, ESLint). Infra checklist
+(plan §7) progress: repo pushed to `github.com/filipeoliveira05/geopolitix` (`origin`/`main`);
+Supabase project linked via the CLI (run through `npx supabase`, not a project dependency —
+credentials in gitignored `.env.local`: `SUPABASE_PROJECT_REF`, `SUPABASE_DB_PASSWORD`,
+`SUPABASE_ACCESS_TOKEN`) and the initial schema applied as a versioned migration
+(`supabase/migrations/20260826072946_init_schema.sql`, all of plan §4's tables). Vercel project created and connected (imports the GitHub repo, deploys on push), with Vercel
+Authentication enabled as the deployment gate (see Open decisions above for why, not Password
+Protection). Supabase env vars wired to both Vercel (Production + Preview) and local
+`.env.local`: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` (Config type, safe to
+expose), `SUPABASE_SERVICE_ROLE_KEY` (Secret type, server-side only — never use client-side).
+Still open: migrating `scripts/sync/*.mjs` to write to the real Supabase tables instead of
+`src/data/` JSON (plan §7 step 11). Until that lands, everything below still reads from the
+committed JSON stand-in — nothing in the app actually talks to Supabase yet.
 
 **Home page** (`src/app/page.tsx` + `src/components/UsMap.tsx`): interactive MapLibre map,
 two modes (see UI conventions above) —
