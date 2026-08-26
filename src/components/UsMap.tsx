@@ -56,10 +56,10 @@ type DistrictProperties = DistrictFeatureProperties & {
 };
 
 /** Joins district geometry with the current House member's party for map coloring. */
-function joinDistrictsWithReps(
+async function joinDistrictsWithReps(
   repsByDistrict: Map<string, TermWithLegislator>,
-): FeatureCollection<Geometry, DistrictProperties> {
-  const districts = getDistrictsGeoJson();
+): Promise<FeatureCollection<Geometry, DistrictProperties>> {
+  const districts = await getDistrictsGeoJson();
   return {
     type: "FeatureCollection",
     features: districts.features.map((f) => {
@@ -170,6 +170,7 @@ export function UsMap({ selectedAbbr, onSelectState }: UsMapProps) {
 
     map.on("load", async () => {
       const repsByDistrict = await getCurrentRepsByDistrictKey();
+      const districtsWithReps = await joinDistrictsWithReps(repsByDistrict);
       // The effect's cleanup (StrictMode's mount/unmount/remount in dev, or
       // a real unmount) can run before this resolves — map.addSource below
       // would throw on an already-removed map.
@@ -177,7 +178,7 @@ export function UsMap({ selectedAbbr, onSelectState }: UsMapProps) {
 
       map.addSource(DISTRICTS_SOURCE_ID, {
         type: "geojson",
-        data: joinDistrictsWithReps(repsByDistrict),
+        data: districtsWithReps,
         promoteId: "geoid",
       });
 

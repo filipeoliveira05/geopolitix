@@ -1,7 +1,6 @@
 import { feature } from "topojson-client";
 import type { Topology, GeometryCollection } from "topojson-specification";
 import type { FeatureCollection, Geometry } from "geojson";
-import districtsData from "@/data/districts.json";
 
 export type DistrictFeatureProperties = {
   stateId: string;
@@ -15,28 +14,38 @@ type DistrictsFile = {
   topology: Topology;
 };
 
-const data = districtsData as unknown as DistrictsFile;
+// Public Storage URL, not a Postgres table — the combined topology blob is
+// one static rendering asset (~2.5MB, shares borders between adjacent
+// districts — a fraction of the ~13MB independent per-row GeoJSON would
+// cost), not per-row relational data. See scripts/sync/districts.mjs and
+// CLAUDE.md's Data conventions for why.
+const STORAGE_URL = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/district-geometry/topology.json`;
 
-let cached: FeatureCollection<Geometry, DistrictFeatureProperties> | null = null;
+let cachedPromise: Promise<FeatureCollection<Geometry, DistrictFeatureProperties>> | null = null;
 
 /**
  * Current (119th Congress) US House district boundaries, synced from the
  * Census cartographic boundary file via `npm run sync:districts` (see
- * scripts/sync/districts.mjs) — stand-in for the Supabase `districts` table
- * (plan §4) until that sync job exists for real.
+ * scripts/sync/districts.mjs).
  */
-export function getDistrictsGeoJson(): FeatureCollection<
-  Geometry,
-  DistrictFeatureProperties
+export function getDistrictsGeoJson(): Promise<
+  FeatureCollection<Geometry, DistrictFeatureProperties>
 > {
-  if (!cached) {
-    const districtsObject = data.topology.objects.districts as GeometryCollection;
-    cached = feature(data.topology, districtsObject) as unknown as FeatureCollection<
-      Geometry,
-      DistrictFeatureProperties
-    >;
-  }
-  return cached;
+  if (!cachedPromise) cachedPromise = fetchDistrictsGeoJson();
+  return cachedPromise;
 }
 
-export const districtsSyncedAt = data.generatedAt;
+async function fetchDistrictsGeoJson(): Promise<
+  FeatureCollection<Geometry, DistrictFeatureProperties>
+> {
+  const res = await fetch(STORAGE_URL);
+  if (!res.ok) {
+    throw new Error(`Failed to fetch district geometry: ${res.status} ${res.statusText}`);
+  }
+  const data = (await res.json()) as DistrictsFile;
+  const districtsObject = data.topology.objects.districts as GeometryCollection;
+  return feature(data.topology, districtsObject) as unknown as FeatureCollection<
+    Geometry,
+    DistrictFeatureProperties
+  >;
+}

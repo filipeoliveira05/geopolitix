@@ -54,10 +54,15 @@ Build order: **Phase 1 politics → Phase 2 geography → Phase 3 quiz.** Don't 
     suggests** — hit sustained 429s during testing that took several minutes to clear, not
     seconds. The script paces at 1 req/sec with backoff-and-retry on 429; if re-running
     repeatedly in a short session, expect to hit it anyway.
-- **Still on the JSON stand-in:** `districts` (`sync:districts` → `src/data/districts.json`).
-  Deliberately not migrated — the script builds one combined TopoJSON topology (~112KB) instead
-  of the plan's per-row `geojson` schema (~13MB raw) to keep the map light. Migrating needs a
-  storage-format decision first (single blob vs. per-row) — flag to the user before doing it.
+- **`districts` migrated, but geometry lives outside Postgres.** `sync:districts` writes two
+  things: lightweight metadata rows (`id` = Census GEOID, `state_id`, `district_number`, no
+  geometry) into the `districts` table, and the combined TopoJSON topology (~2.5MB, one blob
+  sharing borders between adjacent districts — a 5x reduction from ~13MB as independent
+  per-row GeoJSON) to a public Supabase Storage bucket (`district-geometry/topology.json`),
+  not a `geojson` column. `terms.district_id`/`races_2026.district_id` can now resolve, though
+  nothing populates them yet — House terms still join by the separate `district_number` column
+  (`getCurrentRepsByDistrictKey()`). `src/lib/districts-geo.ts` fetches the Storage blob
+  directly (public URL, no auth) rather than querying Postgres for it.
 - **`races_2026.mjs` gotchas** (Wikipedia infobox parsing, Senate + Governors only, no key):
   - **The plan's assumed template name was wrong — verified live before coding, not guessed.**
     Every race page uses generic `{{Infobox election}}`, not a chamber-specific
@@ -79,8 +84,9 @@ Build order: **Phase 1 politics → Phase 2 geography → Phase 3 quiz.** Don't 
     that doubles the effective rate) at 1 req/sec with retry-and-backoff.
 - **Not built yet:** geography/sports sync (Phase 2). Source research is in plan §3.
 - **House terms carry `district_number` (plain int) separately from `district_id`** (FK into
-  the not-yet-populated `districts` table) — lets House terms/map joins work before districts
-  migrates. `getCurrentRepsByDistrictKey()` and `UsMap.tsx` join on `district_number`.
+  `districts`, populated but currently unused by any other table). `getCurrentRepsByDistrictKey()`
+  and `UsMap.tsx` join on `district_number`, not `district_id` — nothing has been changed to
+  populate/use the FK yet even though it can now resolve.
 - **New Supabase tables need an explicit `GRANT`, not just an RLS policy** — Supabase's cloud
   default gives a fresh table no Data API access at all. Add the `anon` `SELECT` grant when a
   table's read path is actually built (not speculatively); `service_role` already has a
@@ -163,8 +169,8 @@ Base Next.js + Tailwind + TypeScript scaffold in place. Infra checklist (plan §
 GitHub repo pushed and tracked; Supabase project linked via CLI (credentials in gitignored
 `.env.local`); schema applied as versioned migrations (`supabase/migrations/`); Vercel project
 connected with Vercel Authentication as the deployment gate; Supabase env vars wired to both
-Vercel and local `.env.local`. Remaining: districts' storage-format decision, geography/sports
-sync, `/midterms-2026` scoreboard page, cron automation (all manual `npm run sync:*` today).
+Vercel and local `.env.local`. Remaining: geography/sports sync, `/midterms-2026` scoreboard
+page, cron automation (all manual `npm run sync:*` today).
 
 **Home page** (`src/app/page.tsx` + `UsMap.tsx`): interactive MapLibre map, two modes (see UI
 conventions) — States (default, current Senate delegation) and Districts (current House
@@ -188,8 +194,9 @@ of scope). No standalone `/midterms-2026` scoreboard page yet (plan §5).
   See the Data conventions gotchas above before re-running or modifying this one.
 - `races_2026`/`race_candidates` — Senate + Governor races, from Wikipedia (71 races, no key).
   See the Data conventions gotchas above before re-running or modifying this one.
-- `districts.json` — still the JSON stand-in, current (119th Congress) House boundaries from
-  the Census Bureau.
+- `districts` (metadata table) + `district-geometry/topology.json` (Storage blob) — current
+  (119th Congress) House boundaries from the Census Bureau, 436 districts. See the Data
+  conventions note above on why geometry isn't a table column.
 - `fips-to-abbr.json` — static FIPS↔abbreviation table, shared by multiple scripts and
   `src/lib/state-fips.ts`.
 

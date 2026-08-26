@@ -12,7 +12,7 @@
     "sync:legislators": "node --env-file=.env.local scripts/sync/legislators.mjs",
     "sync:governors": "node --env-file=.env.local scripts/sync/governors.mjs",
     "sync:races": "node --env-file=.env.local scripts/sync/races-2026.mjs",
-    "sync:districts": "node scripts/sync/districts.mjs"
+    "sync:districts": "node --env-file=.env.local scripts/sync/districts.mjs"
   },
   "dependencies": {
     "@supabase/postgrest-js": "^2.109.0",

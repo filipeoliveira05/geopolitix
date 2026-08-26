@@ -43,7 +43,7 @@ No hardcoded data in the codebase.
 2. A **manual refresh** (today: `npm run sync:<name>`) can force a pull any time, and is the only mechanism for tables without automatic sync.
 3. The production app **always reads from Supabase**, never calls external APIs directly from the browser.
 
-**Current implementation state** (see `CLAUDE.md` Status for the up-to-date picture): `states`, `legislators`/`terms`, `governors`, and `races_2026`/`race_candidates` sync scripts write directly to Supabase. `districts` is still a dev-time stand-in — the script writes a committed JSON file (`src/data/districts.json`) instead, deliberately not yet migrated (storage-format decision pending, see §7 step 10). Geography/sports sync aren't built yet; follow the Supabase-writing pattern, not the old JSON one, when building them.
+**Current implementation state** (see `CLAUDE.md` Status for the up-to-date picture): `states`, `legislators`/`terms`, `governors`, `races_2026`/`race_candidates`, and `districts` sync scripts all write directly to Supabase — though `districts`' actual geometry lives in a Supabase Storage bucket rather than a table column (§7 step 10 explains why). Geography/sports sync aren't built yet; follow the Supabase-writing pattern when building them.
 
 **Derived/joined geometry is a separate concern from syncing.** Anything computed by combining two already-synced datasets — e.g. joining district shapes to current reps' party, or splitting a state's real geometry into per-senator halves — belongs in `src/lib/*-geo.ts`, computed at read time and memoized, not precomputed by a sync script.
 
@@ -126,13 +126,16 @@ General reports, SCOTUS volumes, etc.) has no connection to this app's scope.
 A legislator's term — full historical record without duplicating `legislators`.
 - `id` (PK) · `legislator_id` (FK) · `chamber` (`house`|`senate`) · `state_id` (FK) ·
   `district_id` (FK → `districts`, nullable) · `district_number` (plain int, nullable — House
-  only; populated independently of `district_id` since `districts` isn't synced yet) ·
-  `party` (nullable — some historical terms predate parties) · `start_date` · `end_date`
-  (nullable if current) · `is_current` (bool)
+  only; populated independently of `district_id` — nothing populates the FK itself yet, even
+  though `districts` now exists; `getCurrentRepsByDistrictKey()` still joins on
+  `district_number`) · `party` (nullable — some historical terms predate parties) ·
+  `start_date` · `end_date` (nullable if current) · `is_current` (bool)
 
 ### `districts`
-- `id` (PK) · `state_id` (FK) · `district_number` · `geojson` (geometry — see §7 step 10 for
-  why this table isn't populated yet)
+- `id` (PK, text — the Census GEOID, e.g. `"4801"` for Texas's 1st district; same natural-key
+  pattern as `legislators.id`/`bioguide_id`) · `state_id` (FK) · `district_number`. **No
+  `geojson` column** — geometry lives as a single combined TopoJSON blob in a public Supabase
+  Storage bucket (`district-geometry/topology.json`), not per-row (§7 step 10 explains why).
 
 ### `governors`
 - `id` (PK, text — OpenStates' own person id, e.g. `ocd-person/...`, same natural-key pattern
@@ -229,12 +232,15 @@ Getting from "JSON stand-in" to the real infrastructure. Current progress is tra
 8. ✅ Enable a deployment gate — free **Vercel Authentication**, not Password Protection (that
    needs Vercel Pro/$150mo, not worth it for a personal app with no sensitive data)
 9. ✅ Connect Supabase env vars to Vercel + local `.env.local`
-10. **Partially done** — migrate `scripts/sync/*.mjs` JSON stand-ins to real Supabase tables
-    (§2). `states` and `legislators`/`terms` are live. `districts` deliberately still JSON —
-    needs a storage-format decision first (the current script builds one combined TopoJSON
-    topology, ~112KB, instead of this doc's per-row `geojson` schema, which would cost ~13MB
-    raw — don't migrate without deciding this, flag to the user). Cron automation (vs. today's
-    manual `npm run sync:*`) also not done.
+10. ✅ Migrate `scripts/sync/*.mjs` JSON stand-ins to real Supabase tables (§2). `states`,
+    `legislators`/`terms`, `governors`, `races_2026`/`race_candidates`, and `districts` are all
+    live. `districts`' storage-format decision (single TopoJSON blob vs. per-row `geojson`,
+    since raw per-district GeoJSON costs ~13MB vs. ~2.5MB for one shared-border topology):
+    **resolved as neither literally** — geometry lives in a public Supabase Storage bucket
+    (`district-geometry/topology.json`), not a Postgres column at all, while `districts` itself
+    is a normal metadata-only table (id/state_id/district_number) so its FKs
+    (`terms.district_id`, `races_2026.district_id`) can resolve. Cron automation (vs. today's
+    manual `npm run sync:*`) still not done — the one thing left in this step.
 
 ---
 

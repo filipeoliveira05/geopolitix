@@ -1,6 +1,7 @@
-// Populates src/data/districts.json with current US House district
-// boundaries — a stand-in for the Supabase `districts` table (plan §4) until
-// Supabase sync jobs exist; run manually via `npm run sync:districts`.
+// Populates the Supabase `districts` table (metadata only — id, state_id,
+// district_number) and uploads the combined district-geometry TopoJSON blob
+// to the `district-geometry` Storage bucket. Run manually via
+// `npm run sync:districts`.
 //
 // Source: US Census Bureau cartographic boundary file for the 119th Congress
 // (currently in effect — matches the "current" terms from the legislators
@@ -15,25 +16,35 @@
 // data). The Census cartographic boundary file is current and equally free,
 // so we use that instead.
 //
-// Output format: TopoJSON, not raw GeoJSON — same approach as the `us-atlas`
-// package already used for state boundaries (src/lib/us-states-geo.ts).
-// Raw GeoJSON for all 436 districts was ~13MB even after rounding coordinate
-// precision, because that doesn't touch vertex *count*, which is what
-// actually drives size. Building a topology (shared borders between adjacent
-// districts stored once) and simplifying it cuts that dramatically — the
-// same reason us-atlas's 50-state file is only ~112KB.
-import { writeFileSync, mkdirSync, readFileSync } from "node:fs";
+// Geometry storage format: TopoJSON, not raw GeoJSON — same approach as the
+// `us-atlas` package already used for state boundaries
+// (src/lib/us-states-geo.ts). Raw GeoJSON for all 436 districts was ~13MB
+// even after rounding coordinate precision, because that doesn't touch
+// vertex *count*, which is what actually drives size. Building a topology
+// (shared borders between adjacent districts stored once) and simplifying
+// it cuts that dramatically — the same technique that keeps us-atlas's
+// simpler 50-state file to only ~112KB; districts' far more detailed (and
+// far more numerous) boundaries land the topology around ~2.5MB instead —
+// still roughly a 5x reduction from the ~13MB raw-GeoJSON alternative. That
+// size win is also why geometry lives as one blob in Supabase Storage
+// rather than one `geojson` value per row in Postgres (plan §7 step 10) —
+// `districts.id` uses the Census GEOID as a stable natural key (e.g. "4801"
+// for Texas's 1st district), same pattern as legislators.id/bioguide_id.
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { readFileSync } from "node:fs";
 import JSZip from "jszip";
 import { read as readShapefile } from "shapefile";
 import { topology } from "topojson-server";
 import { presimplify, quantile, simplify } from "topojson-simplify";
 import { quantize } from "topojson-client";
+import { supabaseAdmin, logSync } from "./_supabase-admin.mjs";
 
 const SOURCE_URL =
   "https://www2.census.gov/geo/tiger/GENZ2024/shp/cb_2024_us_cd119_500k.zip";
 const SHP_BASENAME = "cb_2024_us_cd119_500k";
+const STORAGE_BUCKET = "district-geometry";
+const STORAGE_PATH = "topology.json";
 
 // Keep this fraction of vertices (by simplification weight) — tuned by trial
 // against output size vs. visible shape fidelity at the zoom levels the map
@@ -41,8 +52,6 @@ const SHP_BASENAME = "cb_2024_us_cd119_500k";
 const RETAIN_FRACTION = 0.1;
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
-const outDir = path.join(root, "src", "data");
-const outFile = path.join(outDir, "districts.json");
 
 const fipsToAbbr = JSON.parse(
   readFileSync(path.join(root, "src", "data", "fips-to-abbr.json"), "utf-8"),
@@ -99,18 +108,43 @@ async function main() {
   const minWeight = quantile(presimplified, 1 - RETAIN_FRACTION);
   const simplified = quantize(simplify(presimplified, minWeight), 1e5);
 
-  mkdirSync(outDir, { recursive: true });
-  writeFileSync(
-    outFile,
-    JSON.stringify({
-      source: SOURCE_URL,
-      generatedAt: new Date().toISOString(),
-      topology: simplified,
-    }) + "\n",
-  );
+  const supabase = supabaseAdmin();
+  const startedAt = new Date().toISOString();
+
+  const { error: uploadError } = await supabase.storage
+    .from(STORAGE_BUCKET)
+    .upload(
+      STORAGE_PATH,
+      JSON.stringify({ source: SOURCE_URL, generatedAt: new Date().toISOString(), topology: simplified }),
+      { contentType: "application/json", upsert: true },
+    );
+
+  const districtsMeta = [];
+  let skippedNoNumber = 0;
+  for (const f of features) {
+    if (f.properties.district === null) {
+      skippedNoNumber++;
+      continue;
+    }
+    districtsMeta.push({
+      id: f.properties.geoid,
+      state_id: f.properties.stateId,
+      district_number: f.properties.district,
+    });
+  }
+
+  let error = uploadError;
+  if (!error) {
+    ({ error } = await supabase.from("districts").upsert(districtsMeta, { onConflict: "id" }));
+  }
+
+  await logSync(supabase, { source: SOURCE_URL, startedAt, error });
+
+  if (error) throw error;
 
   console.log(
-    `Wrote ${features.length} districts (skipped ${skippedTerritories} territory features) -> ${path.relative(root, outFile)}`,
+    `Uploaded topology (${features.length} districts, skipped ${skippedTerritories} territory features) ` +
+      `and synced ${districtsMeta.length} district metadata rows (skipped ${skippedNoNumber} with no district number).`,
   );
 }
 
