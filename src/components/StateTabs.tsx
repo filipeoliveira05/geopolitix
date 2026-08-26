@@ -71,7 +71,7 @@ function CurrentTab({
             {governor.name} <PartyBadge party={governor.party} />
           </p>
         ) : (
-          <Empty>No governor data yet — not synced for this state.</Empty>
+          <Empty>No governor data for this state.</Empty>
         )}
       </Section>
 
@@ -130,8 +130,7 @@ function HistoryTab({ senateHistory }: StateTabsProps) {
 
       <Section title="Governors over time">
         <Empty>
-          Governor history isn&apos;t synced yet — only the current governor
-          (mock data, a handful of states) exists so far.
+          Governor history isn&apos;t synced yet — only the current governor exists so far.
         </Empty>
       </Section>
     </div>

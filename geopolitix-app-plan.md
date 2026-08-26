@@ -43,7 +43,7 @@ No hardcoded data in the codebase.
 2. A **manual refresh** (today: `npm run sync:<name>`) can force a pull any time, and is the only mechanism for tables without automatic sync.
 3. The production app **always reads from Supabase**, never calls external APIs directly from the browser.
 
-**Current implementation state** (see `CLAUDE.md` Status for the up-to-date picture): `states` and `legislators`/`terms` sync scripts write directly to Supabase. `districts` is still a dev-time stand-in — the script writes a committed JSON file (`src/data/districts.json`) instead, deliberately not yet migrated (storage-format decision pending, see §7 step 10). Governors/geography/sports sync aren't built yet; follow the Supabase-writing pattern, not the old JSON one, when building them.
+**Current implementation state** (see `CLAUDE.md` Status for the up-to-date picture): `states`, `legislators`/`terms`, and `governors` sync scripts write directly to Supabase. `districts` is still a dev-time stand-in — the script writes a committed JSON file (`src/data/districts.json`) instead, deliberately not yet migrated (storage-format decision pending, see §7 step 10). Geography/sports sync aren't built yet; follow the Supabase-writing pattern, not the old JSON one, when building them.
 
 **Derived/joined geometry is a separate concern from syncing.** Anything computed by combining two already-synced datasets — e.g. joining district shapes to current reps' party, or splitting a state's real geometry into per-senator halves — belongs in `src/lib/*-geo.ts`, computed at read time and memoized, not precomputed by a sync script.
 
@@ -59,7 +59,9 @@ No hardcoded data in the codebase.
 ### Governors and state legislatures
 - **OpenStates API v3** (`v3.openstates.org`, now under Plural/SAI360 — the consumer app was discontinued but the API/bulk data remain active). Free, requires an account + API key (`X-API-KEY` header or `?apikey=`); ~10 req/sec, 500 req/day, plenty for a weekly sync.
 - No dedicated governors endpoint — use `GET /people?jurisdiction=<id>&org_classification=executive`, filter client-side on `current_role.title === "Governor"`. `/jurisdictions` mixes in ~1800 municipalities — filter to `classification === "state"` first, and use each entry's structured `id` (not a name string) as the `jurisdiction` param.
-- **Known gap:** some states (confirmed: California) don't return a `"Governor"` entry despite one existing — a real crowdsourced-data gap, not a bug. `governors.mjs` should log/flag missing states to `sync_logs` rather than fail or silently show nothing, backed by a small hand-maintained override list (cheap at ~50 states).
+- **Known gap, bigger than initially assumed:** 11 states (not just California) return no `"Governor"` entry despite one existing — a real crowdsourced-data completeness gap, verified via raw API responses, not a bug in the query. `governors.mjs` logs missing states to `sync_logs` rather than failing, backed by a hand-maintained `GOVERNOR_OVERRIDES` list (name/party sourced via web search against Wikipedia's current-governors list, cross-checked — not guessed from memory, given these are real people's current offices). DC is separately excluded (has a Mayor, not a Governor — zero results, not a gap).
+- **Party strings need normalizing.** OpenStates returns `"Democratic"` (and Minnesota's official `"Democratic-Farmer-Labor"`) — the app's convention, already used by `terms.party` from `congress-legislators`, is `"Democrat"`. Mismatched strings silently render as "no party data" in the UI rather than erroring, so this is easy to ship unnoticed — `governors.mjs`'s `normalizeParty()` handles it.
+- **Rate limiting is stricter in practice than "~10 req/sec" suggests** — repeated full-table sync runs in a short window triggered sustained 429s that took several minutes to clear, not seconds. `governors.mjs` paces at 1 req/sec with retry-and-backoff.
 - **No term dates or bio in the v3 API** — `start_date`/`end_date`/`bio_summary` stay null for the MVP. Wikidata (already planned for Phase 2 geography) is a plausible future backfill source for just these fields.
 
 ### 2026 midterm elections (`races_2026`)
@@ -119,9 +121,12 @@ A legislator's term — full historical record without duplicating `legislators`
   why this table isn't populated yet)
 
 ### `governors`
-- `id` (PK) · `first_name`, `last_name`, `photo_url` (from OpenStates) · `bio_summary` (not
-  available from OpenStates — null) · `state_id` (FK) · `party` (from OpenStates) ·
-  `start_date`, `end_date` (not available from OpenStates — null)
+- `id` (PK, text — OpenStates' own person id, e.g. `ocd-person/...`, same natural-key pattern
+  as `legislators.id`/`bioguide_id`) · `first_name`, `last_name`, `photo_url` (from OpenStates,
+  or a manual override — §3) · `bio_summary` (not available from OpenStates — null) ·
+  `state_id` (FK) · `party` (from OpenStates, normalized to `"Democrat"`/`"Republican"` — §3) ·
+  `start_date`, `end_date` (not available from OpenStates — null). No history — one row per
+  state, current officeholder only; full-replaced on every sync.
 
 ### `races_2026`
 Senate + Governors only in the MVP (§3).

@@ -10,6 +10,7 @@
     "postinstall": "node scripts/copy-maplibre-worker.mjs",
     "sync:states": "node --env-file=.env.local scripts/sync/states.mjs",
     "sync:legislators": "node --env-file=.env.local scripts/sync/legislators.mjs",
+    "sync:governors": "node --env-file=.env.local scripts/sync/governors.mjs",
     "sync:districts": "node scripts/sync/districts.mjs"
   },
   "dependencies": {

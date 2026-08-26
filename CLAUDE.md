@@ -26,23 +26,41 @@ Build order: **Phase 1 politics → Phase 2 geography → Phase 3 quiz.** Don't 
 ## Data conventions
 
 - No hardcoded political/geographic data — everything lives in Supabase, populated by
-  `scripts/sync/*.mjs` (one script per source, public data, no API keys), run manually via
-  `npm run sync:<name>`. Schema draft is plan §4 — adjust as implementation reveals better
-  shapes, keep the plan doc in sync if the model changes meaningfully.
+  `scripts/sync/*.mjs` (one script per source, run manually via `npm run sync:<name>`; most
+  need no API key, `governors` is the exception — see below). Schema draft is plan §4 — adjust
+  as implementation reveals better shapes, keep the plan doc in sync if the model changes
+  meaningfully.
 - **Migrated to Supabase:** `states` (`sync:states` — minimal id/name seed only;
-  population/capital/region are Phase 2) and `legislators`/`terms` (`sync:legislators`, run
-  `sync:states` first — FK dependency). App reads through `src/lib/supabase.ts`, a
+  population/capital/region are Phase 2), `legislators`/`terms` (`sync:legislators`, run
+  `sync:states` first — FK dependency), and `governors` (`sync:governors`, needs
+  `OPENSTATES_API_KEY` in `.env.local`). App reads through `src/lib/supabase.ts`, a
   `@supabase/postgrest-js` `PostgrestClient` — not the full `@supabase/supabase-js`, whose
   `RealtimeClient` needs a WebSocket constructor Node < 22 lacks natively, and this app has no
   realtime/auth needs. Sync scripts (Node-only, write access) use `@supabase/supabase-js` + the
   `ws` package via `scripts/sync/_supabase-admin.mjs`.
+- **`governors.mjs` gotchas, both worth knowing before touching it again:**
+  - **Normalize party strings.** OpenStates returns `"Democratic"` (and Minnesota's
+    `"Democratic-Farmer-Labor"`) — the app's convention (from `congress-legislators`, already
+    in `terms.party`) is `"Democrat"`. `normalizeParty()` handles this; without it, every
+    Democrat governor silently renders `(?)` in `PartyBadge` (a real bug hit and fixed — check
+    this first if a new sync ever shows unexpected `(?)` badges).
+  - **The "OpenStates is missing a Governor entry" gap is bigger than the plan's single
+    documented case (California)** — 11 states had no `"Governor"` role in live testing
+    (verified as real gaps, not a query bug, by checking raw API responses). All 11 have a
+    `GOVERNOR_OVERRIDES` entry now; DC is separately excluded (has a Mayor, not a Governor —
+    zero executive results from OpenStates, not a gap). Re-check occasionally whether
+    OpenStates has filled a gap and drop the override if so.
+  - **Rate limiting is stricter/more persistent in practice than the plan's "~10 req/sec"
+    suggests** — hit sustained 429s during testing that took several minutes to clear, not
+    seconds. The script paces at 1 req/sec with backoff-and-retry on 429; if re-running
+    repeatedly in a short session, expect to hit it anyway.
 - **Still on the JSON stand-in:** `districts` (`sync:districts` → `src/data/districts.json`).
   Deliberately not migrated — the script builds one combined TopoJSON topology (~112KB) instead
   of the plan's per-row `geojson` schema (~13MB raw) to keep the map light. Migrating needs a
   storage-format decision first (single blob vs. per-row) — flag to the user before doing it.
-- **Not built yet:** `governors` (OpenStates v3), `races_2026` (Wikipedia infobox parsing,
-  Senate + Governors only), geography/sports sync (Phase 2). Source research for each is in
-  plan §3 — read it before implementing.
+- **Not built yet:** `races_2026` (Wikipedia infobox parsing, Senate + Governors only),
+  geography/sports sync (Phase 2). Source research for each is in plan §3 — read it before
+  implementing.
 - **House terms carry `district_number` (plain int) separately from `district_id`** (FK into
   the not-yet-populated `districts` table) — lets House terms/map joins work before districts
   migrates. `getCurrentRepsByDistrictKey()` and `UsMap.tsx` join on `district_number`.
@@ -128,28 +146,31 @@ Base Next.js + Tailwind + TypeScript scaffold in place. Infra checklist (plan §
 GitHub repo pushed and tracked; Supabase project linked via CLI (credentials in gitignored
 `.env.local`); schema applied as versioned migrations (`supabase/migrations/`); Vercel project
 connected with Vercel Authentication as the deployment gate; Supabase env vars wired to both
-Vercel and local `.env.local`. Remaining: districts' storage-format decision, governors/
-geography/sports sync, cron automation (all manual `npm run sync:*` today).
+Vercel and local `.env.local`. Remaining: districts' storage-format decision, geography/sports
+sync, `races_2026`, cron automation (all manual `npm run sync:*` today).
 
 **Home page** (`src/app/page.tsx` + `UsMap.tsx`): interactive MapLibre map, two modes (see UI
 conventions) — States (default, current Senate delegation) and Districts (current House
 delegation). Clicking either selects a state (Districts additionally tracks which district).
-The side panel (`StatePanel.tsx`) shows governor/capital/population (mock,
-`src/lib/mock-states.ts`, only CA/TX/NY/FL populated) and real senators/House reps (Supabase,
-via TanStack Query), plus a link to:
+The side panel (`StatePanel.tsx`) shows real governor/senators/House reps (Supabase, via
+TanStack Query) and mock capital/population (`src/lib/mock-states.ts`, only CA/TX/NY/FL
+populated), plus a link to:
 
 **`/state/[abbr]` page** (`src/app/state/[abbr]/page.tsx` + `StateTabs.tsx`): four tabs per
-plan §5 — current representation (real); history (real Senate history back to statehood,
-governors not synced); geography (mock, cities/sports flagged "Phase 2, not built"); 2026
-midterms (placeholder — source decided, sync not built).
+plan §5 — current representation (real, including governor); history (real Senate history back
+to statehood, governor history not synced — no history modeled for `governors`, current
+officeholder only); geography (mock, cities/sports flagged "Phase 2, not built"); 2026 midterms
+(placeholder — source decided, sync not built).
 
 **Synced data**, via `npm run sync:<name>`:
 - `states` — minimal id/name seed (`us-atlas` + `fips-to-abbr.json`), 50 states + DC.
 - `legislators`/`terms` — current + historical Senate terms (House current-only), from
   `unitedstates/congress-legislators`.
+- `governors` — current governor per state, from OpenStates v3 (`OPENSTATES_API_KEY` required).
+  See the Data conventions gotchas above before re-running or modifying this one.
 - `districts.json` — still the JSON stand-in, current (119th Congress) House boundaries from
   the Census Bureau.
 - `fips-to-abbr.json` — static FIPS↔abbreviation table, shared by multiple scripts and
   `src/lib/state-fips.ts`.
 
-Not started: governors sync, geography/sports sync, `races_2026`, quiz (Phase 3).
+Not started: geography/sports sync, `races_2026`, quiz (Phase 3).

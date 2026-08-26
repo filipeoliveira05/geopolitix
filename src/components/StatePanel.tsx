@@ -6,6 +6,7 @@ import {
   getCurrentRepresentatives,
   legislatorFullName,
 } from "@/lib/legislators-data";
+import { getGovernor, governorFullName } from "@/lib/governors-data";
 import { PartyBadge } from "@/components/PartyBadge";
 import { RepresentativesList } from "@/components/RepresentativesList";
 
@@ -16,6 +17,11 @@ type StatePanelProps = {
 };
 
 export function StatePanel({ abbr, selectedDistrict = null }: StatePanelProps) {
+  const { data: governor } = useQuery({
+    queryKey: ["governor", abbr],
+    queryFn: () => getGovernor(abbr as string),
+    enabled: abbr !== null,
+  });
   const { data: senators } = useQuery({
     queryKey: ["senators", abbr],
     queryFn: () => getCurrentSenators(abbr as string),
@@ -59,15 +65,14 @@ export function StatePanel({ abbr, selectedDistrict = null }: StatePanelProps) {
         <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
           Governor
         </h3>
-        {summary ? (
+        {governor === undefined ? (
+          <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">Loading…</p>
+        ) : governor ? (
           <p className="mt-1">
-            {summary.governor.name} <PartyBadge party={summary.governor.party} />
+            {governorFullName(governor)} <PartyBadge party={governor.party} />
           </p>
         ) : (
-          <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-            No governor data yet — only CA, TX, NY, FL are populated in this
-            dev slice.
-          </p>
+          <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">No governor data.</p>
         )}
       </div>
 
@@ -111,8 +116,8 @@ export function StatePanel({ abbr, selectedDistrict = null }: StatePanelProps) {
       </div>
 
       <p className="text-xs text-zinc-400 dark:text-zinc-600">
-        Senators/representatives synced from unitedstates/congress-legislators.
-        Governor and geography are mock data — not yet synced from Supabase.
+        Senators/representatives/governor synced from real sources. Capital/population are
+        mock data — Phase 2 geography sync not built yet.
       </p>
     </div>
   );
