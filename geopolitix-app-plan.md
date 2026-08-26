@@ -43,7 +43,7 @@ No hardcoded data in the codebase.
 2. A **manual refresh** (today: `npm run sync:<name>`) can force a pull any time, and is the only mechanism for tables without automatic sync.
 3. The production app **always reads from Supabase**, never calls external APIs directly from the browser.
 
-**Current implementation state** (see `CLAUDE.md` Status for the up-to-date picture): `states`, `legislators`/`terms`, and `governors` sync scripts write directly to Supabase. `districts` is still a dev-time stand-in — the script writes a committed JSON file (`src/data/districts.json`) instead, deliberately not yet migrated (storage-format decision pending, see §7 step 10). Geography/sports sync aren't built yet; follow the Supabase-writing pattern, not the old JSON one, when building them.
+**Current implementation state** (see `CLAUDE.md` Status for the up-to-date picture): `states`, `legislators`/`terms`, `governors`, and `races_2026`/`race_candidates` sync scripts write directly to Supabase. `districts` is still a dev-time stand-in — the script writes a committed JSON file (`src/data/districts.json`) instead, deliberately not yet migrated (storage-format decision pending, see §7 step 10). Geography/sports sync aren't built yet; follow the Supabase-writing pattern, not the old JSON one, when building them.
 
 **Derived/joined geometry is a separate concern from syncing.** Anything computed by combining two already-synced datasets — e.g. joining district shapes to current reps' party, or splitting a state's real geometry into per-senator halves — belongs in `src/lib/*-geo.ts`, computed at read time and memoized, not precomputed by a sync script.
 
@@ -65,8 +65,22 @@ No hardcoded data in the codebase.
 - **No term dates or bio in the v3 API** — `start_date`/`end_date`/`bio_summary` stay null for the MVP. Wikidata (already planned for Phase 2 geography) is a plausible future backfill source for just these fields.
 
 ### 2026 midterm elections (`races_2026`)
-- No free live-results API exists (AP's is paid/commercial). Source: the **Wikipedia MediaWiki Action API** (`action=parse&prop=wikitext`, no key), parsing each race's infobox template (`Infobox U.S. Senate election` etc.) — there's no clean JSON feed, and no explicit "winner confirmed" field (inferred from whether the infobox was updated post-election-day). Page lists per chamber come from a Wikipedia category, not hand-typed. Each chamber's infobox has different parameter names — needs its own small parser.
-- **Senate (~35 races) + Governors (~36 races) only.** House's 435 races are excluded from automated sync — mostly safe seats with little educational value, and per-district current-representation already covers House at the level this app cares about. If House previews are wanted later, hand-curate just the competitive races Wikipedia's own overview page already highlights.
+- No free live-results API exists (AP's is paid/commercial). Source: the **Wikipedia MediaWiki Action API** (`action=parse&prop=wikitext`, no key), parsing each race's infobox — there's no clean JSON feed. Page lists per chamber come from a Wikipedia category, not hand-typed.
+- **The infobox template name assumed in earlier drafts of this plan was wrong** —
+  verified live (not guessed) once implementation started: every race page uses the generic
+  `{{Infobox election}}`, not a chamber-specific `{{Infobox U.S. Senate election}}`. Candidate
+  field names vary *within* a chamber too — some Governors pages use `nominee1`/`nominee2`,
+  others `candidate1`/`candidate2` — the parser tries both.
+- **No explicit "winner confirmed" field** — inferred from the infobox's `after_election`
+  field, but only trusted if it actually names one of the race's real candidates. Some pages
+  fill `after_election` with a literal placeholder (`"TBD"`) before results exist rather than
+  leaving it blank, which a naive "non-empty = called" check would misread as a real result
+  (caught on a real example — Wisconsin's 2026 governor race — before shipping).
+- Party names on candidate pages aren't consistently the generic "Democratic Party (United
+  States)"/"Republican Party (United States)" — some use a state-affiliate name ("Republican
+  Party of Texas", "Texas Democratic Party"). Normalize by substring match
+  (`/democrat/i`/`/republican/i`/`/independent/i`), not exact string comparison.
+- **Senate (~35 races) + Governors (~36 races) only** (71 total, confirmed once built). House's 435 races are excluded from automated sync — mostly safe seats with little educational value, and per-district current-representation already covers House at the level this app cares about. If House previews are wanted later, hand-curate just the competitive races Wikipedia's own overview page already highlights.
 - Google Civic Information API considered — limited result coverage, not adopted.
 
 ### Map boundaries

@@ -9,6 +9,7 @@ import {
   getSenateHistory,
 } from "@/lib/legislators-data";
 import { getGovernor, governorFullName } from "@/lib/governors-data";
+import { getRacesForState } from "@/lib/races-data";
 import { StateTabs } from "@/components/StateTabs";
 
 export async function generateMetadata(
@@ -30,11 +31,12 @@ export default async function StatePage(props: PageProps<"/state/[abbr]">) {
 
   const name = getStateName(abbr)!;
   const summary = getMockStateSummary(abbr);
-  const [governor, senators, representatives, senateHistory] = await Promise.all([
+  const [governor, senators, representatives, senateHistory, races] = await Promise.all([
     getGovernor(abbr),
     getCurrentSenators(abbr),
     getCurrentRepresentatives(abbr),
     getSenateHistory(abbr),
+    getRacesForState(abbr),
   ]);
 
   return (
@@ -60,6 +62,7 @@ export default async function StatePage(props: PageProps<"/state/[abbr]">) {
           senators={senators}
           representatives={representatives}
           senateHistory={senateHistory}
+          races={races}
         />
       </div>
     </div>

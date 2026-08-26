@@ -58,9 +58,26 @@ Build order: **Phase 1 politics → Phase 2 geography → Phase 3 quiz.** Don't 
   Deliberately not migrated — the script builds one combined TopoJSON topology (~112KB) instead
   of the plan's per-row `geojson` schema (~13MB raw) to keep the map light. Migrating needs a
   storage-format decision first (single blob vs. per-row) — flag to the user before doing it.
-- **Not built yet:** `races_2026` (Wikipedia infobox parsing, Senate + Governors only),
-  geography/sports sync (Phase 2). Source research for each is in plan §3 — read it before
-  implementing.
+- **`races_2026.mjs` gotchas** (Wikipedia infobox parsing, Senate + Governors only, no key):
+  - **The plan's assumed template name was wrong — verified live before coding, not guessed.**
+    Every race page uses generic `{{Infobox election}}`, not a chamber-specific
+    `{{Infobox U.S. Senate election}}`. Candidate field names vary *within* a chamber, not just
+    across chambers — some Governors pages use `nominee1`/`nominee2`, others `candidate1`/
+    `candidate2` — the parser tries both per index.
+  - **Normalize party strings by substring match, not exact string.** Pages use the generic
+    `"Democratic Party (United States)"` or a state-affiliate name (`"Republican Party of
+    Texas"`, `"Texas Democratic Party"`) — `normalizeParty()` matches on `/democrat/i` /
+    `/republican/i`/`/independent/i` rather than exact strings, which would silently miss the
+    affiliate-named cases.
+  - **A non-empty `after_election` field doesn't mean the race is called** — pages awaiting a
+    result sometimes fill it with a literal placeholder (`"TBD"`) rather than leaving it blank.
+    Trust it only if it names one of the actual parsed candidates (a real bug hit and fixed:
+    Wisconsin's governor race was wrongly marked "called" with a null winner before this
+    check). If a new sync ever shows a "called" race with no visible winner, check this first.
+  - Wikipedia's rate limit is also stricter in practice than expected — hit sustained 429s
+    (same pattern as the governors sync). Runs sequentially (not both chambers concurrently —
+    that doubles the effective rate) at 1 req/sec with retry-and-backoff.
+- **Not built yet:** geography/sports sync (Phase 2). Source research is in plan §3.
 - **House terms carry `district_number` (plain int) separately from `district_id`** (FK into
   the not-yet-populated `districts` table) — lets House terms/map joins work before districts
   migrates. `getCurrentRepsByDistrictKey()` and `UsMap.tsx` join on `district_number`.
@@ -147,7 +164,7 @@ GitHub repo pushed and tracked; Supabase project linked via CLI (credentials in 
 `.env.local`); schema applied as versioned migrations (`supabase/migrations/`); Vercel project
 connected with Vercel Authentication as the deployment gate; Supabase env vars wired to both
 Vercel and local `.env.local`. Remaining: districts' storage-format decision, geography/sports
-sync, `races_2026`, cron automation (all manual `npm run sync:*` today).
+sync, `/midterms-2026` scoreboard page, cron automation (all manual `npm run sync:*` today).
 
 **Home page** (`src/app/page.tsx` + `UsMap.tsx`): interactive MapLibre map, two modes (see UI
 conventions) — States (default, current Senate delegation) and Districts (current House
@@ -160,7 +177,8 @@ populated), plus a link to:
 plan §5 — current representation (real, including governor); history (real Senate history back
 to statehood, governor history not synced — no history modeled for `governors`, current
 officeholder only); geography (mock, cities/sports flagged "Phase 2, not built"); 2026 midterms
-(placeholder — source decided, sync not built).
+(real — Senate/Governor races for this state, per-candidate party + incumbent flag; House out
+of scope). No standalone `/midterms-2026` scoreboard page yet (plan §5).
 
 **Synced data**, via `npm run sync:<name>`:
 - `states` — minimal id/name seed (`us-atlas` + `fips-to-abbr.json`), 50 states + DC.
@@ -168,9 +186,11 @@ officeholder only); geography (mock, cities/sports flagged "Phase 2, not built")
   `unitedstates/congress-legislators`.
 - `governors` — current governor per state, from OpenStates v3 (`OPENSTATES_API_KEY` required).
   See the Data conventions gotchas above before re-running or modifying this one.
+- `races_2026`/`race_candidates` — Senate + Governor races, from Wikipedia (71 races, no key).
+  See the Data conventions gotchas above before re-running or modifying this one.
 - `districts.json` — still the JSON stand-in, current (119th Congress) House boundaries from
   the Census Bureau.
 - `fips-to-abbr.json` — static FIPS↔abbreviation table, shared by multiple scripts and
   `src/lib/state-fips.ts`.
 
-Not started: geography/sports sync, `races_2026`, quiz (Phase 3).
+Not started: geography/sports sync, quiz (Phase 3).

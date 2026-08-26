@@ -6,6 +6,7 @@ import {
   legislatorFullName,
   type TermWithLegislator,
 } from "@/lib/legislators-data";
+import type { Race } from "@/lib/races-data";
 
 type TabKey = "current" | "history" | "geography" | "midterms";
 
@@ -25,6 +26,7 @@ export type StateTabsProps = {
   senators: TermWithLegislator[];
   representatives: TermWithLegislator[];
   senateHistory: TermWithLegislator[];
+  races: Race[];
 };
 
 export function StateTabs(props: StateTabsProps) {
@@ -163,15 +165,45 @@ function GeographyTab({ capital, population }: StateTabsProps) {
   );
 }
 
-function MidtermsTab({ name }: StateTabsProps) {
+const OFFICE_LABELS: Record<Race["office"], string> = {
+  senate: "U.S. Senate",
+  governor: "Governor",
+  house: "U.S. House",
+};
+
+function MidtermsTab({ races }: StateTabsProps) {
   return (
-    <Section title="2026 Midterms">
-      <Empty>
-        Race data for {name} isn&apos;t synced yet. When available, this will
-        show candidates and confirmed race status (House/Senate/Governor) —
-        not a real-time results feed; see the plan&apos;s non-goals.
-      </Empty>
-    </Section>
+    <div className="flex flex-col gap-6">
+      {races.length > 0 ? (
+        races.map((race) => (
+          <Section key={race.id} title={OFFICE_LABELS[race.office]}>
+            <p className="mb-1 text-xs text-zinc-500 dark:text-zinc-400">
+              {race.status === "called" ? "Called" : "Not yet decided"}
+            </p>
+            <ul className="flex flex-col gap-1">
+              {race.candidates.map((candidate) => (
+                <li key={candidate.id}>
+                  {candidate.name} <PartyBadge party={candidate.party} />
+                  {candidate.isIncumbent && (
+                    <span className="text-zinc-500 dark:text-zinc-400"> (incumbent)</span>
+                  )}
+                  {candidate.id === race.winnerCandidateId && (
+                    <span className="text-zinc-500 dark:text-zinc-400"> — winner</span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </Section>
+        ))
+      ) : (
+        <Section title="2026 Midterms">
+          <Empty>
+            No Senate or Governor race in this state this cycle. House isn&apos;t synced (see
+            the plan&apos;s non-goals) — this is not a real-time results feed either way.
+          </Empty>
+        </Section>
+      )}
+    </div>
   );
 }
 
