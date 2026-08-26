@@ -28,12 +28,28 @@ jobs:
       # Order matters: legislators/governors/races all FK into states. Each
       # sync step is independent (continue-on-error) so one external API
       # having a bad day (OpenStates/Wikipedia rate limits have both been
-      # hit repeatedly during development) doesn't skip the others — check
-      # sync_logs for real status, not just this workflow's green checkmark.
+      # hit repeatedly during development) doesn't skip the others. The
+      # final step below turns any real failure back into a failed run —
+      # continue-on-error alone would make the job report "success" even
+      # when a step genuinely failed (caught from a real run: governors.mjs
+      # hit OpenStates' rate limit and errored out, but the job still
+      # showed green).
       - run: node scripts/sync/states.mjs
-      - run: node scripts/sync/legislators.mjs
+      - id: sync_legislators
+        run: node scripts/sync/legislators.mjs
         continue-on-error: true
-      - run: node scripts/sync/governors.mjs
+      - id: sync_governors
+        run: node scripts/sync/governors.mjs
         continue-on-error: true
-      - run: node scripts/sync/races-2026.mjs
+      - id: sync_races
+        run: node scripts/sync/races-2026.mjs
         continue-on-error: true
+      - name: Fail the run if any sync step failed
+        if: always()
+        run: |
+          if [ "${{ steps.sync_legislators.outcome }}" = "failure" ] ||
+             [ "${{ steps.sync_governors.outcome }}" = "failure" ] ||
+             [ "${{ steps.sync_races.outcome }}" = "failure" ]; then
+            echo "One or more sync steps failed — see the failing step's log above, and sync_logs in Supabase for details."
+            exit 1
+          fi

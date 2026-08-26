@@ -181,10 +181,16 @@ rate-limit themselves to ~70-100+s each, tight against Vercel's 300s function ti
 requiring restructuring into HTTP handlers, so a plain scheduled workflow running the existing
 `npm run sync:*` scripts unchanged was the lower-risk choice. Needs three repo secrets set
 (Settings → Secrets and variables → Actions): `NEXT_PUBLIC_SUPABASE_URL`,
-`SUPABASE_SERVICE_ROLE_KEY`, `OPENSTATES_API_KEY`. Each sync step is `continue-on-error` so one
-external API having a bad day doesn't skip the others — check `sync_logs` for real status, not
-the workflow's green checkmark. `districts` stays manual-only (redistricting is ~once/decade,
-per plan §6). Remaining: geography/sports sync (Phase 2).
+`SUPABASE_SERVICE_ROLE_KEY`, `OPENSTATES_API_KEY`. Each sync step runs independently
+(`continue-on-error` per step, so one external API having a bad day doesn't skip the others —
+OpenStates rate limits have been hit repeatedly, including once in the real cron run itself),
+but a final step re-checks each step's outcome and fails the overall run if any of them
+genuinely errored — **`continue-on-error` alone silently reports the whole job as
+"success" even when a step fails; caught from a real run** (governors.mjs hit OpenStates'
+rate limit and errored, workflow still showed green) and fixed with that explicit check,
+so the job status is trustworthy without needing to cross-check `sync_logs` for a real
+failure. `districts` stays manual-only (redistricting is ~once/decade, per plan §6).
+Remaining: geography/sports sync (Phase 2).
 
 **Home page** (`src/app/page.tsx` + `UsMap.tsx`): interactive MapLibre map, two modes (see UI
 conventions) — States (default, current Senate delegation) and Districts (current House
