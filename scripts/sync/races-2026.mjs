@@ -126,6 +126,10 @@ function cleanWikiText(value) {
     .replace(/\[\[([^\]|]*)\|([^\]]*)\]\]/g, "$2")
     .replace(/\[\[([^\]]*)\]\]/g, "$1")
     .replace(/'{2,}/g, "")
+    // Raw HTML tags show up too — e.g. `[[Maura Healey]]<br />''(presumptive)''`
+    // on presumptive-nominee pages (caught via a real leaked "<br />" in the
+    // rendered UI, not anticipated up front).
+    .replace(/<[^>]+>/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 }

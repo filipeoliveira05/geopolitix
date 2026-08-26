@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import {
   Map as MapLibreMap,
@@ -409,6 +410,13 @@ export function UsMap({ selectedAbbr, onSelectState }: UsMapProps) {
   return (
     <div className="relative h-full w-full">
       <div ref={containerRef} className="h-full w-full" />
+
+      <Link
+        href="/midterms-2026"
+        className="absolute top-3 right-3 rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm shadow-sm hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-900 dark:hover:bg-zinc-800"
+      >
+        2026 Midterms
+      </Link>
 
       <div className="absolute top-3 left-3 flex overflow-hidden rounded-md border border-zinc-300 text-sm shadow-sm dark:border-zinc-700">
         {(["states", "districts"] as const).map((m) => (

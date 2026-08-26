@@ -53,14 +53,23 @@ function fromRow(row: RaceRow): Race {
   };
 }
 
+const RACE_WITH_CANDIDATES_SELECT = "*, race_candidates!race_candidates_race_id_fkey(*)";
+
 export async function getRacesForState(stateAbbr: string): Promise<Race[]> {
   // race_candidates has two FKs into races_2026 (race_id and
   // winner_candidate_id) — PostgREST can't infer which one to embed on
   // without being told explicitly.
   const { data, error } = await supabase
     .from("races_2026")
-    .select("*, race_candidates!race_candidates_race_id_fkey(*)")
+    .select(RACE_WITH_CANDIDATES_SELECT)
     .eq("state_id", stateAbbr);
+  if (error) throw error;
+  return (data as unknown as RaceRow[]).map(fromRow);
+}
+
+/** Every Senate + Governor race nationwide — for the /midterms-2026 scoreboard. */
+export async function getAllRaces(): Promise<Race[]> {
+  const { data, error } = await supabase.from("races_2026").select(RACE_WITH_CANDIDATES_SELECT);
   if (error) throw error;
   return (data as unknown as RaceRow[]).map(fromRow);
 }

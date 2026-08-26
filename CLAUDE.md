@@ -82,6 +82,11 @@ Build order: **Phase 1 politics → Phase 2 geography → Phase 3 quiz.** Don't 
   - Wikipedia's rate limit is also stricter in practice than expected — hit sustained 429s
     (same pattern as the governors sync). Runs sequentially (not both chambers concurrently —
     that doubles the effective rate) at 1 req/sec with retry-and-backoff.
+  - **`cleanWikiText()` strips wiki markup but raw HTML can still leak through** — some
+    "presumptive nominee" pages embed literal `<br />` tags inside a `nominee`/`candidate`
+    field (e.g. `[[Maura Healey]]<br />''(presumptive)''`). A leaked `<br />` showed up in the
+    `/midterms-2026` UI before a generic `<[^>]+>` strip was added — if a candidate name ever
+    looks malformed, check for un-stripped HTML first.
 - **Not built yet:** geography/sports sync (Phase 2). Source research is in plan §3.
 - **House terms carry `district_number` (plain int) separately from `district_id`** (FK into
   `districts`, populated but currently unused by any other table). `getCurrentRepsByDistrictKey()`
@@ -169,8 +174,8 @@ Base Next.js + Tailwind + TypeScript scaffold in place. Infra checklist (plan §
 GitHub repo pushed and tracked; Supabase project linked via CLI (credentials in gitignored
 `.env.local`); schema applied as versioned migrations (`supabase/migrations/`); Vercel project
 connected with Vercel Authentication as the deployment gate; Supabase env vars wired to both
-Vercel and local `.env.local`. Remaining: geography/sports sync, `/midterms-2026` scoreboard
-page, cron automation (all manual `npm run sync:*` today).
+Vercel and local `.env.local`. Remaining: geography/sports sync, cron automation (all manual
+`npm run sync:*` today).
 
 **Home page** (`src/app/page.tsx` + `UsMap.tsx`): interactive MapLibre map, two modes (see UI
 conventions) — States (default, current Senate delegation) and Districts (current House
@@ -184,7 +189,13 @@ plan §5 — current representation (real, including governor); history (real Se
 to statehood, governor history not synced — no history modeled for `governors`, current
 officeholder only); geography (mock, cities/sports flagged "Phase 2, not built"); 2026 midterms
 (real — Senate/Governor races for this state, per-candidate party + incumbent flag; House out
-of scope). No standalone `/midterms-2026` scoreboard page yet (plan §5).
+of scope).
+
+**`/midterms-2026`** (plan §5): scoreboard (called vs. total, per office) + full Senate/Governor
+race lists nationwide, linked from the map's top-right corner. `force-dynamic` — no dynamic
+route params here to make Next treat it as needing per-request data automatically, so without
+this it would prerender once at build time and serve stale race data forever (caught before
+shipping, not after).
 
 **`/legislator/[id]`** and **`/governor/[id]`** (plan §5): photo, party, term history (legislator
 only — governors have no history modeled) for one person. `id` is `legislators.id`
