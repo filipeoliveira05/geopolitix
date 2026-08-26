@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { PartyBadge } from "@/components/PartyBadge";
 import {
@@ -20,7 +21,7 @@ const TABS: { key: TabKey; label: string }[] = [
 export type StateTabsProps = {
   abbr: string;
   name: string;
-  governor: { name: string; party: string } | null;
+  governor: { id: string; name: string; party: string } | null;
   capital: string | null;
   population: number | null;
   senators: TermWithLegislator[];
@@ -70,7 +71,10 @@ function CurrentTab({
       <Section title="Governor">
         {governor ? (
           <p>
-            {governor.name} <PartyBadge party={governor.party} />
+            <Link href={`/governor/${governor.id}`} className="hover:underline">
+              {governor.name}
+            </Link>{" "}
+            <PartyBadge party={governor.party} />
           </p>
         ) : (
           <Empty>No governor data for this state.</Empty>
@@ -82,7 +86,10 @@ function CurrentTab({
           <ul className="flex flex-col gap-1">
             {senators.map(({ legislator, term }) => (
               <li key={legislator.id}>
-                {legislatorFullName(legislator)} <PartyBadge party={term.party} />
+                <Link href={`/legislator/${legislator.id}`} className="hover:underline">
+                  {legislatorFullName(legislator)}
+                </Link>{" "}
+                <PartyBadge party={term.party} />
               </li>
             ))}
           </ul>
@@ -97,7 +104,10 @@ function CurrentTab({
             {representatives.map(({ legislator, term }) => (
               <li key={legislator.id}>
                 {term.district === 0 ? "At-large" : `District ${term.district}`}:{" "}
-                {legislatorFullName(legislator)} <PartyBadge party={term.party} />
+                <Link href={`/legislator/${legislator.id}`} className="hover:underline">
+                  {legislatorFullName(legislator)}
+                </Link>{" "}
+                <PartyBadge party={term.party} />
               </li>
             ))}
           </ul>
@@ -117,7 +127,10 @@ function HistoryTab({ senateHistory }: StateTabsProps) {
           <ul className="flex flex-col gap-1">
             {senateHistory.map(({ legislator, term }) => (
               <li key={term.id}>
-                {legislatorFullName(legislator)} <PartyBadge party={term.party} />{" "}
+                <Link href={`/legislator/${legislator.id}`} className="hover:underline">
+                  {legislatorFullName(legislator)}
+                </Link>{" "}
+                <PartyBadge party={term.party} />{" "}
                 <span className="text-zinc-500 dark:text-zinc-400">
                   {term.startDate} – {term.endDate}
                   {term.isCurrent ? " (current)" : ""}

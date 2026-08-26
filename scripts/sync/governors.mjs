@@ -50,7 +50,7 @@ function normalizeParty(party) {
 function override(stateId, fullName, party, photoUrl = null) {
   const [first_name, ...rest] = fullName.split(" ");
   return {
-    id: `manual-override/${stateId.toLowerCase()}-governor`,
+    id: `manual-override-${stateId.toLowerCase()}-governor`,
     first_name,
     last_name: rest.join(" "),
     photo_url: photoUrl,
@@ -63,7 +63,7 @@ function override(stateId, fullName, party, photoUrl = null) {
 }
 
 const GOVERNOR_OVERRIDES = {
-  CA: override("CA", "Gavin Newsom", "Democrat", "https://www.gov.ca.gov/wp-content/uploads/2019/01/Newsom-Portrait.jpg"),
+  CA: override("CA", "Gavin Newsom", "Democrat"),
   DE: override("DE", "Matt Meyer", "Democrat"),
   IN: override("IN", "Mike Braun", "Republican"),
   MO: override("MO", "Mike Kehoe", "Republican"),
@@ -101,7 +101,10 @@ async function fetchExecutives(abbr, attempt = 1) {
 
 function buildGovernor(abbr, person) {
   return {
-    id: person.id,
+    // Strip the "ocd-person/" prefix — this id ends up in a URL path
+    // segment (/governor/[id]), and OpenStates' raw id containing a "/"
+    // breaks that route (caught via a real 404 in browser verification).
+    id: person.id.replace(/^ocd-person\//, ""),
     first_name: person.given_name || null,
     last_name: person.family_name || null,
     photo_url: person.image || null,

@@ -69,7 +69,10 @@ export function StatePanel({ abbr, selectedDistrict = null }: StatePanelProps) {
           <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">Loading…</p>
         ) : governor ? (
           <p className="mt-1">
-            {governorFullName(governor)} <PartyBadge party={governor.party} />
+            <Link href={`/governor/${governor.id}`} className="hover:underline">
+              {governorFullName(governor)}
+            </Link>{" "}
+            <PartyBadge party={governor.party} />
           </p>
         ) : (
           <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">No governor data.</p>
@@ -86,7 +89,10 @@ export function StatePanel({ abbr, selectedDistrict = null }: StatePanelProps) {
           <ul className="mt-1 flex flex-col gap-1">
             {senators.map(({ legislator, term }) => (
               <li key={legislator.id}>
-                {legislatorFullName(legislator)} <PartyBadge party={term.party} />
+                <Link href={`/legislator/${legislator.id}`} className="hover:underline">
+                  {legislatorFullName(legislator)}
+                </Link>{" "}
+                <PartyBadge party={term.party} />
               </li>
             ))}
           </ul>

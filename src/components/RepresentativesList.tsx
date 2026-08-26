@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useRef } from "react";
 import { legislatorFullName, type TermWithLegislator } from "@/lib/legislators-data";
 import { PartyBadge } from "@/components/PartyBadge";
@@ -36,7 +37,10 @@ export function RepresentativesList({
             }
           >
             {term.district === 0 ? "At-large" : `District ${term.district}`}:{" "}
-            {legislatorFullName(legislator)} <PartyBadge party={term.party} />
+            <Link href={`/legislator/${legislator.id}`} className="hover:underline">
+              {legislatorFullName(legislator)}
+            </Link>{" "}
+            <PartyBadge party={term.party} />
           </li>
         );
       })}

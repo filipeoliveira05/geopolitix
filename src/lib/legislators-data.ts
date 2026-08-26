@@ -13,6 +13,7 @@ export type Legislator = {
   lastName: string | null;
   photoUrl: string | null;
   birthday: string | null;
+  bioSummary: string | null;
 };
 
 export type Term = {
@@ -42,41 +43,53 @@ type TermRow = {
   start_date: string;
   end_date: string | null;
   is_current: boolean;
-  legislator: {
-    id: string;
-    bioguide_id: string;
-    govtrack_id: string | null;
-    first_name: string | null;
-    last_name: string | null;
-    photo_url: string | null;
-    birthday: string | null;
-  };
+  legislator: LegislatorRow;
+};
+
+type LegislatorRow = {
+  id: string;
+  bioguide_id: string;
+  govtrack_id: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  photo_url: string | null;
+  birthday: string | null;
+  bio_summary: string | null;
 };
 
 const TERM_WITH_LEGISLATOR_SELECT = "*, legislator:legislators(*)";
 
+function legislatorFromRow(row: LegislatorRow): Legislator {
+  return {
+    id: row.id,
+    bioguideId: row.bioguide_id,
+    govtrackId: row.govtrack_id,
+    firstName: row.first_name,
+    lastName: row.last_name,
+    photoUrl: row.photo_url,
+    birthday: row.birthday,
+    bioSummary: row.bio_summary,
+  };
+}
+
+function termFromRow(row: Omit<TermRow, "legislator">): Term {
+  return {
+    id: row.id,
+    legislatorId: row.legislator_id,
+    chamber: row.chamber,
+    stateId: row.state_id,
+    district: row.district_number,
+    party: row.party,
+    startDate: row.start_date,
+    endDate: row.end_date,
+    isCurrent: row.is_current,
+  };
+}
+
 function fromRow(row: TermRow): TermWithLegislator {
   return {
-    legislator: {
-      id: row.legislator.id,
-      bioguideId: row.legislator.bioguide_id,
-      govtrackId: row.legislator.govtrack_id,
-      firstName: row.legislator.first_name,
-      lastName: row.legislator.last_name,
-      photoUrl: row.legislator.photo_url,
-      birthday: row.legislator.birthday,
-    },
-    term: {
-      id: row.id,
-      legislatorId: row.legislator_id,
-      chamber: row.chamber,
-      stateId: row.state_id,
-      district: row.district_number,
-      party: row.party,
-      startDate: row.start_date,
-      endDate: row.end_date,
-      isCurrent: row.is_current,
-    },
+    legislator: legislatorFromRow(row.legislator),
+    term: termFromRow(row),
   };
 }
 
@@ -164,4 +177,22 @@ export async function getCurrentRepsByDistrictKey(): Promise<Map<string, TermWit
 
 export function legislatorFullName(legislator: Legislator): string {
   return [legislator.firstName, legislator.lastName].filter(Boolean).join(" ");
+}
+
+export async function getLegislatorById(id: string): Promise<Legislator | null> {
+  const { data, error } = await supabase.from("legislators").select("*").eq("id", id).maybeSingle();
+  if (error) throw error;
+  return data ? legislatorFromRow(data as unknown as LegislatorRow) : null;
+}
+
+/** All terms (any chamber, current + historical) for one legislator, newest first. */
+export async function getTermsForLegislator(legislatorId: string): Promise<Term[]> {
+  const { data, error } = await supabase
+    .from("terms")
+    .select("*")
+    .eq("legislator_id", legislatorId);
+  if (error) throw error;
+  return (data as unknown as Omit<TermRow, "legislator">[])
+    .map(termFromRow)
+    .sort((a, b) => b.startDate.localeCompare(a.startDate));
 }

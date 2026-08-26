@@ -186,6 +186,13 @@ officeholder only); geography (mock, cities/sports flagged "Phase 2, not built")
 (real — Senate/Governor races for this state, per-candidate party + incumbent flag; House out
 of scope). No standalone `/midterms-2026` scoreboard page yet (plan §5).
 
+**`/legislator/[id]`** and **`/governor/[id]`** (plan §5): photo, party, term history (legislator
+only — governors have no history modeled) for one person. `id` is `legislators.id`
+(`bioguide_id`) / `governors.id` (OpenStates person id with its `"ocd-person/"` prefix stripped
+at sync time — the raw id contains a `/`, which broke the route; caught via a real 404 in
+browser verification, not assumed). Linked from senator/rep/governor names across
+`StatePanel.tsx`/`StateTabs.tsx`/`RepresentativesList.tsx`.
+
 **Synced data**, via `npm run sync:<name>`:
 - `states` — minimal id/name seed (`us-atlas` + `fips-to-abbr.json`), 50 states + DC.
 - `legislators`/`terms` — current + historical Senate terms (House current-only), from

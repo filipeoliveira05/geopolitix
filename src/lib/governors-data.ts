@@ -41,6 +41,12 @@ function fromRow(row: GovernorRow): Governor {
   };
 }
 
+export async function getGovernorById(id: string): Promise<Governor | null> {
+  const { data, error } = await supabase.from("governors").select("*").eq("id", id).maybeSingle();
+  if (error) throw error;
+  return data ? fromRow(data as unknown as GovernorRow) : null;
+}
+
 export async function getGovernor(stateAbbr: string): Promise<Governor | null> {
   const { data, error } = await supabase
     .from("governors")

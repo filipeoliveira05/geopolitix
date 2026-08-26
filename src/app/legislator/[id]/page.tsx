@@ -1,0 +1,109 @@
+import Link from "next/link";
+import Image from "next/image";
+import { notFound } from "next/navigation";
+import type { Metadata } from "next";
+import { getStateName } from "@/lib/states";
+import {
+  getLegislatorById,
+  getTermsForLegislator,
+  legislatorFullName,
+} from "@/lib/legislators-data";
+import { PartyBadge } from "@/components/PartyBadge";
+
+const CHAMBER_LABELS = { senate: "U.S. Senate", house: "U.S. House" } as const;
+
+export async function generateMetadata(
+  props: PageProps<"/legislator/[id]">,
+): Promise<Metadata> {
+  const { id } = await props.params;
+  const legislator = await getLegislatorById(id);
+  return {
+    title: legislator ? `${legislatorFullName(legislator)} — Geopolitix` : "Geopolitix",
+  };
+}
+
+export default async function LegislatorPage(props: PageProps<"/legislator/[id]">) {
+  const { id } = await props.params;
+  const legislator = await getLegislatorById(id);
+  if (!legislator) notFound();
+
+  const terms = await getTermsForLegislator(id);
+  const currentTerm = terms.find((t) => t.isCurrent) ?? terms[0] ?? null;
+
+  return (
+    <div className="mx-auto w-full max-w-3xl flex-1 p-6 sm:p-10">
+      <Link
+        href="/"
+        className="text-sm text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200"
+      >
+        ← Back to map
+      </Link>
+
+      <div className="mt-2 flex items-center gap-4">
+        {legislator.photoUrl && (
+          <Image
+            src={legislator.photoUrl}
+            alt=""
+            width={80}
+            height={80}
+            unoptimized
+            className="h-20 w-20 rounded object-cover"
+          />
+        )}
+        <div>
+          <h1 className="text-3xl font-semibold">{legislatorFullName(legislator)}</h1>
+          {currentTerm && (
+            <p className="text-sm text-zinc-500 dark:text-zinc-400">
+              <PartyBadge party={currentTerm.party} />{" "}
+              {currentTerm.isCurrent ? "Currently serving in" : "Last served in"} the{" "}
+              {CHAMBER_LABELS[currentTerm.chamber]}
+              {currentTerm.stateId && ` (${getStateName(currentTerm.stateId) ?? currentTerm.stateId})`}
+            </p>
+          )}
+        </div>
+      </div>
+
+      {legislator.birthday && (
+        <p className="mt-4 text-sm text-zinc-500 dark:text-zinc-400">
+          Born {legislator.birthday}
+        </p>
+      )}
+
+      <div className="mt-6">
+        <h2 className="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+          Biography
+        </h2>
+        <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+          {legislator.bioSummary ?? "Not synced yet."}
+        </p>
+      </div>
+
+      <div className="mt-6">
+        <h2 className="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+          Term history
+        </h2>
+        {terms.length > 0 ? (
+          <ul className="mt-1 flex flex-col gap-1">
+            {terms.map((term) => (
+              <li key={term.id}>
+                {CHAMBER_LABELS[term.chamber]} —{" "}
+                {term.chamber === "house"
+                  ? `${getStateName(term.stateId) ?? term.stateId} ${
+                      term.district === 0 ? "At-large" : `District ${term.district}`
+                    }`
+                  : getStateName(term.stateId) ?? term.stateId}{" "}
+                <PartyBadge party={term.party} />{" "}
+                <span className="text-zinc-500 dark:text-zinc-400">
+                  {term.startDate} – {term.endDate}
+                  {term.isCurrent ? " (current)" : ""}
+                </span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">No term data.</p>
+        )}
+      </div>
+    </div>
+  );
+}

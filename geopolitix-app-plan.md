@@ -138,8 +138,10 @@ A legislator's term — full historical record without duplicating `legislators`
   Storage bucket (`district-geometry/topology.json`), not per-row (§7 step 10 explains why).
 
 ### `governors`
-- `id` (PK, text — OpenStates' own person id, e.g. `ocd-person/...`, same natural-key pattern
-  as `legislators.id`/`bioguide_id`) · `first_name`, `last_name`, `photo_url` (from OpenStates,
+- `id` (PK, text — OpenStates' own person id with its `"ocd-person/"` prefix stripped, e.g.
+  `d73f10ee-...`, same natural-key pattern as `legislators.id`/`bioguide_id`; the prefix is
+  stripped because it contains a `/`, which broke the `/governor/[id]` route — caught via a
+  real 404 in browser verification) · `first_name`, `last_name`, `photo_url` (from OpenStates,
   or a manual override — §3) · `bio_summary` (not available from OpenStates — null) ·
   `state_id` (FK) · `party` (from OpenStates, normalized to `"Democrat"`/`"Republican"` — §3) ·
   `start_date`, `end_date` (not available from OpenStates — null). No history — one row per

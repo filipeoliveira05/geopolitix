@@ -56,7 +56,11 @@ export default async function StatePage(props: PageProps<"/state/[abbr]">) {
         <StateTabs
           abbr={abbr}
           name={name}
-          governor={governor ? { name: governorFullName(governor), party: governor.party ?? "" } : null}
+          governor={
+            governor
+              ? { id: governor.id, name: governorFullName(governor), party: governor.party ?? "" }
+              : null
+          }
           capital={summary?.capital ?? null}
           population={summary?.population ?? null}
           senators={senators}
