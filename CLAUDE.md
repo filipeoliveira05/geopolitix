@@ -54,6 +54,26 @@ geography/quiz work while Phase 1 is incomplete unless the user asks.
   boundary file for the 119th Congress instead — current, official, still no key needed. If
   `unitedstates/districts` ever gets a real update, it's fine to reconsider, but verify the
   "full nationwide set" year first, the same way this was caught.
+- **`races_2026` source decided: Wikipedia infobox parsing, Senate + Governors only.** Plan §3
+  — the MediaWiki Action API (`action=parse&prop=wikitext`, no key), reading the per-race
+  infobox template (`Infobox U.S. Senate election` etc.), with the page list per chamber pulled
+  from a Wikipedia category rather than hand-typed. **House (435 races) is deliberately
+  excluded from automated sync** — mostly safe seats with little educational value, and
+  per-district current representation already covers House at the level this app cares about;
+  hand-curate only the competitive races if House previews are ever wanted. Not built yet.
+- **Governors sync source confirmed: OpenStates API v3** (`https://v3.openstates.org/`, now
+  under Plural/SAI360 — API still active despite the consumer app being discontinued). Plan §3
+  has the full findings; the two that actually shape `governors.mjs` when it's built:
+  - No dedicated governors endpoint — use `/people?jurisdiction=<id>&org_classification=executive`
+    and filter client-side on `current_role.title === "Governor"`. `/jurisdictions` mixes in
+    ~1800 municipalities, so filter to `classification === "state"` first.
+  - **Per-state gaps are real, not a bug** — e.g. California's executive results omit a
+    `"Governor"` entry entirely despite Newsom being in office. Log/flag missing states in
+    `sync_logs` rather than failing or silently showing nothing; maintain a small manual
+    override list for known gaps (cheap at ~50 states, unlike the House problem above).
+  - `start_date`/`end_date`/`bio_summary` aren't in the v3 API's `Person` schema at all —
+    accept as null for the MVP; Wikidata (already planned for Phase 2 geography) is a plausible
+    future backfill source, not scheduled now.
 - **Derived/joined geometry lives in `src/lib/*-geo.ts`, not in a sync script.** Anything that
   combines two already-synced datasets — `districts-geo.ts` joining district shapes to current
   reps' party, `senate-split-geo.ts` splitting a state's real geometry (via `@turf/intersect`,
@@ -83,8 +103,24 @@ geography/quiz work while Phase 1 is incomplete unless the user asks.
 
 ## Open decisions
 
-See plan §8 (`races_2026` source, auth, MapLibre vs Mapbox, historical depth for Congress).
-Flag these to the user when work touches them instead of silently picking an answer.
+Most items in plan §9 are now resolved (`OPEN_QUESTIONS.md`):
+- **Auth: none, deliberately.** This is a personal-use app — no user accounts/login flow.
+  Instead, enable **Vercel Deployment Protection** (single shared password on the deployment)
+  once the Vercel project exists (plan §7 step 9), so the public URL isn't discoverable by
+  strangers. Revisit only if something worth saving per-user (e.g. quiz progress) gets built.
+- **Congress history depth: full history everywhere**, same as Senate's existing
+  `getSenateHistory()` (back to statehood) — for House and Governors once synced, too. This is
+  a UI task, not a scope one: add filtering/structuring (collapse by default, group by decade
+  or party, paginate/"show more") on the History tab once those datasets exist, rather than
+  capping the data itself.
+- **Geography sync sources (Phase 2): Claude Code picks the combination at Phase 2 start** —
+  no need to lock in before then. Working default from the plan discussion: Census for
+  population (authoritative), Wikidata for capitals/founding dates/structured facts, GeoNames
+  as a fallback for city coordinates if needed.
+- **Sports sync source: TheSportsDB confirmed** (already the plan's pick, no open question).
+
+Still genuinely open: MapLibre vs Mapbox (recommendation: MapLibre, already in use, no reason
+to revisit). Flag it to the user if work ever depends on switching.
 
 ## Testing / verification process
 
@@ -145,9 +181,12 @@ to re-verify still exist in `node_modules/maplibre-gl/dist/`.
 
 ## Status
 
-Base Next.js + Tailwind + TypeScript scaffold in place (App Router, ESLint). No Supabase
-project yet (blocked on the user regaining GitHub 2FA access) — everything below reads from
-committed JSON in `src/data/`, produced by the `scripts/sync/*.mjs` scripts, as a stand-in.
+Base Next.js + Tailwind + TypeScript scaffold in place (App Router, ESLint). The GitHub repo
+and Supabase project have been created (from the browser, not yet connected to this machine)
+— see plan §7 for the remaining infra checklist (push local commits, create the schema as a
+migration, connect Vercel + env vars, migrate sync scripts to real Supabase tables/cron).
+Until that lands, everything below reads from committed JSON in `src/data/`, produced by the
+`scripts/sync/*.mjs` scripts, as a stand-in.
 
 **Home page** (`src/app/page.tsx` + `src/components/UsMap.tsx`): interactive MapLibre map,
 two modes (see UI conventions above) —
@@ -165,7 +204,7 @@ plan §3, not done) and current senators/House reps (real), plus a link to:
 four tabs per plan §5 — current representation (real); history (real Senate term history back
 to statehood, via `getSenateHistory()`; governors history not synced, noted as such); geography
 (mock capital/population; cities/sports flagged "Phase 2, not built"); 2026 midterms
-(placeholder — no race data source implemented, plan's open decision §8).
+(placeholder — source now decided, plan §3, but `races_2026` sync itself not built yet).
 
 **Synced data**, all via `npm run sync:<name>`, all public sources, no API keys/accounts:
 - `legislators.json` (`sync:legislators`) — current + historical Senate terms from
