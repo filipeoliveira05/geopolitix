@@ -80,6 +80,11 @@ No hardcoded data in the codebase.
   States)"/"Republican Party (United States)" — some use a state-affiliate name ("Republican
   Party of Texas", "Texas Democratic Party"). Normalize by substring match
   (`/democrat/i`/`/republican/i`/`/independent/i`), not exact string comparison.
+- **Wiki markup isn't the only markup that shows up in a field value — raw HTML does too.**
+  Some "presumptive nominee" pages embed a literal `<br />` inside a `nominee`/`candidate`
+  field (e.g. Massachusetts governor: `[[Maura Healey]]<br />''(presumptive)''`) — a leaked
+  `<br />` showed up in the `/midterms-2026` UI before the parser's text-cleaning step added a
+  generic `<[^>]+>` strip alongside its wikilink/template handling.
 - **Senate (~35 races) + Governors (~36 races) only** (71 total, confirmed once built). House's 435 races are excluded from automated sync — mostly safe seats with little educational value, and per-district current-representation already covers House at the level this app cares about. If House previews are wanted later, hand-curate just the competitive races Wikipedia's own overview page already highlights.
 - Google Civic Information API considered — limited result coverage, not adopted.
 
@@ -120,7 +125,9 @@ General reports, SCOTUS volumes, etc.) has no connection to this app's scope.
 - `id` (PK, 2-letter code, e.g. "CA") · `name` · `capital_city_id` (FK → `cities`) · `population` · `flag_url`/color · `region`
 
 ### `legislators`
-- `id` (PK, `bioguide_id`) · `bioguide_id` · `govtrack_id` · `first_name`, `last_name` · `photo_url` · `birthday` · `bio_summary`
+- `id` (PK, `bioguide_id`) · `bioguide_id` · `govtrack_id` · `first_name`, `last_name` ·
+  `photo_url` · `birthday` · `bio_summary` (column exists but `sync:legislators` never
+  populates it — always null today, same as `governors.bio_summary`)
 
 ### `terms`
 A legislator's term — full historical record without duplicating `legislators`.
@@ -176,15 +183,15 @@ Senate + Governors only in the MVP (§3).
 - A future "Geography" mode (Phase 2) will layer capitals/cities/sports onto the same map.
 - In a political mode: option to highlight states with contested 2026 races.
 
-### `/state/[state_id]` — State Page
+### `/state/[abbr]` — State Page
 Tabs: **Current representation** (senators, reps by district, governor) · **History**
 (senators/governors over time) · **Geography** (capital, cities, population, sports) · **2026
 Midterms** (races in this state, if any).
 
-### `/legislator/[legislator_id]` — Legislator Profile
+### `/legislator/[id]` — Legislator Profile
 Photo, bio, current party, term history.
 
-### `/governor/[governor_id]` — Governor Profile
+### `/governor/[id]` — Governor Profile
 Same shape, adapted to the state executive office.
 
 ### `/midterms-2026` — 2026 Midterms Preview
@@ -241,8 +248,9 @@ Getting from "JSON stand-in" to the real infrastructure. Current progress is tra
     **resolved as neither literally** — geometry lives in a public Supabase Storage bucket
     (`district-geometry/topology.json`), not a Postgres column at all, while `districts` itself
     is a normal metadata-only table (id/state_id/district_number) so its FKs
-    (`terms.district_id`, `races_2026.district_id`) can resolve. Cron automation (vs. today's
-    manual `npm run sync:*`) still not done — the one thing left in this step.
+    (`terms.district_id`, `races_2026.district_id`) can resolve. Cron automation is also done —
+    a weekly GitHub Actions workflow (§2), not Vercel Cron/Supabase `pg_cron` as this plan
+    originally sketched (§2 explains why). Manual `npm run sync:*` still works too.
 
 ---
 

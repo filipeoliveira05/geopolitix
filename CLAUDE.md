@@ -38,22 +38,11 @@ Build order: **Phase 1 politics → Phase 2 geography → Phase 3 quiz.** Don't 
   `RealtimeClient` needs a WebSocket constructor Node < 22 lacks natively, and this app has no
   realtime/auth needs. Sync scripts (Node-only, write access) use `@supabase/supabase-js` + the
   `ws` package via `scripts/sync/_supabase-admin.mjs`.
-- **`governors.mjs` gotchas, both worth knowing before touching it again:**
-  - **Normalize party strings.** OpenStates returns `"Democratic"` (and Minnesota's
-    `"Democratic-Farmer-Labor"`) — the app's convention (from `congress-legislators`, already
-    in `terms.party`) is `"Democrat"`. `normalizeParty()` handles this; without it, every
-    Democrat governor silently renders `(?)` in `PartyBadge` (a real bug hit and fixed — check
-    this first if a new sync ever shows unexpected `(?)` badges).
-  - **The "OpenStates is missing a Governor entry" gap is bigger than the plan's single
-    documented case (California)** — 11 states had no `"Governor"` role in live testing
-    (verified as real gaps, not a query bug, by checking raw API responses). All 11 have a
-    `GOVERNOR_OVERRIDES` entry now; DC is separately excluded (has a Mayor, not a Governor —
-    zero executive results from OpenStates, not a gap). Re-check occasionally whether
-    OpenStates has filled a gap and drop the override if so.
-  - **Rate limiting is stricter/more persistent in practice than the plan's "~10 req/sec"
-    suggests** — hit sustained 429s during testing that took several minutes to clear, not
-    seconds. The script paces at 1 req/sec with backoff-and-retry on 429; if re-running
-    repeatedly in a short session, expect to hit it anyway.
+- **`governors.mjs` — full source research/gotchas are in plan §3, don't re-derive them.** The
+  two that bite hardest if forgotten: party strings need `normalizeParty()` (OpenStates'
+  `"Democratic"` → our `"Democrat"`) or Democrat governors silently render `(?)` badges; and
+  OpenStates' rate limit is much stricter in practice than its docs suggest (sustained 429s
+  taking minutes to clear, not seconds — expect this if re-running repeatedly in one session).
 - **`districts` migrated, but geometry lives outside Postgres.** `sync:districts` writes two
   things: lightweight metadata rows (`id` = Census GEOID, `state_id`, `district_number`, no
   geometry) into the `districts` table, and the combined TopoJSON topology (~2.5MB, one blob
@@ -63,30 +52,11 @@ Build order: **Phase 1 politics → Phase 2 geography → Phase 3 quiz.** Don't 
   nothing populates them yet — House terms still join by the separate `district_number` column
   (`getCurrentRepsByDistrictKey()`). `src/lib/districts-geo.ts` fetches the Storage blob
   directly (public URL, no auth) rather than querying Postgres for it.
-- **`races_2026.mjs` gotchas** (Wikipedia infobox parsing, Senate + Governors only, no key):
-  - **The plan's assumed template name was wrong — verified live before coding, not guessed.**
-    Every race page uses generic `{{Infobox election}}`, not a chamber-specific
-    `{{Infobox U.S. Senate election}}`. Candidate field names vary *within* a chamber, not just
-    across chambers — some Governors pages use `nominee1`/`nominee2`, others `candidate1`/
-    `candidate2` — the parser tries both per index.
-  - **Normalize party strings by substring match, not exact string.** Pages use the generic
-    `"Democratic Party (United States)"` or a state-affiliate name (`"Republican Party of
-    Texas"`, `"Texas Democratic Party"`) — `normalizeParty()` matches on `/democrat/i` /
-    `/republican/i`/`/independent/i` rather than exact strings, which would silently miss the
-    affiliate-named cases.
-  - **A non-empty `after_election` field doesn't mean the race is called** — pages awaiting a
-    result sometimes fill it with a literal placeholder (`"TBD"`) rather than leaving it blank.
-    Trust it only if it names one of the actual parsed candidates (a real bug hit and fixed:
-    Wisconsin's governor race was wrongly marked "called" with a null winner before this
-    check). If a new sync ever shows a "called" race with no visible winner, check this first.
-  - Wikipedia's rate limit is also stricter in practice than expected — hit sustained 429s
-    (same pattern as the governors sync). Runs sequentially (not both chambers concurrently —
-    that doubles the effective rate) at 1 req/sec with retry-and-backoff.
-  - **`cleanWikiText()` strips wiki markup but raw HTML can still leak through** — some
-    "presumptive nominee" pages embed literal `<br />` tags inside a `nominee`/`candidate`
-    field (e.g. `[[Maura Healey]]<br />''(presumptive)''`). A leaked `<br />` showed up in the
-    `/midterms-2026` UI before a generic `<[^>]+>` strip was added — if a candidate name ever
-    looks malformed, check for un-stripped HTML first.
+- **`races_2026.mjs` — full source research/gotchas are in plan §3, don't re-derive them.** The
+  ones that bite hardest: a "called" race needs `after_election` to actually *name a parsed
+  candidate*, not just be non-empty (some pages use a `"TBD"` placeholder pre-results); and
+  `cleanWikiText()` strips wiki markup but not raw HTML (`<br />` has leaked into candidate
+  names before) — if a candidate name ever looks malformed, check for un-stripped HTML first.
 - **Not built yet:** geography/sports sync (Phase 2). Source research is in plan §3.
 - **House terms carry `district_number` (plain int) separately from `district_id`** (FK into
   `districts`, populated but currently unused by any other table). `getCurrentRepsByDistrictKey()`
@@ -169,6 +139,10 @@ version bump, check this first — verify those two files still exist in
 `node_modules/maplibre-gl/dist/`.
 
 ## Status
+
+**Phase 1 (politics) is complete** — every page/table in the original Phase 1 scope is built
+and reading live from Supabase; infra (below) is fully automated too. Next up per the build
+order is Phase 2 (geography/sports sync), unless told otherwise.
 
 Base Next.js + Tailwind + TypeScript scaffold in place. Infra checklist (plan §7) mostly done:
 GitHub repo pushed and tracked; Supabase project linked via CLI (credentials in gitignored
