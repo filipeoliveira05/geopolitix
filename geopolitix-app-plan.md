@@ -31,7 +31,7 @@ This app was born out of interest in the 2026 US midterm elections and inspirati
 - **Deployment:** Vercel, auto-deploy on push
 - **Interactive map:** MapLibre GL JS (open-source Mapbox GL JS fork — no API key/cost)
 - **Map geometries:** GeoJSON/TopoJSON for congressional districts and state boundaries
-- **Periodic data sync:** Supabase `pg_cron` / Vercel Cron Jobs (not built yet — sync is manual today)
+- **Periodic data sync:** a weekly GitHub Actions scheduled workflow (`.github/workflows/sync.yml`), not Supabase `pg_cron`/Vercel Cron Jobs as originally sketched here — `governors`/`races_2026` deliberately rate-limit themselves against external APIs (~70-100+s per run), which was tight against Vercel's function timeout and would've required restructuring each script into an HTTP handler; a plain scheduled workflow runs the existing `npm run sync:*` CLI scripts unchanged. `districts` stays manual-only (§6).
 - **Frontend data fetching/caching:** TanStack Query (React Query)
 - **Styling:** Tailwind CSS
 - **PWA:** manifest.json + icon, "Add to Home Screen" (no native app)

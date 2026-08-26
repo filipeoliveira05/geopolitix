@@ -174,8 +174,17 @@ Base Next.js + Tailwind + TypeScript scaffold in place. Infra checklist (plan §
 GitHub repo pushed and tracked; Supabase project linked via CLI (credentials in gitignored
 `.env.local`); schema applied as versioned migrations (`supabase/migrations/`); Vercel project
 connected with Vercel Authentication as the deployment gate; Supabase env vars wired to both
-Vercel and local `.env.local`. Remaining: geography/sports sync, cron automation (all manual
-`npm run sync:*` today).
+Vercel and local `.env.local`. `states`/`legislators`/`governors`/`races_2026` sync weekly via
+GitHub Actions (`.github/workflows/sync.yml`, Monday 06:00 UTC + manual `workflow_dispatch`) —
+not Vercel Cron as the plan originally sketched; `governors.mjs`/`races-2026.mjs` deliberately
+rate-limit themselves to ~70-100+s each, tight against Vercel's 300s function timeout and
+requiring restructuring into HTTP handlers, so a plain scheduled workflow running the existing
+`npm run sync:*` scripts unchanged was the lower-risk choice. Needs three repo secrets set
+(Settings → Secrets and variables → Actions): `NEXT_PUBLIC_SUPABASE_URL`,
+`SUPABASE_SERVICE_ROLE_KEY`, `OPENSTATES_API_KEY`. Each sync step is `continue-on-error` so one
+external API having a bad day doesn't skip the others — check `sync_logs` for real status, not
+the workflow's green checkmark. `districts` stays manual-only (redistricting is ~once/decade,
+per plan §6). Remaining: geography/sports sync (Phase 2).
 
 **Home page** (`src/app/page.tsx` + `UsMap.tsx`): interactive MapLibre map, two modes (see UI
 conventions) — States (default, current Senate delegation) and Districts (current House

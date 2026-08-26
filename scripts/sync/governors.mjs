@@ -18,7 +18,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { supabaseAdmin } from "./_supabase-admin.mjs";
+import { supabaseAdmin, TRIGGERED_BY } from "./_supabase-admin.mjs";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const fipsToAbbr = JSON.parse(
@@ -159,7 +159,7 @@ async function main() {
   // surfacing in sync_logs.error_message rather than only the console.
   await supabase.from("sync_logs").insert({
     source: `${BASE_URL}/people (org_classification=executive)`,
-    triggered_by: "manual",
+    triggered_by: TRIGGERED_BY,
     started_at: startedAt,
     finished_at: new Date().toISOString(),
     status: error ? "error" : "success",

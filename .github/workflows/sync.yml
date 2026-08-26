@@ -1,0 +1,39 @@
+name: Weekly data sync
+
+# Weekly cadence covers every currently-automated job (plan §6: legislators/
+# governors "weekly or biweekly", races "weekly normally, daily near election
+# day" — not set up here, bump the schedule manually if that's ever needed).
+# districts is deliberately excluded — redistricting happens ~once a decade,
+# manual-only per plan §6's own table.
+on:
+  schedule:
+    - cron: "0 6 * * 1" # Monday 06:00 UTC
+  workflow_dispatch: {} # allow an on-demand run from the Actions tab
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      OPENSTATES_API_KEY: ${{ secrets.OPENSTATES_API_KEY }}
+      SYNC_TRIGGERED_BY: cron
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      # Order matters: legislators/governors/races all FK into states. Each
+      # sync step is independent (continue-on-error) so one external API
+      # having a bad day (OpenStates/Wikipedia rate limits have both been
+      # hit repeatedly during development) doesn't skip the others — check
+      # sync_logs for real status, not just this workflow's green checkmark.
+      - run: node scripts/sync/states.mjs
+      - run: node scripts/sync/legislators.mjs
+        continue-on-error: true
+      - run: node scripts/sync/governors.mjs
+        continue-on-error: true
+      - run: node scripts/sync/races-2026.mjs
+        continue-on-error: true

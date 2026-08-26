@@ -17,10 +17,14 @@ export function supabaseAdmin() {
   return createClient(url, serviceKey, { realtime: { transport: ws } });
 }
 
+// Set by the scheduled GitHub Actions workflow (.github/workflows/sync.yml);
+// absent when run by hand via `npm run sync:*`.
+export const TRIGGERED_BY = process.env.SYNC_TRIGGERED_BY === "cron" ? "cron" : "manual";
+
 export async function logSync(supabase, { source, startedAt, error }) {
   await supabase.from("sync_logs").insert({
     source,
-    triggered_by: "manual",
+    triggered_by: TRIGGERED_BY,
     started_at: startedAt,
     finished_at: new Date().toISOString(),
     status: error ? "error" : "success",
