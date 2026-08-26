@@ -29,6 +29,11 @@ export default async function StatePage(props: PageProps<"/state/[abbr]">) {
 
   const name = getStateName(abbr)!;
   const summary = getMockStateSummary(abbr);
+  const [senators, representatives, senateHistory] = await Promise.all([
+    getCurrentSenators(abbr),
+    getCurrentRepresentatives(abbr),
+    getSenateHistory(abbr),
+  ]);
 
   return (
     <div className="mx-auto w-full max-w-3xl flex-1 p-6 sm:p-10">
@@ -50,9 +55,9 @@ export default async function StatePage(props: PageProps<"/state/[abbr]">) {
           governor={summary?.governor ?? null}
           capital={summary?.capital ?? null}
           population={summary?.population ?? null}
-          senators={getCurrentSenators(abbr)}
-          representatives={getCurrentRepresentatives(abbr)}
-          senateHistory={getSenateHistory(abbr)}
+          senators={senators}
+          representatives={representatives}
+          senateHistory={senateHistory}
         />
       </div>
     </div>

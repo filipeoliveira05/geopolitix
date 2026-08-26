@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { useQuery } from "@tanstack/react-query";
 import { getMockStateSummary } from "@/lib/mock-states";
 import {
   getCurrentSenators,
@@ -15,6 +16,17 @@ type StatePanelProps = {
 };
 
 export function StatePanel({ abbr, selectedDistrict = null }: StatePanelProps) {
+  const { data: senators } = useQuery({
+    queryKey: ["senators", abbr],
+    queryFn: () => getCurrentSenators(abbr as string),
+    enabled: abbr !== null,
+  });
+  const { data: representatives } = useQuery({
+    queryKey: ["representatives", abbr],
+    queryFn: () => getCurrentRepresentatives(abbr as string),
+    enabled: abbr !== null,
+  });
+
   if (!abbr) {
     return (
       <div className="p-6 text-sm text-zinc-500 dark:text-zinc-400">
@@ -24,8 +36,6 @@ export function StatePanel({ abbr, selectedDistrict = null }: StatePanelProps) {
   }
 
   const summary = getMockStateSummary(abbr);
-  const senators = getCurrentSenators(abbr);
-  const representatives = getCurrentRepresentatives(abbr);
 
   return (
     <div className="flex flex-col gap-6 p-6">
@@ -65,7 +75,9 @@ export function StatePanel({ abbr, selectedDistrict = null }: StatePanelProps) {
         <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
           Senators
         </h3>
-        {senators.length > 0 ? (
+        {senators === undefined ? (
+          <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">Loading…</p>
+        ) : senators.length > 0 ? (
           <ul className="mt-1 flex flex-col gap-1">
             {senators.map(({ legislator, term }) => (
               <li key={legislator.id}>
@@ -84,7 +96,9 @@ export function StatePanel({ abbr, selectedDistrict = null }: StatePanelProps) {
         <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
           House representatives
         </h3>
-        {representatives.length > 0 ? (
+        {representatives === undefined ? (
+          <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">Loading…</p>
+        ) : representatives.length > 0 ? (
           <RepresentativesList
             representatives={representatives}
             selectedDistrict={selectedDistrict}

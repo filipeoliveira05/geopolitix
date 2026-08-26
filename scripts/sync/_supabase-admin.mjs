@@ -1,0 +1,29 @@
+// Shared Supabase admin client for sync scripts (service-role key, full
+// write access — never use this outside scripts/sync/*.mjs). Node 20 has no
+// native WebSocket, which @supabase/supabase-js's realtime client requires
+// even though sync scripts only ever do one-off queries — the `ws` package
+// plugs that gap.
+import { createClient } from "@supabase/supabase-js";
+import ws from "ws";
+
+export function supabaseAdmin() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !serviceKey) {
+    throw new Error(
+      "Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY (run with --env-file=.env.local)",
+    );
+  }
+  return createClient(url, serviceKey, { realtime: { transport: ws } });
+}
+
+export async function logSync(supabase, { source, startedAt, error }) {
+  await supabase.from("sync_logs").insert({
+    source,
+    triggered_by: "manual",
+    started_at: startedAt,
+    finished_at: new Date().toISOString(),
+    status: error ? "error" : "success",
+    error_message: error?.message ?? null,
+  });
+}

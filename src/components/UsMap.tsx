@@ -11,7 +11,7 @@ import {
 } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { getDistrictsGeoJson, type DistrictFeatureProperties } from "@/lib/districts-geo";
-import { getCurrentRepsByDistrictKey } from "@/lib/legislators-data";
+import { getCurrentRepsByDistrictKey, type TermWithLegislator } from "@/lib/legislators-data";
 import { getSenateSplitGeoJson, getSenateHalfIdsByState } from "@/lib/senate-split-geo";
 import { PARTY_COLORS, FALLBACK_PARTY_STYLE } from "@/lib/party-colors";
 import type { FeatureCollection, Geometry } from "geojson";
@@ -56,8 +56,9 @@ type DistrictProperties = DistrictFeatureProperties & {
 };
 
 /** Joins district geometry with the current House member's party for map coloring. */
-function getDistrictsWithReps(): FeatureCollection<Geometry, DistrictProperties> {
-  const repsByDistrict = getCurrentRepsByDistrictKey();
+function joinDistrictsWithReps(
+  repsByDistrict: Map<string, TermWithLegislator>,
+): FeatureCollection<Geometry, DistrictProperties> {
   const districts = getDistrictsGeoJson();
   return {
     type: "FeatureCollection",
@@ -138,6 +139,12 @@ export function UsMap({ selectedAbbr, onSelectState }: UsMapProps) {
   const selectedDistrictRef = useRef<{ id: string | number; stateId: string } | null>(
     null,
   );
+  // Resolves once the "load" handler's data fetches finish and every layer
+  // has been added — the "load" event itself fires as soon as the map style
+  // is ready, well before that, so other effects (mode toggling, selection)
+  // must await this rather than the map's own `isStyleLoaded()`/"load", or
+  // they can race ahead and try to style layers that don't exist yet.
+  const layersReadyRef = useRef<Promise<void> | null>(null);
   const [mode, setMode] = useState<MapMode>("states");
 
   useEffect(() => {
@@ -147,6 +154,11 @@ export function UsMap({ selectedAbbr, onSelectState }: UsMapProps) {
   useEffect(() => {
     if (!containerRef.current) return;
 
+    let cancelled = false;
+    let resolveLayersReady: () => void = () => {};
+    layersReadyRef.current = new Promise((resolve) => {
+      resolveLayersReady = resolve;
+    });
     const map = new MapLibreMap({
       container: containerRef.current,
       style: EMPTY_STYLE,
@@ -156,10 +168,16 @@ export function UsMap({ selectedAbbr, onSelectState }: UsMapProps) {
     });
     mapRef.current = map;
 
-    map.on("load", () => {
+    map.on("load", async () => {
+      const repsByDistrict = await getCurrentRepsByDistrictKey();
+      // The effect's cleanup (StrictMode's mount/unmount/remount in dev, or
+      // a real unmount) can run before this resolves — map.addSource below
+      // would throw on an already-removed map.
+      if (cancelled) return;
+
       map.addSource(DISTRICTS_SOURCE_ID, {
         type: "geojson",
-        data: getDistrictsWithReps(),
+        data: joinDistrictsWithReps(repsByDistrict),
         promoteId: "geoid",
       });
 
@@ -228,9 +246,12 @@ export function UsMap({ selectedAbbr, onSelectState }: UsMapProps) {
         onSelectStateRef.current(stateId ?? null, district ?? null);
       });
 
+      const senateGeoJson = await getSenateSplitGeoJson();
+      if (cancelled) return;
+
       map.addSource(SENATE_SOURCE_ID, {
         type: "geojson",
-        data: getSenateSplitGeoJson(),
+        data: senateGeoJson,
         promoteId: "id",
       });
 
@@ -276,7 +297,8 @@ export function UsMap({ selectedAbbr, onSelectState }: UsMapProps) {
       // "whole" feature if it has fewer than 2 current senators) — hover and
       // selection should highlight every half belonging to the state under
       // the cursor together, not just the single half being pointed at.
-      const senateHalfIdsByState = getSenateHalfIdsByState();
+      const senateHalfIdsByState = await getSenateHalfIdsByState();
+      if (cancelled) return;
       let hoveredSenateStateId: string | undefined;
 
       map.on("mousemove", SENATE_FILL_LAYER_ID, (e: MapLayerMouseEvent) => {
@@ -309,9 +331,12 @@ export function UsMap({ selectedAbbr, onSelectState }: UsMapProps) {
         const stateId = e.features?.[0]?.properties?.stateId as string | undefined;
         onSelectStateRef.current(stateId ?? null);
       });
+
+      resolveLayersReady();
     });
 
     return () => {
+      cancelled = true;
       map.remove();
       mapRef.current = null;
     };
@@ -322,20 +347,21 @@ export function UsMap({ selectedAbbr, onSelectState }: UsMapProps) {
     const map = mapRef.current;
     if (!map) return;
 
-    const applyMode = () => {
+    let cancelled = false;
+    (async () => {
+      await layersReadyRef.current;
+      if (cancelled) return;
       const districtsVisibility = mode === "districts" ? "visible" : "none";
       const statesVisibility = mode === "states" ? "visible" : "none";
       map.setLayoutProperty(DISTRICTS_FILL_LAYER_ID, "visibility", districtsVisibility);
       map.setLayoutProperty(DISTRICTS_LINE_LAYER_ID, "visibility", districtsVisibility);
       map.setLayoutProperty(SENATE_FILL_LAYER_ID, "visibility", statesVisibility);
       map.setLayoutProperty(SENATE_LINE_LAYER_ID, "visibility", statesVisibility);
-    };
+    })();
 
-    if (map.isStyleLoaded()) {
-      applyMode();
-    } else {
-      map.once("load", applyMode);
-    }
+    return () => {
+      cancelled = true;
+    };
   }, [mode]);
 
   // Reflect `selectedAbbr` as MapLibre feature-state so re-selecting from
@@ -344,10 +370,13 @@ export function UsMap({ selectedAbbr, onSelectState }: UsMapProps) {
     const map = mapRef.current;
     if (!map) return;
 
-    const applySelection = () => {
-      const senateSource = map.getSource(SENATE_SOURCE_ID);
-      if (!senateSource) return;
-      for (const [stateId, ids] of getSenateHalfIdsByState()) {
+    let cancelled = false;
+    const applySelection = async () => {
+      await layersReadyRef.current;
+      if (cancelled) return;
+      const senateHalfIdsByState = await getSenateHalfIdsByState();
+      if (cancelled) return;
+      for (const [stateId, ids] of senateHalfIdsByState) {
         for (const id of ids) {
           map.setFeatureState(
             { source: SENATE_SOURCE_ID, id },
@@ -369,11 +398,11 @@ export function UsMap({ selectedAbbr, onSelectState }: UsMapProps) {
       }
     };
 
-    if (map.isStyleLoaded()) {
-      applySelection();
-    } else {
-      map.once("load", applySelection);
-    }
+    applySelection();
+
+    return () => {
+      cancelled = true;
+    };
   }, [selectedAbbr]);
 
   return (

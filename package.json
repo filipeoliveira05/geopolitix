@@ -8,10 +8,12 @@
     "start": "next start",
     "lint": "eslint",
     "postinstall": "node scripts/copy-maplibre-worker.mjs",
-    "sync:legislators": "node scripts/sync/legislators.mjs",
+    "sync:states": "node --env-file=.env.local scripts/sync/states.mjs",
+    "sync:legislators": "node --env-file=.env.local scripts/sync/legislators.mjs",
     "sync:districts": "node scripts/sync/districts.mjs"
   },
   "dependencies": {
+    "@supabase/postgrest-js": "^2.109.0",
     "@supabase/supabase-js": "^2.109.0",
     "@tanstack/react-query": "^5.102.2",
     "@turf/bbox": "^7.4.0",
@@ -39,6 +41,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.3.2",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "ws": "^8.21.3"
   }
 }

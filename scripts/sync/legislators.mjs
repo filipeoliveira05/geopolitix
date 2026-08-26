@@ -1,7 +1,8 @@
-// Populates src/data/legislators.json from the `unitedstates/congress-legislators`
-// public dataset (github.com/unitedstates/congress-legislators) — no API key needed.
-// Stand-in for the eventual `legislators`/`terms` Supabase tables (plan §4) until
-// Supabase sync jobs exist; run manually via `npm run sync:legislators`.
+// Populates the Supabase `legislators`/`terms` tables (plan §4) from the
+// `unitedstates/congress-legislators` public dataset
+// (github.com/unitedstates/congress-legislators) — no API key needed. Run
+// manually via `npm run sync:legislators`; requires `scripts/sync/states.mjs`
+// to have run first (terms.state_id is a FK into `states`).
 //
 // Two source files:
 // - legislators-current.yaml: currently serving members, each with their full term
@@ -13,19 +14,28 @@
 //   (and House-only historical members entirely) are dropped to keep the output
 //   from ballooning with data nothing in the app displays yet. Revisit this scope
 //   if a House-history feature ever gets built (plan's open decision, §8).
-import { writeFileSync, mkdirSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { load as loadYaml } from "js-yaml";
+import { supabaseAdmin, logSync } from "./_supabase-admin.mjs";
+
+const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
+// Same 50 states + DC as src/lib/states.ts's getAllStates() (Census TIGER
+// scope, no territories) — the `states` table is seeded from the same set
+// (scripts/sync/states.mjs), so territorial delegates (PR, VI, GU, AS, MP)
+// have no state_id to satisfy the terms FK. The app doesn't support
+// territories elsewhere (no map polygon, not in getAllStates()) either.
+const VALID_STATE_IDS = new Set(
+  Object.values(
+    JSON.parse(readFileSync(path.join(root, "src", "data", "fips-to-abbr.json"), "utf-8")),
+  ),
+);
 
 const BASE_URL =
   "https://raw.githubusercontent.com/unitedstates/congress-legislators/main";
 const CURRENT_URL = `${BASE_URL}/legislators-current.yaml`;
 const HISTORICAL_URL = `${BASE_URL}/legislators-historical.yaml`;
-
-const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
-const outDir = path.join(root, "src", "data");
-const outFile = path.join(outDir, "legislators.json");
 
 function photoUrl(bioguideId) {
   return `https://unitedstates.github.io/images/congress/450x550/${bioguideId}.jpg`;
@@ -51,28 +61,27 @@ function buildLegislator(person) {
   if (!bioguideId) return null; // every member has one; skip malformed entries defensively
   return {
     id: bioguideId,
-    bioguideId,
-    govtrackId: person.id?.govtrack ?? null,
-    firstName: person.name?.first ?? null,
-    lastName: person.name?.last ?? null,
-    photoUrl: photoUrl(bioguideId),
+    bioguide_id: bioguideId,
+    govtrack_id: person.id?.govtrack ? String(person.id.govtrack) : null,
+    first_name: person.name?.first ?? null,
+    last_name: person.name?.last ?? null,
+    photo_url: photoUrl(bioguideId),
     birthday: person.bio?.birthday ?? null,
   };
 }
 
 function buildTerms(bioguideId, rawTerms, today, { onlySenate }) {
   return rawTerms
-    .filter((term) => !onlySenate || term.type === "sen")
-    .map((term, index) => ({
-      id: `${bioguideId}-${index}`,
-      legislatorId: bioguideId,
+    .filter((term) => (!onlySenate || term.type === "sen") && VALID_STATE_IDS.has(term.state))
+    .map((term) => ({
+      legislator_id: bioguideId,
       chamber: chamberFor(term.type),
-      stateId: term.state,
-      district: term.type === "rep" ? (term.district ?? 0) : null,
+      state_id: term.state,
+      district_number: term.type === "rep" ? (term.district ?? 0) : null,
       party: term.party ?? null,
-      startDate: term.start,
-      endDate: term.end,
-      isCurrent: term.start <= today && today <= term.end,
+      start_date: term.start,
+      end_date: term.end,
+      is_current: term.start <= today && today <= term.end,
     }));
 }
 
@@ -107,24 +116,37 @@ async function main() {
     terms.push(...senateTerms);
   }
 
-  mkdirSync(outDir, { recursive: true });
-  writeFileSync(
-    outFile,
-    JSON.stringify(
-      {
-        sources: [CURRENT_URL, HISTORICAL_URL],
-        generatedAt: new Date().toISOString(),
-        legislators,
-        terms,
-      },
-      null,
-      2,
-    ) + "\n",
-  );
+  const supabase = supabaseAdmin();
+  const startedAt = new Date().toISOString();
+  let error = null;
 
-  console.log(
-    `Wrote ${legislators.length} legislators / ${terms.length} terms -> ${path.relative(root, outFile)}`,
-  );
+  const legislatorsResult = await supabase.from("legislators").upsert(legislators, {
+    onConflict: "id",
+  });
+  error = legislatorsResult.error;
+
+  // terms has no natural stable key to upsert against across runs (unlike
+  // legislators, keyed on bioguide_id) — this script owns the whole table's
+  // contents, so a full resync clears it first rather than accumulating
+  // duplicates. Chunked inserts because Supabase's REST endpoint rejects a
+  // single request this large (~15k historical Senate terms + current terms).
+  if (!error) {
+    ({ error } = await supabase.from("terms").delete().not("id", "is", null));
+  }
+  const CHUNK_SIZE = 1000;
+  for (let i = 0; !error && i < terms.length; i += CHUNK_SIZE) {
+    ({ error } = await supabase.from("terms").insert(terms.slice(i, i + CHUNK_SIZE)));
+  }
+
+  await logSync(supabase, {
+    source: `${CURRENT_URL}, ${HISTORICAL_URL}`,
+    startedAt,
+    error,
+  });
+
+  if (error) throw error;
+
+  console.log(`Synced ${legislators.length} legislators / ${terms.length} terms.`);
 }
 
 main().catch((err) => {

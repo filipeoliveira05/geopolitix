@@ -306,7 +306,36 @@ requires being at the primary machine (where Claude Code runs and the local comm
     set on Vercel (Production + Preview) and in local `.env.local`. Redeployed to pick them up.
     Nothing to verify in the browser yet — the app still reads from the JSON stand-in until
     step 11 migrates the sync scripts.
-11. Only after 6–10: have Claude Code migrate the `scripts/sync/*.mjs` JSON stand-ins to real Supabase tables + cron jobs, per the Data strategy in §2.
+11. Migrate the `scripts/sync/*.mjs` JSON stand-ins to real Supabase tables, per the Data
+    strategy in §2. **Partially done**: `states` (new `scripts/sync/states.mjs`, minimal
+    `id`/`name` seed — population/capital/region stay null, that's Phase 2) and
+    `legislators`/`terms` (`scripts/sync/legislators.mjs` rewritten to upsert into Supabase
+    instead of writing JSON) are live — `src/lib/legislators-data.ts` now reads from Supabase
+    (via `@supabase/postgrest-js`, not the full `@supabase/supabase-js` — the latter
+    unconditionally builds a `RealtimeClient` that needs a WebSocket constructor, a problem in
+    Node < 22 for server-rendered pages; the app has no realtime/auth needs, so the lighter
+    read-only client sidesteps it entirely). `src/lib/senate-split-geo.ts` follows suit (now
+    async, fetches all states' current senators in one query instead of one per state).
+    **`districts.mjs`/`districts-geo.ts` deliberately left on the JSON stand-in** — the current
+    script builds one combined TopoJSON topology (~112KB, shared borders) specifically to avoid
+    a ~13MB raw-GeoJSON blob; the plan's draft `districts.geojson`-per-row schema would throw
+    that away, and picking a storage format (single topology blob vs. per-row geometry) needs
+    its own decision before migrating. Cron jobs (automatic scheduled sync, vs. today's
+    manually-run `npm run sync:*`) also not done — out of scope for this pass.
+    - Discovered `terms.district_id` (FK to the not-yet-populated `districts` table) can't
+      carry a House term's district number until districts.mjs migrates too — added a plain
+      `district_number` integer column to `terms` alongside the FK, populated by
+      legislators.mjs independently of district geometry sync status.
+    - Discovered congress-legislators includes territorial delegates (PR, VI, GU, AS, MP) with
+      no corresponding `states` row (Census TIGER scope, no territories — matches what
+      `getAllStates()`/the map already support) — legislators.mjs filters those terms out.
+    - Discovered some pre-partisan historical Senate terms (~1791) have a genuinely null
+      party — `terms.party not null` was a draft-schema mistake, relaxed to nullable.
+    - Discovered Supabase's cloud default grants no Data API access to a new table without
+      explicit `GRANT`, even with an RLS policy — added migrations enabling RLS + public
+      `SELECT` grants (scoped to `states`/`legislators`/`terms`, the tables actually read
+      today) and a blanket `service_role` grant across all tables (the sync scripts' key,
+      never shipped to the browser).
 
 ---
 

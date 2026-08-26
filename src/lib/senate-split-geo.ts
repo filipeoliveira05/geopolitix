@@ -3,7 +3,7 @@ import intersect from "@turf/intersect";
 import { polygon, featureCollection } from "@turf/helpers";
 import type { Feature, FeatureCollection, Geometry, Polygon, MultiPolygon } from "geojson";
 import { getUsStatesGeoJson } from "./us-states-geo";
-import { getCurrentSenators } from "./legislators-data";
+import { getCurrentSenatorsByState } from "./legislators-data";
 
 export type SenateHalfProperties = {
   id: string;
@@ -13,7 +13,7 @@ export type SenateHalfProperties = {
   senatorName: string | null;
 };
 
-let cached: FeatureCollection<Geometry, SenateHalfProperties> | null = null;
+let cachedPromise: Promise<FeatureCollection<Geometry, SenateHalfProperties>> | null = null;
 
 /**
  * Splits each state's real geometry (not just its bounding box) into two
@@ -24,19 +24,24 @@ let cached: FeatureCollection<Geometry, SenateHalfProperties> | null = null;
  * than 2 current senators (DC, a vacancy), or both senators sharing the
  * same party (the split would just be two triangles of the same color).
  */
-export function getSenateSplitGeoJson(): FeatureCollection<
-  Geometry,
-  SenateHalfProperties
+export function getSenateSplitGeoJson(): Promise<
+  FeatureCollection<Geometry, SenateHalfProperties>
 > {
-  if (cached) return cached;
+  if (!cachedPromise) cachedPromise = buildSenateSplitGeoJson();
+  return cachedPromise;
+}
 
+async function buildSenateSplitGeoJson(): Promise<
+  FeatureCollection<Geometry, SenateHalfProperties>
+> {
+  const senatorsByState = await getCurrentSenatorsByState();
   const features: Feature<Geometry, SenateHalfProperties>[] = [];
 
   for (const stateFeature of getUsStatesGeoJson().features) {
     const abbr = stateFeature.properties.abbr;
     if (!abbr) continue;
 
-    const senators = getCurrentSenators(abbr).sort((a, b) => {
+    const senators = (senatorsByState.get(abbr) ?? []).sort((a, b) => {
       // Senior senator (earlier current-term start date) first, for a
       // stable, meaningful assignment rather than an arbitrary one.
       const byDate = a.term.startDate.localeCompare(b.term.startDate);
@@ -111,8 +116,7 @@ export function getSenateSplitGeoJson(): FeatureCollection<
     }
   }
 
-  cached = { type: "FeatureCollection", features };
-  return cached;
+  return { type: "FeatureCollection", features };
 }
 
 /**
@@ -120,9 +124,10 @@ export function getSenateSplitGeoJson(): FeatureCollection<
  * highlight both halves of a state together on hover/selection instead of
  * just the one half under the cursor.
  */
-export function getSenateHalfIdsByState(): Map<string, string[]> {
+export async function getSenateHalfIdsByState(): Promise<Map<string, string[]>> {
+  const geojson = await getSenateSplitGeoJson();
   const map = new Map<string, string[]>();
-  for (const f of getSenateSplitGeoJson().features) {
+  for (const f of geojson.features) {
     const { stateId, id } = f.properties;
     const existing = map.get(stateId);
     if (existing) existing.push(id);

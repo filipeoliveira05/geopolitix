@@ -39,13 +39,17 @@ geography/quiz work while Phase 1 is incomplete unless the user asks.
   `governors`, `races_2026`, `cities`, `sports_teams`, `sync_logs`) — treat table/field names
   there as a draft, not gospel; adjust as implementation reveals better shapes, but keep the
   plan doc in sync if the model changes meaningfully.
-- **Sync script pattern, established and in use:** `scripts/sync/*.mjs` — each pulls from one
-  public source (no API key/account) and writes a committed JSON file into `src/data/`. These
-  are dev-time stand-ins for the real Supabase tables + sync jobs, not the real thing; commit
-  the output like any other source-controlled file. So far: `npm run sync:legislators`
-  (Congress members/terms, `src/data/legislators.json`) and `npm run sync:districts` (House
-  boundaries, `src/data/districts.json`). Follow this same shape for governors/geography/sports
-  sync scripts later.
+- **Sync script pattern:** `scripts/sync/*.mjs`, each pulling from one public source (no API
+  key/account). Two write straight to Supabase now (the real thing, not a stand-in):
+  `npm run sync:states` (minimal `id`/`name` seed, `scripts/sync/states.mjs` — a structural
+  prerequisite for `terms`/`districts`' FKs into `states`, not the Phase 2 geography sync) and
+  `npm run sync:legislators` (`legislators`/`terms`, run `states` first). `sync:districts` is
+  still the JSON-stand-in shape (writes `src/data/districts.json`) — deliberately not migrated
+  yet, see the districts note below. Sync scripts run as plain Node (`--env-file=.env.local`
+  for the Supabase-writing ones — reads `SUPABASE_SERVICE_ROLE_KEY`, never used outside
+  `scripts/sync/`), not through Next, so they can't import `src/lib/*.ts` directly; shared
+  helpers live in `scripts/sync/_supabase-admin.mjs`. Follow the Supabase-writing shape for
+  governors/geography/sports sync scripts later, not the old JSON one.
 - **The plan's districts source is stale — don't use it without re-checking.** Plan §3 points
   at `unitedstates/districts` (GitHub) for congressional district boundaries; its last *full
   nationwide* set is from 2016, pre-2020-census redistricting (later folders are single-state
@@ -54,6 +58,16 @@ geography/quiz work while Phase 1 is incomplete unless the user asks.
   boundary file for the 119th Congress instead — current, official, still no key needed. If
   `unitedstates/districts` ever gets a real update, it's fine to reconsider, but verify the
   "full nationwide set" year first, the same way this was caught.
+- **`districts.mjs`/`districts-geo.ts` are deliberately still on the JSON stand-in** — everything
+  else has migrated to Supabase (see the sync script pattern bullet above). The script builds
+  one combined TopoJSON topology (~112KB, shared borders) specifically to avoid a ~13MB raw
+  GeoJSON blob; the plan's draft `districts.geojson`-per-row schema would throw that size win
+  away. Don't migrate this without first deciding the storage format (single topology blob vs.
+  per-row geometry) — flag it to the user, per plan §7 step 11.
+- **House terms carry `district_number` (plain int) separately from `district_id`** (FK into
+  the not-yet-populated `districts` table) — a term needs to record which district regardless
+  of whether that district's geometry has synced. `getCurrentRepsByDistrictKey()` and
+  `UsMap.tsx`'s district join key off `district_number`, not `district_id`.
 - **`races_2026` source decided: Wikipedia infobox parsing, Senate + Governors only.** Plan §3
   — the MediaWiki Action API (`action=parse&prop=wikitext`, no key), reading the per-race
   infobox template (`Infobox U.S. Senate election` etc.), with the page list per chamber pulled
@@ -77,9 +91,26 @@ geography/quiz work while Phase 1 is incomplete unless the user asks.
 - **Derived/joined geometry lives in `src/lib/*-geo.ts`, not in a sync script.** Anything that
   combines two already-synced datasets — `districts-geo.ts` joining district shapes to current
   reps' party, `senate-split-geo.ts` splitting a state's real geometry (via `@turf/intersect`,
-  not just its bounding box) into per-senator halves — is computed client-side at read time and
-  memoized (module-level cache), not precomputed by a sync script. It recomputes automatically
-  whenever the underlying synced JSON changes; no separate regeneration step.
+  not just its bounding box) into per-senator halves — is computed at read time (client-side for
+  `districts-geo.ts`'s static JSON; `senate-split-geo.ts` is now async, fetching current
+  senators from Supabase via `getCurrentSenatorsByState()`) and memoized (module-level cache —
+  a resolved `Promise` in `senate-split-geo.ts`'s case, so concurrent callers share one fetch),
+  not precomputed by a sync script.
+- **Reads use `src/lib/supabase.ts`, a `@supabase/postgrest-js` `PostgrestClient`, not the full
+  `@supabase/supabase-js`.** The full client unconditionally constructs a `RealtimeClient` that
+  needs a WebSocket constructor — Node < 22 (Next.js Server Components run in Node) has no
+  native one, and the app has no realtime/auth needs anyway (anon key, RLS-gated, read-only).
+  Safe to import from both Server Components and client components. Sync scripts are the
+  opposite case (Node-only, write access) — they use `@supabase/supabase-js` via
+  `scripts/sync/_supabase-admin.mjs`, which pulls in the `ws` package specifically to satisfy
+  that same WebSocket requirement.
+- **New Supabase tables need explicit grants, not just an RLS policy.** Supabase's cloud
+  default gives a fresh table no Data API access at all — `anon`/`authenticated` need an
+  explicit `GRANT SELECT` per table (in addition to an RLS policy) before the browser can read
+  it, and `service_role` needs its own grant before sync scripts can write. See
+  `supabase/migrations/20260826133022_public_read_access.sql` and
+  `..._service_role_grants.sql`. Add the `anon` grant for a table when its read path is
+  actually built — don't grant speculatively ahead of that.
 
 ## UI conventions
 
@@ -190,14 +221,15 @@ Base Next.js + Tailwind + TypeScript scaffold in place (App Router, ESLint). Inf
 Supabase project linked via the CLI (run through `npx supabase`, not a project dependency —
 credentials in gitignored `.env.local`: `SUPABASE_PROJECT_REF`, `SUPABASE_DB_PASSWORD`,
 `SUPABASE_ACCESS_TOKEN`) and the initial schema applied as a versioned migration
-(`supabase/migrations/20260826072946_init_schema.sql`, all of plan §4's tables). Vercel project created and connected (imports the GitHub repo, deploys on push), with Vercel
+(`supabase/migrations/20260826072946_init_schema.sql`, all of plan §4's tables). Vercel
+project created and connected (imports the GitHub repo, deploys on push), with Vercel
 Authentication enabled as the deployment gate (see Open decisions above for why, not Password
 Protection). Supabase env vars wired to both Vercel (Production + Preview) and local
 `.env.local`: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` (Config type, safe to
 expose), `SUPABASE_SERVICE_ROLE_KEY` (Secret type, server-side only — never use client-side).
-Still open: migrating `scripts/sync/*.mjs` to write to the real Supabase tables instead of
-`src/data/` JSON (plan §7 step 11). Until that lands, everything below still reads from the
-committed JSON stand-in — nothing in the app actually talks to Supabase yet.
+`states`/`legislators`/`terms` are migrated to Supabase (plan §7 step 11) — the app reads these
+live from Supabase now, not JSON. `districts` is still on the JSON stand-in, deliberately (see
+Data conventions above); governors/geography/sports sync isn't built at all yet.
 
 **Home page** (`src/app/page.tsx` + `src/components/UsMap.tsx`): interactive MapLibre map,
 two modes (see UI conventions above) —
@@ -218,13 +250,17 @@ to statehood, via `getSenateHistory()`; governors history not synced, noted as s
 (placeholder — source now decided, plan §3, but `races_2026` sync itself not built yet).
 
 **Synced data**, all via `npm run sync:<name>`, all public sources, no API keys/accounts:
-- `legislators.json` (`sync:legislators`) — current + historical Senate terms from
-  `unitedstates/congress-legislators`, read through `src/lib/legislators-data.ts`.
-- `districts.json` (`sync:districts`) — current (119th Congress) House district boundaries
-  from the Census Bureau (not `unitedstates/districts` — see Data conventions above for why),
-  read through `src/lib/districts-geo.ts`.
+- `states` table (`sync:states`) — minimal `id`/`name` seed from `us-atlas` +
+  `fips-to-abbr.json` (50 states + DC). Population/capital/region null until Phase 2.
+- `legislators`/`terms` tables (`sync:legislators`) — current + historical Senate terms (House
+  current-only) from `unitedstates/congress-legislators`, read live through
+  `src/lib/legislators-data.ts` (`@supabase/postgrest-js`, anon key, RLS-gated). Run
+  `sync:states` first — `terms.state_id` is a FK into `states`.
+- `districts.json` (`sync:districts`) — still the JSON stand-in, current (119th Congress) House
+  district boundaries from the Census Bureau (not `unitedstates/districts` — see Data
+  conventions above for why), read through `src/lib/districts-geo.ts`.
 - `fips-to-abbr.json` — static FIPS↔state-abbreviation reference table, shared by both scripts
   and `src/lib/state-fips.ts`.
 
-Not started: Supabase project/schema, governors sync (OpenStates), geography/sports sync,
-`races_2026` data, quiz (Phase 3).
+Not started: governors sync (OpenStates), geography/sports sync, `races_2026` data, quiz
+(Phase 3). Districts migration to Supabase also not done (deliberately, see Data conventions).
