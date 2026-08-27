@@ -152,13 +152,22 @@ export function UsMap({ selectedAbbr, onSelectState }: UsMapProps) {
   const selectedDistrictRef = useRef<{ id: string | number; stateId: string } | null>(
     null,
   );
-  // Resolves once the "load" handler's data fetches finish and every layer
-  // has been added — the "load" event itself fires as soon as the map style
-  // is ready, well before that, so other effects (mode toggling, selection)
-  // must await this rather than the map's own `isStyleLoaded()`/"load", or
-  // they can race ahead and try to style layers that don't exist yet.
+  // Resolves once the "load" handler's Senate (default "States" mode) data
+  // fetch finishes and its layers have been added — the "load" event itself
+  // fires as soon as the map style is ready, well before that, so other
+  // effects (mode toggling, selection) must await this rather than the
+  // map's own `isStyleLoaded()`/"load", or they can race ahead and try to
+  // style layers that don't exist yet.
   const layersReadyRef = useRef<Promise<void> | null>(null);
+  // Districts (~2.5MB topology + a 435-row House join) is invisible in the
+  // default "States" mode, so it isn't fetched until the user actually
+  // switches to "Districts" — otherwise that fetch/parse work sat ahead of
+  // the Senate layer in the load sequence, delaying the very first thing a
+  // user sees. `null` until the first switch to "Districts" kicks it off;
+  // memoized so repeated switches don't refetch.
+  const districtsReadyRef = useRef<Promise<void> | null>(null);
   const labelMarkersRef = useRef<Marker[]>([]);
+  const mountedRef = useRef(true);
   const [mode, setMode] = useState<MapMode>("states");
 
   useEffect(() => {
@@ -169,6 +178,8 @@ export function UsMap({ selectedAbbr, onSelectState }: UsMapProps) {
     if (!containerRef.current) return;
 
     let cancelled = false;
+    mountedRef.current = true;
+    districtsReadyRef.current = null;
     let resolveLayersReady: () => void = () => {};
     layersReadyRef.current = new Promise((resolve) => {
       resolveLayersReady = resolve;
@@ -188,84 +199,6 @@ export function UsMap({ selectedAbbr, onSelectState }: UsMapProps) {
     mapRef.current = map;
 
     map.on("load", async () => {
-      const repsByDistrict = await getCurrentRepsByDistrictKey();
-      const districtsWithReps = await joinDistrictsWithReps(repsByDistrict);
-      // The effect's cleanup (StrictMode's mount/unmount/remount in dev, or
-      // a real unmount) can run before this resolves — map.addSource below
-      // would throw on an already-removed map.
-      if (cancelled) return;
-
-      map.addSource(DISTRICTS_SOURCE_ID, {
-        type: "geojson",
-        data: districtsWithReps,
-        promoteId: "geoid",
-      });
-
-      map.addLayer({
-        id: DISTRICTS_FILL_LAYER_ID,
-        type: "fill",
-        source: DISTRICTS_SOURCE_ID,
-        layout: { visibility: "none" },
-        paint: {
-          "fill-color": partyFillColor(),
-          "fill-opacity": [
-            "case",
-            ["boolean", ["feature-state", "selected"], false],
-            0.95,
-            ["boolean", ["feature-state", "hover"], false],
-            0.85,
-            0.6,
-          ],
-        },
-      });
-
-      map.addLayer({
-        id: DISTRICTS_LINE_LAYER_ID,
-        type: "line",
-        source: DISTRICTS_SOURCE_ID,
-        layout: { visibility: "none" },
-        paint: {
-          "line-color": [
-            "case",
-            ["boolean", ["feature-state", "selected"], false],
-            "#0f172a",
-            "#ffffff",
-          ],
-          "line-width": [
-            "case",
-            ["boolean", ["feature-state", "selected"], false],
-            3,
-            0.5,
-          ],
-        },
-      });
-
-      setupHover(map, DISTRICTS_SOURCE_ID, DISTRICTS_FILL_LAYER_ID);
-      map.on("click", DISTRICTS_FILL_LAYER_ID, (e: MapLayerMouseEvent) => {
-        const feature = e.features?.[0];
-        const stateId = feature?.properties?.stateId as string | undefined;
-        const district = feature?.properties?.district as number | null | undefined;
-
-        const previous = selectedDistrictRef.current;
-        if (previous) {
-          map.setFeatureState(
-            { source: DISTRICTS_SOURCE_ID, id: previous.id },
-            { selected: false },
-          );
-        }
-        if (feature && stateId) {
-          map.setFeatureState(
-            { source: DISTRICTS_SOURCE_ID, id: feature.id! },
-            { selected: true },
-          );
-          selectedDistrictRef.current = { id: feature.id!, stateId };
-        } else {
-          selectedDistrictRef.current = null;
-        }
-
-        onSelectStateRef.current(stateId ?? null, district ?? null);
-      });
-
       const senateGeoJson = await getSenateSplitGeoJson();
       if (cancelled) return;
 
@@ -371,12 +304,103 @@ export function UsMap({ selectedAbbr, onSelectState }: UsMapProps) {
 
     return () => {
       cancelled = true;
+      mountedRef.current = false;
       for (const marker of labelMarkersRef.current) marker.remove();
       labelMarkersRef.current = [];
       map.remove();
       mapRef.current = null;
     };
   }, []);
+
+  /**
+   * Lazily fetches district geometry (~2.5MB topology + a 435-row House
+   * join) and adds the Districts source/layers — only called on the first
+   * switch to "Districts" mode, so the default "States" view never pays
+   * for it. Memoized on `districtsReadyRef` so later switches are instant.
+   */
+  function ensureDistrictsLayer(map: MapLibreMap): Promise<void> {
+    if (!districtsReadyRef.current) {
+      districtsReadyRef.current = (async () => {
+        const repsByDistrict = await getCurrentRepsByDistrictKey();
+        const districtsWithReps = await joinDistrictsWithReps(repsByDistrict);
+        // The component can unmount while these fetches are in flight —
+        // map.addSource below would throw on an already-removed map.
+        if (!mountedRef.current) return;
+
+        map.addSource(DISTRICTS_SOURCE_ID, {
+          type: "geojson",
+          data: districtsWithReps,
+          promoteId: "geoid",
+        });
+
+        map.addLayer({
+          id: DISTRICTS_FILL_LAYER_ID,
+          type: "fill",
+          source: DISTRICTS_SOURCE_ID,
+          layout: { visibility: "none" },
+          paint: {
+            "fill-color": partyFillColor(),
+            "fill-opacity": [
+              "case",
+              ["boolean", ["feature-state", "selected"], false],
+              0.95,
+              ["boolean", ["feature-state", "hover"], false],
+              0.85,
+              0.6,
+            ],
+          },
+        });
+
+        map.addLayer({
+          id: DISTRICTS_LINE_LAYER_ID,
+          type: "line",
+          source: DISTRICTS_SOURCE_ID,
+          layout: { visibility: "none" },
+          paint: {
+            "line-color": [
+              "case",
+              ["boolean", ["feature-state", "selected"], false],
+              "#0f172a",
+              "#ffffff",
+            ],
+            "line-width": [
+              "case",
+              ["boolean", ["feature-state", "selected"], false],
+              3,
+              0.5,
+            ],
+          },
+        });
+
+        setupHover(map, DISTRICTS_SOURCE_ID, DISTRICTS_FILL_LAYER_ID);
+        map.on("click", DISTRICTS_FILL_LAYER_ID, (e: MapLayerMouseEvent) => {
+          const feature = e.features?.[0];
+          const stateId = feature?.properties?.stateId as string | undefined;
+          const district = feature?.properties?.district as number | null | undefined;
+
+          const previous = selectedDistrictRef.current;
+          if (previous) {
+            map.setFeatureState(
+              { source: DISTRICTS_SOURCE_ID, id: previous.id },
+              { selected: false },
+            );
+          }
+          if (feature && stateId) {
+            map.setFeatureState(
+              { source: DISTRICTS_SOURCE_ID, id: feature.id! },
+              { selected: true },
+            );
+            selectedDistrictRef.current = { id: feature.id!, stateId };
+          } else {
+            selectedDistrictRef.current = null;
+          }
+
+          onSelectStateRef.current(stateId ?? null, district ?? null);
+        });
+      })();
+    }
+    return districtsReadyRef.current;
+  }
 
   // Toggle which layer set is visible when the states/districts mode changes.
   useEffect(() => {
@@ -387,10 +411,16 @@ export function UsMap({ selectedAbbr, onSelectState }: UsMapProps) {
     (async () => {
       await layersReadyRef.current;
       if (cancelled) return;
+      if (mode === "districts") {
+        await ensureDistrictsLayer(map);
+        if (cancelled) return;
+      }
       const districtsVisibility = mode === "districts" ? "visible" : "none";
       const statesVisibility = mode === "states" ? "visible" : "none";
-      map.setLayoutProperty(DISTRICTS_FILL_LAYER_ID, "visibility", districtsVisibility);
-      map.setLayoutProperty(DISTRICTS_LINE_LAYER_ID, "visibility", districtsVisibility);
+      if (map.getLayer(DISTRICTS_FILL_LAYER_ID)) {
+        map.setLayoutProperty(DISTRICTS_FILL_LAYER_ID, "visibility", districtsVisibility);
+        map.setLayoutProperty(DISTRICTS_LINE_LAYER_ID, "visibility", districtsVisibility);
+      }
       map.setLayoutProperty(SENATE_FILL_LAYER_ID, "visibility", statesVisibility);
       map.setLayoutProperty(SENATE_LINE_LAYER_ID, "visibility", statesVisibility);
     })();
