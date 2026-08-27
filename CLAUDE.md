@@ -69,6 +69,17 @@ Build order: **Phase 1 politics → Phase 2 geography → Phase 3 quiz.** Don't 
 - Derived/joined geometry (`src/lib/*-geo.ts` — e.g. `senate-split-geo.ts` splitting a state
   into per-senator halves via `@turf/intersect`) is computed at read time and memoized, not
   precomputed by a sync script.
+- **`src/lib/us-insets.ts` repositions Alaska/Hawaii into fixed insets south of California**
+  (CNN-style, not geographically real) rather than their real antimeridian-crossing location —
+  applied once to raw `us-states-geo` geometry, consumed by both `senate-split-geo.ts` and
+  `districts-geo.ts` so states mode/districts mode agree on where they are. `state-labels-geo.ts`
+  (state abbreviation label points, via `polylabel`'s pole-of-inaccessibility — a plain centroid
+  can land outside an irregular state like Michigan or Louisiana) reads the same remapped
+  geometry so labels land on the insets too.
+- **`isPrimaryPending()` in `races-data.ts`** detects Wikipedia's own placeholder text
+  ("TBD"/"`<name> (presumptive)`") already flowing through the unchanged `races_2026` sync —
+  used to show a clean disclaimer instead of that raw text. No new data source or sync change;
+  self-updates once a state's real primary results land in the next weekly sync.
 
 ## UI conventions
 
@@ -82,6 +93,26 @@ Build order: **Phase 1 politics → Phase 2 geography → Phase 3 quiz.** Don't 
 - A state's two senators can't share one flat `fill-color` — `senate-split-geo.ts` clips the
   state's real polygon into two halves (senior top-left, junior bottom-right) only when the
   senators differ in party. Deliberate, explicit user call — don't revert without asking.
+- **Map framing:** `UsMap.tsx` sets `renderWorldCopies: false` + a generous `maxBounds` so
+  zooming out doesn't show the Mercator world wrapped/repeated. Keep `maxBounds` generously
+  larger than `US_BOUNDS`, not just padded — a narrow/portrait mobile viewport's `fitBounds`
+  naturally reveals a lot of extra latitude beyond the bounds' own box, and a too-tight
+  `maxBounds` forces MapLibre to zoom in past what `fitBounds` asked for to stay inside it,
+  cropping the initial view on phones (hit this once; fixed by widening `MAX_PAN_BOUNDS`).
+  State abbreviation labels are DOM `Marker`s, not a MapLibre symbol layer — a symbol layer's
+  text needs a `glyphs` (SDF font) URL wired into the style, which would mean depending on an
+  external glyph server at runtime; markers just need CSS and get free light/dark theming.
+- **Tabular data (history lists, race lists) uses a real `<table>`, not a flex/list layout** —
+  a flex row lets candidate/date text wrap unpredictably per row so nothing lines up. Wrap the
+  table in `overflow-x-auto overflow-y-hidden` — **not just `overflow-x-auto` alone**: per the
+  CSS spec, leaving `overflow-y` unset while `overflow-x` isn't `visible` silently computes
+  `overflow-y` to `auto` too, which trapped a tiny vertical scroll on `StateTabs`' tab bar
+  before this was caught. Same pattern for horizontally-scrolling non-table content.
+- **"Live/pending" indicator convention:** a small `animate-pulse` colored dot — amber for a
+  not-yet-decided race or the midterms countdown, emerald for "this is the current officeholder"
+  in history tables. Place it `inline-block` with `align-middle` next to text that might wrap
+  (not a `flex items-center` sibling) — flex-centering against a block that wraps to two lines
+  misaligns the dot against the wrapped text; inline keeps it pinned to the line it's actually on.
 
 ## Open decisions
 
@@ -141,8 +172,10 @@ version bump, check this first — verify those two files still exist in
 ## Status
 
 **Phase 1 (politics) is complete** — every page/table in the original Phase 1 scope is built
-and reading live from Supabase; infra (below) is fully automated too. Next up per the build
-order is Phase 2 (geography/sports sync), unless told otherwise.
+and reading live from Supabase; infra (below) is fully automated too. A post-Phase-1 UX polish
+pass (mobile responsiveness, map framing, table formatting — see below and UI conventions) has
+since shipped on top of it. Next up per the build order is Phase 2 (geography/sports sync),
+unless told otherwise.
 
 Base Next.js + Tailwind + TypeScript scaffold in place. Infra checklist (plan §7) mostly done:
 GitHub repo pushed and tracked; Supabase project linked via CLI (credentials in gitignored
@@ -169,22 +202,30 @@ Remaining: geography/sports sync (Phase 2).
 **Home page** (`src/app/page.tsx` + `UsMap.tsx`): interactive MapLibre map, two modes (see UI
 conventions) — States (default, current Senate delegation) and Districts (current House
 delegation). Clicking either selects a state (Districts additionally tracks which district).
-The side panel (`StatePanel.tsx`) shows real governor/senators/House reps (Supabase, via
-TanStack Query) and mock capital/population (`src/lib/mock-states.ts`, only CA/TX/NY/FL
-populated), plus a link to:
+Zoom +/- buttons bottom-right; Alaska/Hawaii insets and state abbreviation labels always
+visible in both modes (see Data/UI conventions). The side panel (`StatePanel.tsx`) shows real
+governor/senators/House reps (Supabase, via TanStack Query) and mock capital/population
+(`src/lib/mock-states.ts`, only CA/TX/NY/FL populated), a close (×) button to deselect, and a
+link to the full state page. On mobile the panel is a capped-height (`45vh`), independently
+scrolling bottom sheet rather than pushing the map off-screen.
 
 **`/state/[abbr]` page** (`src/app/state/[abbr]/page.tsx` + `StateTabs.tsx`): four tabs per
 plan §5 — current representation (real, including governor); history (real Senate history back
-to statehood, governor history not synced — no history modeled for `governors`, current
-officeholder only); geography (mock, cities/sports flagged "Phase 2, not built"); 2026 midterms
+to statehood as an aligned table, current senator marked with a dot rather than "(current)"
+text — see UI conventions; governor history not synced — no history modeled for `governors`,
+current officeholder only); geography (mock, cities/sports flagged "Phase 2, not built"); 2026 midterms
 (real — Senate/Governor races for this state, per-candidate party + incumbent flag; House out
-of scope).
+of scope; a race with an unresolved primary shows a disclaimer instead of raw candidate text —
+see `isPrimaryPending()` above).
 
-**`/midterms-2026`** (plan §5): scoreboard (called vs. total, per office) + full Senate/Governor
-race lists nationwide, linked from the map's top-right corner. `force-dynamic` — no dynamic
-route params here to make Next treat it as needing per-request data automatically, so without
-this it would prerender once at build time and serve stale race data forever (caught before
-shipping, not after).
+**`/midterms-2026`** (plan §5): aligned per-office race tables (state | candidates), linked from
+the map's top-right corner. Every race resolves the same day (Nov 3, 2026), so the top cards
+show a day-countdown + primaries-held count pre-election rather than a called-count stuck at
+0/N for months; they switch to the real called-count automatically once that date passes (see
+`getElectionCountdown()`/`isPrimaryPending()` in `src/app/midterms-2026/page.tsx`).
+`force-dynamic` — no dynamic route params here to make Next treat it as needing per-request
+data automatically, so without this it would prerender once at build time and serve stale race
+data forever (caught before shipping, not after).
 
 **`/legislator/[id]`** and **`/governor/[id]`** (plan §5): photo, party, term history (legislator
 only — governors have no history modeled) for one person. `id` is `legislators.id`
