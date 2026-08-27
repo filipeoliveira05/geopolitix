@@ -154,12 +154,24 @@ export async function getSenateHistory(stateAbbr: string): Promise<TermWithLegis
   return terms.sort((a, b) => b.term.startDate.localeCompare(a.term.startDate));
 }
 
+let cachedRepsByDistrictKey: Promise<Map<string, TermWithLegislator>> | null = null;
+
 /**
  * Current House member keyed by "STATE-DISTRICT" (e.g. "CA-12", "WY-0" for
  * at-large) — for joining onto district geometry (src/lib/districts-geo.ts)
  * so the map's district layer can be colored/labeled by current occupant.
+ * Memoized like districts-geo.ts's own cache — UsMap.tsx only fetches this
+ * on the first switch to "Districts" mode, but that can happen again after
+ * a remount (e.g. navigating away and back to the map), and without this
+ * cache that refetched every time even though the much larger topology
+ * blob it's joined against didn't.
  */
-export async function getCurrentRepsByDistrictKey(): Promise<Map<string, TermWithLegislator>> {
+export function getCurrentRepsByDistrictKey(): Promise<Map<string, TermWithLegislator>> {
+  if (!cachedRepsByDistrictKey) cachedRepsByDistrictKey = fetchCurrentRepsByDistrictKey();
+  return cachedRepsByDistrictKey;
+}
+
+async function fetchCurrentRepsByDistrictKey(): Promise<Map<string, TermWithLegislator>> {
   const { data, error } = await supabase
     .from("terms")
     .select(TERM_WITH_LEGISLATOR_SELECT)
