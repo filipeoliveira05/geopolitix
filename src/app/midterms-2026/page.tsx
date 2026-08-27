@@ -84,25 +84,41 @@ export default async function Midterms2026Page() {
           <h2 className="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
             {OFFICE_LABELS[office]} races
           </h2>
-          <ul className="mt-2 flex flex-col divide-y divide-zinc-200 dark:divide-zinc-800">
-            {byOffice[office].map((race) => (
-              <li key={race.id} className="flex items-center justify-between gap-4 py-2">
-                <Link href={`/state/${race.stateId}`} className="hover:underline">
-                  {getStateName(race.stateId) ?? race.stateId}
-                </Link>
-                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
-                  {race.candidates.map((candidate) => (
-                    <span key={candidate.id}>
-                      {candidate.name} <PartyBadge party={candidate.party} />
-                    </span>
-                  ))}
-                  <span className="text-xs text-zinc-500 dark:text-zinc-400">
-                    {race.status === "called" ? "Called" : "Not yet decided"}
-                  </span>
-                </div>
-              </li>
-            ))}
-          </ul>
+          <div className="mt-2 overflow-x-auto overflow-y-hidden">
+            <table className="w-full min-w-[32rem] border-collapse text-sm">
+              <tbody>
+                {byOffice[office].map((race) => (
+                  <tr
+                    key={race.id}
+                    className="border-b border-zinc-100 last:border-0 dark:border-zinc-800"
+                  >
+                    <td className="py-2 pr-3 align-middle whitespace-nowrap">
+                      <Link href={`/state/${race.stateId}`} className="hover:underline">
+                        {getStateName(race.stateId) ?? race.stateId}
+                      </Link>
+                    </td>
+                    <td className="w-full py-2 pr-3 align-middle">
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                        {race.candidates.map((candidate) => (
+                          <span key={candidate.id} className="whitespace-nowrap">
+                            {candidate.name} <PartyBadge party={candidate.party} />
+                          </span>
+                        ))}
+                      </div>
+                    </td>
+                    <td className="py-2 align-middle whitespace-nowrap">
+                      <span className="inline-flex items-center gap-1.5 text-xs text-zinc-500 dark:text-zinc-400">
+                        {race.status !== "called" && (
+                          <span className="h-2 w-2 animate-pulse rounded-full bg-amber-500" />
+                        )}
+                        {race.status === "called" ? "Called" : "Not yet decided"}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       ))}
     </div>
