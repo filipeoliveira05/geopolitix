@@ -20,17 +20,29 @@ type StatePanelProps = {
 };
 
 export function StatePanel({ abbr, selectedDistrict = null, onClose }: StatePanelProps) {
-  const { data: governor } = useQuery({
+  const {
+    data: governor,
+    isError: governorError,
+    refetch: refetchGovernor,
+  } = useQuery({
     queryKey: ["governor", abbr],
     queryFn: () => getGovernor(abbr as string),
     enabled: abbr !== null,
   });
-  const { data: senators } = useQuery({
+  const {
+    data: senators,
+    isError: senatorsError,
+    refetch: refetchSenators,
+  } = useQuery({
     queryKey: ["senators", abbr],
     queryFn: () => getCurrentSenators(abbr as string),
     enabled: abbr !== null,
   });
-  const { data: representatives } = useQuery({
+  const {
+    data: representatives,
+    isError: representativesError,
+    refetch: refetchRepresentatives,
+  } = useQuery({
     queryKey: ["representatives", abbr],
     queryFn: () => getCurrentRepresentatives(abbr as string),
     enabled: abbr !== null,
@@ -92,7 +104,9 @@ export function StatePanel({ abbr, selectedDistrict = null, onClose }: StatePane
         <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
           Governor
         </h3>
-        {governor === undefined ? (
+        {governorError ? (
+          <FetchError onRetry={() => refetchGovernor()} />
+        ) : governor === undefined ? (
           <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">Loading…</p>
         ) : governor ? (
           <p className="mt-1">
@@ -110,7 +124,9 @@ export function StatePanel({ abbr, selectedDistrict = null, onClose }: StatePane
         <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
           Senators
         </h3>
-        {senators === undefined ? (
+        {senatorsError ? (
+          <FetchError onRetry={() => refetchSenators()} />
+        ) : senators === undefined ? (
           <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">Loading…</p>
         ) : senators.length > 0 ? (
           <ul className="mt-1 flex flex-col gap-1">
@@ -134,7 +150,9 @@ export function StatePanel({ abbr, selectedDistrict = null, onClose }: StatePane
         <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
           House representatives
         </h3>
-        {representatives === undefined ? (
+        {representativesError ? (
+          <FetchError onRetry={() => refetchRepresentatives()} />
+        ) : representatives === undefined ? (
           <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">Loading…</p>
         ) : representatives.length > 0 ? (
           <RepresentativesList
@@ -153,5 +171,16 @@ export function StatePanel({ abbr, selectedDistrict = null, onClose }: StatePane
         mock data — Phase 2 geography sync not built yet.
       </p>
     </div>
+  );
+}
+
+function FetchError({ onRetry }: { onRetry: () => void }) {
+  return (
+    <p className="mt-1 text-sm text-red-600 dark:text-red-400">
+      Couldn&apos;t load this.{" "}
+      <button onClick={onRetry} className="underline hover:no-underline">
+        Retry
+      </button>
+    </p>
   );
 }
