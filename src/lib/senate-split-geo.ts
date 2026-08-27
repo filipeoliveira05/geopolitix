@@ -3,6 +3,7 @@ import intersect from "@turf/intersect";
 import { polygon, featureCollection } from "@turf/helpers";
 import type { Feature, FeatureCollection, Geometry, Polygon, MultiPolygon } from "geojson";
 import { getUsStatesGeoJson } from "./us-states-geo";
+import { remapInsetStates } from "./us-insets";
 import { getCurrentSenatorsByState } from "./legislators-data";
 
 export type SenateHalfProperties = {
@@ -37,7 +38,9 @@ async function buildSenateSplitGeoJson(): Promise<
   const senatorsByState = await getCurrentSenatorsByState();
   const features: Feature<Geometry, SenateHalfProperties>[] = [];
 
-  for (const stateFeature of getUsStatesGeoJson().features) {
+  const statesGeoJson = remapInsetStates(getUsStatesGeoJson(), (p) => p.abbr);
+
+  for (const stateFeature of statesGeoJson.features) {
     const abbr = stateFeature.properties.abbr;
     if (!abbr) continue;
 

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import {
   Map as MapLibreMap,
+  Marker,
   setWorkerUrl,
   type StyleSpecification,
   type LngLatBoundsLike,
@@ -14,6 +15,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import { getDistrictsGeoJson, type DistrictFeatureProperties } from "@/lib/districts-geo";
 import { getCurrentRepsByDistrictKey, type TermWithLegislator } from "@/lib/legislators-data";
 import { getSenateSplitGeoJson, getSenateHalfIdsByState } from "@/lib/senate-split-geo";
+import { getStateLabelsGeoJson } from "@/lib/state-labels-geo";
 import { PARTY_COLORS, FALLBACK_PARTY_STYLE } from "@/lib/party-colors";
 import type { FeatureCollection, Geometry } from "geojson";
 
@@ -87,13 +89,23 @@ const EMPTY_STYLE: StyleSpecification = {
   layers: [],
 };
 
-// Continental US only. Plain lon/lat (Mercator) bounds can't frame AK/HI
-// alongside the continental states without dwarfing them — an Albers-style
-// composite projection (as CNN's map uses) would be needed for that; out of
-// scope for this dev slice.
+// Continental US framing — Alaska and Hawaii are repositioned into fixed insets within this
+// same box by src/lib/us-insets.ts, rather than shown at their real (much farther away)
+// location, so this doesn't need to be a hemisphere-spanning view.
 const US_BOUNDS: LngLatBoundsLike = [
   [-125, 24],
   [-66, 50],
+];
+
+// Caps how far the map can be panned/zoomed out — without this, MapLibre's default Mercator
+// world wraps horizontally, so zooming out enough shows the same US map repeated side by
+// side. Generously larger than US_BOUNDS (not just padded) — a narrow/portrait viewport's
+// fitBounds naturally reveals a lot of extra latitude on top of the bounds' own 59°x26°, and
+// too-tight a maxBounds forces MapLibre to zoom in past what fitBounds asked for to keep the
+// viewport inside it, cropping the initial view on phones.
+const MAX_PAN_BOUNDS: LngLatBoundsLike = [
+  [-160, -10],
+  [-30, 72],
 ];
 
 type UsMapProps = {
@@ -146,6 +158,7 @@ export function UsMap({ selectedAbbr, onSelectState }: UsMapProps) {
   // must await this rather than the map's own `isStyleLoaded()`/"load", or
   // they can race ahead and try to style layers that don't exist yet.
   const layersReadyRef = useRef<Promise<void> | null>(null);
+  const labelMarkersRef = useRef<Marker[]>([]);
   const [mode, setMode] = useState<MapMode>("states");
 
   useEffect(() => {
@@ -166,6 +179,11 @@ export function UsMap({ selectedAbbr, onSelectState }: UsMapProps) {
       bounds: US_BOUNDS,
       fitBoundsOptions: { padding: 24 },
       attributionControl: false,
+      maxBounds: MAX_PAN_BOUNDS,
+      // Otherwise Mercator wraps horizontally — zooming out far enough shows the same US map
+      // repeated side by side (there's nothing else in this empty-style world to signal
+      // there's only one to look at).
+      renderWorldCopies: false,
     });
     mapRef.current = map;
 
@@ -334,11 +352,27 @@ export function UsMap({ selectedAbbr, onSelectState }: UsMapProps) {
         onSelectStateRef.current(stateId ?? null);
       });
 
+      // Plain DOM markers rather than a MapLibre symbol layer — a symbol layer's text needs a
+      // glyphs (SDF font) URL wired into the style, which would mean depending on an external
+      // glyph server at runtime; markers just need CSS, and give free light/dark theming.
+      for (const labelFeature of getStateLabelsGeoJson().features) {
+        const el = document.createElement("div");
+        el.textContent = labelFeature.properties.abbr;
+        el.className =
+          "pointer-events-none select-none text-[10px] font-bold text-zinc-900/90 dark:text-zinc-50/90 drop-shadow-[0_1px_1px_rgba(255,255,255,0.9)] dark:drop-shadow-[0_1px_1px_rgba(0,0,0,0.9)]";
+        const marker = new Marker({ element: el, anchor: "center" })
+          .setLngLat(labelFeature.geometry.coordinates as [number, number])
+          .addTo(map);
+        labelMarkersRef.current.push(marker);
+      }
+
       resolveLayersReady();
     });
 
     return () => {
       cancelled = true;
+      for (const marker of labelMarkersRef.current) marker.remove();
+      labelMarkersRef.current = [];
       map.remove();
       mapRef.current = null;
     };
@@ -413,17 +447,17 @@ export function UsMap({ selectedAbbr, onSelectState }: UsMapProps) {
 
       <Link
         href="/midterms-2026"
-        className="absolute top-3 right-3 rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm shadow-sm hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-900 dark:hover:bg-zinc-800"
+        className="absolute top-2 right-2 rounded-md border border-zinc-300 bg-white px-2 py-1 text-xs shadow-sm hover:bg-zinc-100 sm:top-3 sm:right-3 sm:px-3 sm:py-1.5 sm:text-sm dark:border-zinc-700 dark:bg-zinc-900 dark:hover:bg-zinc-800"
       >
         2026 Midterms
       </Link>
 
-      <div className="absolute top-3 left-3 flex overflow-hidden rounded-md border border-zinc-300 text-sm shadow-sm dark:border-zinc-700">
+      <div className="absolute top-2 left-2 flex overflow-hidden rounded-md border border-zinc-300 text-xs shadow-sm sm:top-3 sm:left-3 sm:text-sm dark:border-zinc-700">
         {(["states", "districts"] as const).map((m) => (
           <button
             key={m}
             onClick={() => setMode(m)}
-            className={`px-3 py-1.5 capitalize transition-colors ${
+            className={`px-2 py-1 capitalize transition-colors sm:px-3 sm:py-1.5 ${
               mode === m
                 ? "bg-blue-600 text-white"
                 : "bg-white text-zinc-700 hover:bg-zinc-100 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"
@@ -434,8 +468,25 @@ export function UsMap({ selectedAbbr, onSelectState }: UsMapProps) {
         ))}
       </div>
 
+      <div className="absolute bottom-2 right-2 flex flex-col overflow-hidden rounded-md border border-zinc-300 text-sm shadow-sm sm:bottom-3 sm:right-3 dark:border-zinc-700">
+        <button
+          onClick={() => mapRef.current?.zoomIn()}
+          aria-label="Zoom in"
+          className="border-b border-zinc-300 bg-white px-2.5 py-1.5 font-medium text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"
+        >
+          +
+        </button>
+        <button
+          onClick={() => mapRef.current?.zoomOut()}
+          aria-label="Zoom out"
+          className="bg-white px-2.5 py-1.5 font-medium text-zinc-700 hover:bg-zinc-100 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"
+        >
+          −
+        </button>
+      </div>
+
       {mode === "districts" && (
-        <div className="absolute bottom-3 left-3 flex flex-col gap-1 rounded-md border border-zinc-300 bg-white/90 p-2 text-xs text-zinc-700 shadow-sm dark:border-zinc-700 dark:bg-zinc-900/90 dark:text-zinc-300">
+        <div className="absolute bottom-2 left-2 flex max-w-[calc(100%-1rem)] flex-col gap-1 rounded-md border border-zinc-300 bg-white/90 p-1.5 text-[11px] shadow-sm sm:bottom-3 sm:left-3 sm:max-w-none sm:p-2 sm:text-xs text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900/90 dark:text-zinc-300">
           <div className="font-medium">Current House rep&apos;s party</div>
           <LegendRow color="#2563eb" label="Democrat" />
           <LegendRow color="#dc2626" label="Republican" />
@@ -445,13 +496,13 @@ export function UsMap({ selectedAbbr, onSelectState }: UsMapProps) {
       )}
 
       {mode === "states" && (
-        <div className="absolute bottom-3 left-3 flex flex-col gap-1 rounded-md border border-zinc-300 bg-white/90 p-2 text-xs text-zinc-700 shadow-sm dark:border-zinc-700 dark:bg-zinc-900/90 dark:text-zinc-300">
+        <div className="absolute bottom-2 left-2 flex max-w-[calc(100%-1rem)] flex-col gap-1 rounded-md border border-zinc-300 bg-white/90 p-1.5 text-[11px] shadow-sm sm:bottom-3 sm:left-3 sm:max-w-none sm:p-2 sm:text-xs text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900/90 dark:text-zinc-300">
           <div className="font-medium">Current senators&apos; party</div>
           <LegendRow color="#2563eb" label="Democrat" />
           <LegendRow color="#dc2626" label="Republican" />
           <LegendRow color="#71717a" label="Independent" />
           <LegendRow color="#a1a1aa" label="No data / no senators" />
-          <div className="mt-1 text-zinc-500 dark:text-zinc-400">
+          <div className="mt-1 hidden text-zinc-500 sm:block dark:text-zinc-400">
             Split states show both senators — senior senator top-left,
             junior bottom-right.
           </div>

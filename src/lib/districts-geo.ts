@@ -1,6 +1,7 @@
 import { feature } from "topojson-client";
 import type { Topology, GeometryCollection } from "topojson-specification";
 import type { FeatureCollection, Geometry } from "geojson";
+import { remapInsetStates } from "./us-insets";
 
 export type DistrictFeatureProperties = {
   stateId: string;
@@ -44,8 +45,9 @@ async function fetchDistrictsGeoJson(): Promise<
   }
   const data = (await res.json()) as DistrictsFile;
   const districtsObject = data.topology.objects.districts as GeometryCollection;
-  return feature(data.topology, districtsObject) as unknown as FeatureCollection<
+  const districtsGeoJson = feature(data.topology, districtsObject) as unknown as FeatureCollection<
     Geometry,
     DistrictFeatureProperties
   >;
+  return remapInsetStates(districtsGeoJson, (p) => p.stateId);
 }
