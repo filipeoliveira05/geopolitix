@@ -92,6 +92,14 @@ export default async function Midterms2026Page() {
                     key={race.id}
                     className="border-b border-zinc-100 last:border-0 dark:border-zinc-800"
                   >
+                    <td className="w-px py-2 pr-1.5 align-middle">
+                      {race.status !== "called" && (
+                        <span
+                          className="block h-1.5 w-1.5 animate-pulse rounded-full bg-amber-500"
+                          title="Not yet decided"
+                        />
+                      )}
+                    </td>
                     <td className="py-2 pr-3 align-middle whitespace-nowrap">
                       <Link href={`/state/${race.stateId}`} className="hover:underline">
                         {getStateName(race.stateId) ?? race.stateId}
@@ -111,14 +119,6 @@ export default async function Midterms2026Page() {
                           ))}
                         </div>
                       )}
-                    </td>
-                    <td className="py-2 align-middle whitespace-nowrap">
-                      <span className="inline-flex items-center gap-1.5 text-xs text-zinc-500 dark:text-zinc-400">
-                        {race.status !== "called" && (
-                          <span className="h-2 w-2 animate-pulse rounded-full bg-amber-500" />
-                        )}
-                        {race.status === "called" ? "Called" : "Not yet decided"}
-                      </span>
                     </td>
                   </tr>
                 ))}
