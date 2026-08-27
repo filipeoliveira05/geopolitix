@@ -291,8 +291,14 @@ export function UsMap({ selectedAbbr, onSelectState }: UsMapProps) {
       for (const labelFeature of getStateLabelsGeoJson().features) {
         const el = document.createElement("div");
         el.textContent = labelFeature.properties.abbr;
+        // A single drop-shadow() only shadows in one direction — layering several
+        // (same technique as before, just stacked) builds a fuller halo all the way around
+        // each glyph so labels stay legible against every fill color, not just a soft
+        // bottom-right shadow.
         el.className =
-          "pointer-events-none select-none text-[10px] font-bold text-zinc-900/90 dark:text-zinc-50/90 drop-shadow-[0_1px_1px_rgba(255,255,255,0.9)] dark:drop-shadow-[0_1px_1px_rgba(0,0,0,0.9)]";
+          "pointer-events-none select-none text-[10px] font-bold text-zinc-900 dark:text-zinc-50 " +
+          "[filter:drop-shadow(0_0_1.5px_rgba(255,255,255,0.9))_drop-shadow(0_0_1.5px_rgba(255,255,255,0.9))] " +
+          "dark:[filter:drop-shadow(0_0_1.5px_rgba(0,0,0,0.9))_drop-shadow(0_0_1.5px_rgba(0,0,0,0.9))]";
         const marker = new Marker({ element: el, anchor: "center" })
           .setLngLat(labelFeature.geometry.coordinates as [number, number])
           .addTo(map);
