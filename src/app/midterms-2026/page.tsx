@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import { getStateName } from "@/lib/states";
-import { getAllRaces, type Race, type RaceOffice } from "@/lib/races-data";
+import { getAllRaces, isPrimaryPending, type Race, type RaceOffice } from "@/lib/races-data";
 import { PartyBadge } from "@/components/PartyBadge";
 
 export const metadata: Metadata = { title: "2026 Midterms — Geopolitix" };
@@ -98,13 +98,19 @@ export default async function Midterms2026Page() {
                       </Link>
                     </td>
                     <td className="w-full py-2 pr-3 align-middle">
-                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                        {race.candidates.map((candidate) => (
-                          <span key={candidate.id} className="whitespace-nowrap">
-                            {candidate.name} <PartyBadge party={candidate.party} />
-                          </span>
-                        ))}
-                      </div>
+                      {isPrimaryPending(race) ? (
+                        <span className="text-zinc-500 dark:text-zinc-400">
+                          Primary not yet held.
+                        </span>
+                      ) : (
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                          {race.candidates.map((candidate) => (
+                            <span key={candidate.id} className="whitespace-nowrap">
+                              {candidate.name} <PartyBadge party={candidate.party} />
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </td>
                     <td className="py-2 align-middle whitespace-nowrap">
                       <span className="inline-flex items-center gap-1.5 text-xs text-zinc-500 dark:text-zinc-400">

@@ -55,6 +55,23 @@ function fromRow(row: RaceRow): Race {
 
 const RACE_WITH_CANDIDATES_SELECT = "*, race_candidates!race_candidates_race_id_fkey(*)";
 
+/**
+ * True when at least one candidate is a placeholder rather than a real name — Wikipedia's own
+ * infobox convention for a party's nominee slot the primary hasn't resolved yet: a literal
+ * "TBD" when there's no clear frontrunner, or "<name> (presumptive)" when there is one but it
+ * isn't official. Both come straight through from the synced text (see
+ * scripts/sync/races-2026.mjs), not something we tag ourselves — so this only needs to notice
+ * the pattern, not track primary dates or anything else that would need separate upkeep.
+ */
+export function isPrimaryPending(race: Race): boolean {
+  return (
+    race.candidates.length === 0 ||
+    race.candidates.some(
+      (c) => c.name.trim().toUpperCase() === "TBD" || /\(presumptive\)/i.test(c.name),
+    )
+  );
+}
+
 export async function getRacesForState(stateAbbr: string): Promise<Race[]> {
   // race_candidates has two FKs into races_2026 (race_id and
   // winner_candidate_id) — PostgREST can't infer which one to embed on

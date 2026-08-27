@@ -7,7 +7,7 @@ import {
   legislatorFullName,
   type TermWithLegislator,
 } from "@/lib/legislators-data";
-import type { Race } from "@/lib/races-data";
+import { isPrimaryPending, type Race } from "@/lib/races-data";
 
 type TabKey = "current" | "history" | "geography" | "midterms";
 
@@ -214,19 +214,23 @@ function MidtermsTab({ races }: StateTabsProps) {
               )}
               {race.status === "called" ? "Called" : "Not yet decided"}
             </p>
-            <ul className="flex flex-col gap-1">
-              {race.candidates.map((candidate) => (
-                <li key={candidate.id}>
-                  {candidate.name} <PartyBadge party={candidate.party} />
-                  {candidate.isIncumbent && (
-                    <span className="text-zinc-500 dark:text-zinc-400"> (incumbent)</span>
-                  )}
-                  {candidate.id === race.winnerCandidateId && (
-                    <span className="text-zinc-500 dark:text-zinc-400"> — winner</span>
-                  )}
-                </li>
-              ))}
-            </ul>
+            {isPrimaryPending(race) ? (
+              <Empty>Primary not yet held.</Empty>
+            ) : (
+              <ul className="flex flex-col gap-1">
+                {race.candidates.map((candidate) => (
+                  <li key={candidate.id}>
+                    {candidate.name} <PartyBadge party={candidate.party} />
+                    {candidate.isIncumbent && (
+                      <span className="text-zinc-500 dark:text-zinc-400"> (incumbent)</span>
+                    )}
+                    {candidate.id === race.winnerCandidateId && (
+                      <span className="text-zinc-500 dark:text-zinc-400"> — winner</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
           </Section>
         ))
       ) : (
