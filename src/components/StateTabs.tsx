@@ -7,6 +7,7 @@ import {
   legislatorFullName,
   type TermWithLegislator,
 } from "@/lib/legislators-data";
+import type { GovernorTerm } from "@/lib/governors-data";
 import { isPrimaryPending, type Race } from "@/lib/races-data";
 
 type TabKey = "current" | "history" | "geography" | "midterms";
@@ -27,6 +28,7 @@ export type StateTabsProps = {
   senators: TermWithLegislator[];
   representatives: TermWithLegislator[];
   senateHistory: TermWithLegislator[];
+  governorHistory: GovernorTerm[];
   races: Race[];
 };
 
@@ -119,7 +121,7 @@ function CurrentTab({
   );
 }
 
-function HistoryTab({ senateHistory }: StateTabsProps) {
+function HistoryTab({ senateHistory, governorHistory }: StateTabsProps) {
   return (
     <div className="flex flex-col gap-6">
       <Section title="Senators over time">
@@ -162,9 +164,46 @@ function HistoryTab({ senateHistory }: StateTabsProps) {
       </Section>
 
       <Section title="Governors over time">
-        <Empty>
-          Governor history isn&apos;t synced yet — only the current governor exists so far.
-        </Empty>
+        {governorHistory.length > 0 ? (
+          <div className="overflow-x-auto overflow-y-hidden">
+            <table className="w-full min-w-[26rem] border-collapse text-sm">
+              <tbody>
+                {governorHistory.map((term) => (
+                  <tr
+                    key={term.id}
+                    className="border-b border-zinc-100 last:border-0 dark:border-zinc-800"
+                  >
+                    <td className="w-px py-1.5 pr-1.5 align-middle">
+                      {term.isCurrent && (
+                        <span
+                          className="block h-1.5 w-1.5 rounded-full bg-emerald-500"
+                          title="Current governor"
+                        />
+                      )}
+                    </td>
+                    <td className="py-1.5 pr-3 align-middle">
+                      {term.governorId ? (
+                        <Link href={`/governor/${term.governorId}`} className="hover:underline">
+                          {term.name}
+                        </Link>
+                      ) : (
+                        term.name
+                      )}
+                    </td>
+                    <td className="w-px py-1.5 pr-3 align-middle whitespace-nowrap">
+                      <PartyBadge party={term.party} />
+                    </td>
+                    <td className="py-1.5 text-right align-middle whitespace-nowrap text-zinc-500 dark:text-zinc-400">
+                      {term.startDate ?? "?"} – {term.endDate ?? (term.isCurrent ? "present" : "?")}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <Empty>No governor history data.</Empty>
+        )}
       </Section>
     </div>
   );

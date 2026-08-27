@@ -3,7 +3,7 @@ import Image from "next/image";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { getStateName } from "@/lib/states";
-import { getGovernorById, governorFullName } from "@/lib/governors-data";
+import { getGovernorById, getTermsForGovernor, governorFullName } from "@/lib/governors-data";
 import { PartyBadge } from "@/components/PartyBadge";
 
 export async function generateMetadata(props: PageProps<"/governor/[id]">): Promise<Metadata> {
@@ -20,6 +20,7 @@ export default async function GovernorPage(props: PageProps<"/governor/[id]">) {
   if (!governor) notFound();
 
   const stateName = getStateName(governor.stateId) ?? governor.stateId;
+  const terms = await getTermsForGovernor(id, governor.stateId);
 
   return (
     <div className="mx-auto w-full max-w-3xl flex-1 p-6 sm:p-10">
@@ -63,13 +64,43 @@ export default async function GovernorPage(props: PageProps<"/governor/[id]">) {
 
       <div className="mt-6">
         <h2 className="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
-          Term
+          Term history
         </h2>
-        <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-          {governor.startDate ?? governor.endDate
-            ? `${governor.startDate ?? "?"} – ${governor.endDate ?? "present"}`
-            : "Term dates not available from OpenStates (see plan §3) — current officeholder only, no history modeled yet."}
-        </p>
+        {terms.length > 0 ? (
+          <div className="mt-1 overflow-x-auto overflow-y-hidden">
+            <table className="w-full min-w-[26rem] border-collapse text-sm">
+              <tbody>
+                {terms.map((term) => (
+                  <tr
+                    key={term.id}
+                    className="border-b border-zinc-100 last:border-0 dark:border-zinc-800"
+                  >
+                    <td className="w-px py-1.5 pr-1.5 align-middle">
+                      {term.isCurrent && (
+                        <span
+                          className="block h-1.5 w-1.5 rounded-full bg-emerald-500"
+                          title="Current term"
+                        />
+                      )}
+                    </td>
+                    <td className="py-1.5 pr-3 align-middle">Governor of {stateName}</td>
+                    <td className="w-px py-1.5 pr-3 align-middle whitespace-nowrap">
+                      <PartyBadge party={term.party} />
+                    </td>
+                    <td className="py-1.5 text-right align-middle whitespace-nowrap text-zinc-500 dark:text-zinc-400">
+                      {term.startDate ?? "?"} – {term.endDate ?? (term.isCurrent ? "present" : "?")}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+            Term dates not available — OpenStates has no history, and this person&apos;s Wikidata
+            term record didn&apos;t match cleanly (see sync_logs).
+          </p>
+        )}
       </div>
     </div>
   );

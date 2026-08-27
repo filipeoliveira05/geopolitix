@@ -32,8 +32,9 @@ Build order: **Phase 1 politics → Phase 2 geography → Phase 3 quiz.** Don't 
   meaningfully.
 - **Migrated to Supabase:** `states` (`sync:states` — minimal id/name seed only;
   population/capital/region are Phase 2), `legislators`/`terms` (`sync:legislators`, run
-  `sync:states` first — FK dependency), and `governors` (`sync:governors`, needs
-  `OPENSTATES_API_KEY` in `.env.local`). App reads through `src/lib/supabase.ts`, a
+  `sync:states` first — FK dependency), `governors` (`sync:governors`, needs
+  `OPENSTATES_API_KEY` in `.env.local`), and `governor_terms` (`sync:governor-history`, no key
+  — see below). App reads through `src/lib/supabase.ts`, a
   `@supabase/postgrest-js` `PostgrestClient` — not the full `@supabase/supabase-js`, whose
   `RealtimeClient` needs a WebSocket constructor Node < 22 lacks natively, and this app has no
   realtime/auth needs. Sync scripts (Node-only, write access) use `@supabase/supabase-js` + the
@@ -43,6 +44,18 @@ Build order: **Phase 1 politics → Phase 2 geography → Phase 3 quiz.** Don't 
   `"Democratic"` → our `"Democrat"`) or Democrat governors silently render `(?)` badges; and
   OpenStates' rate limit is much stricter in practice than its docs suggest (sustained 429s
   taking minutes to clear, not seconds — expect this if re-running repeatedly in one session).
+- **`governor-history.mjs` — full source research (a real Wikidata SPARQL spike, not guessed)
+  is written up in the script's own header comment, don't re-derive it.** Shaped like
+  `race_candidates` (plain `name`/`party`, no required FK to a person table) rather than
+  `terms` — historical governors predate OpenStates entirely and have no `legislators.id`-style
+  natural key to hang a required FK off of; `governor_id` is nullable and only set on a state's
+  current term row. The two gotchas that bite hardest: a person's party (P102) statements
+  aren't date-scoped to the specific term being synced, so a party-switcher shows up against
+  every term they ever held unless resolved by matching the statement's own P580/P582 dates
+  client-side (`resolveParty()`); and Wikidata occasionally has a genuine duplicate P39
+  statement for the same person/term (confirmed: NJ's A. Harry Moore), which crashes a
+  same-batch upsert with "ON CONFLICT DO UPDATE command cannot affect row a second time" unless
+  de-duped by `(state_id, wikidata_person_id, start_date)` first.
 - **`districts` migrated, but geometry lives outside Postgres.** `sync:districts` writes two
   things: lightweight metadata rows (`id` = Census GEOID, `state_id`, `district_number`, no
   geometry) into the `districts` table, and the combined TopoJSON topology (~2.5MB, one blob
@@ -173,9 +186,9 @@ version bump, check this first — verify those two files still exist in
 
 **Phase 1 (politics) is complete** — every page/table in the original Phase 1 scope is built
 and reading live from Supabase; infra (below) is fully automated too. A post-Phase-1 UX polish
-pass (mobile responsiveness, map framing, table formatting — see below and UI conventions) has
-since shipped on top of it. Next up per the build order is Phase 2 (geography/sports sync),
-unless told otherwise.
+pass (mobile responsiveness, map framing, table formatting — see below and UI conventions) and
+a data-completeness pass (governor history, loading/error states) has since shipped on top of
+it. Next up per the build order is Phase 2 (geography/sports sync), unless told otherwise.
 
 Base Next.js + Tailwind + TypeScript scaffold in place. Infra checklist (plan §7) mostly done:
 GitHub repo pushed and tracked; Supabase project linked via CLI (credentials in gitignored
@@ -210,10 +223,10 @@ link to the full state page. On mobile the panel is a capped-height (`45vh`), in
 scrolling bottom sheet rather than pushing the map off-screen.
 
 **`/state/[abbr]` page** (`src/app/state/[abbr]/page.tsx` + `StateTabs.tsx`): four tabs per
-plan §5 — current representation (real, including governor); history (real Senate history back
-to statehood as an aligned table, current senator marked with a dot rather than "(current)"
-text — see UI conventions; governor history not synced — no history modeled for `governors`,
-current officeholder only); geography (mock, cities/sports flagged "Phase 2, not built"); 2026 midterms
+plan §5 — current representation (real, including governor); history (real Senate AND governor
+history back to statehood as aligned tables, current officeholder marked with a dot rather than
+"(current)" text — see UI conventions; House history still out of scope, no equivalent to
+`getSenateHistory()` exists for it); geography (mock, cities/sports flagged "Phase 2, not built"); 2026 midterms
 (real — Senate/Governor races for this state, per-candidate party + incumbent flag; House out
 of scope; a race with an unresolved primary shows a disclaimer instead of raw candidate text —
 see `isPrimaryPending()` above).
@@ -227,8 +240,13 @@ show a day-countdown + primaries-held count pre-election rather than a called-co
 data automatically, so without this it would prerender once at build time and serve stale race
 data forever (caught before shipping, not after).
 
-**`/legislator/[id]`** and **`/governor/[id]`** (plan §5): photo, party, term history (legislator
-only — governors have no history modeled) for one person. `id` is `legislators.id`
+**`/legislator/[id]`** and **`/governor/[id]`** (plan §5): photo, party, term history for one
+person — legislator term history from `terms`; governor term history from `governor_terms`
+(`getTermsForGovernor()`, matched via `wikidata_person_id` so a non-consecutive past term by
+the same person would also show, not just their current one). `/governor/[id]` itself only ever
+exists for the current officeholder (`governors.id`), so this page always shows at least one
+row; historical governors have no profile page of their own to link to — see the state page's
+History tab for the full per-state list. `id` is `legislators.id`
 (`bioguide_id`) / `governors.id` (OpenStates person id with its `"ocd-person/"` prefix stripped
 at sync time — the raw id contains a `/`, which broke the route; caught via a real 404 in
 browser verification, not assumed). Linked from senator/rep/governor names across
@@ -240,6 +258,9 @@ browser verification, not assumed). Linked from senator/rep/governor names acros
   `unitedstates/congress-legislators`.
 - `governors` — current governor per state, from OpenStates v3 (`OPENSTATES_API_KEY` required).
   See the Data conventions gotchas above before re-running or modifying this one.
+- `governor_terms` — full governor history back to statehood, from Wikidata (2,426 rows across
+  50 states, no key). See the Data conventions gotchas above before re-running or modifying
+  this one.
 - `races_2026`/`race_candidates` — Senate + Governor races, from Wikipedia (71 races, no key).
   See the Data conventions gotchas above before re-running or modifying this one.
 - `districts` (metadata table) + `district-geometry/topology.json` (Storage blob) — current

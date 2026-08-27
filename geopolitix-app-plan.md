@@ -63,6 +63,7 @@ No hardcoded data in the codebase.
 - **Party strings need normalizing.** OpenStates returns `"Democratic"` (and Minnesota's official `"Democratic-Farmer-Labor"`) — the app's convention, already used by `terms.party` from `congress-legislators`, is `"Democrat"`. Mismatched strings silently render as "no party data" in the UI rather than erroring, so this is easy to ship unnoticed — `governors.mjs`'s `normalizeParty()` handles it.
 - **Rate limiting is stricter in practice than "~10 req/sec" suggests** — repeated full-table sync runs in a short window triggered sustained 429s that took several minutes to clear, not seconds. `governors.mjs` paces at 1 req/sec with retry-and-backoff.
 - **No term dates or bio in the v3 API** — `start_date`/`end_date`/`bio_summary` stay null for the MVP. Wikidata (already planned for Phase 2 geography) is a plausible future backfill source for just these fields.
+- **Governor history (`governor_terms`) — resolved via Wikidata**, not OpenStates (no history endpoint there at all). Each state's "Governor of `<state>`" position item's P39 ("position held") statements, one per term, back to statehood — verified live via real SPARQL queries (Texas, Wyoming, Mississippi) before writing `governor-history.mjs`, not assumed to exist. Two gotchas confirmed real, not theoretical: a person's party (P102) isn't date-scoped to the specific term, so party-switchers need client-side date-overlap matching against the term being synced rather than a naive SPARQL join; and start/end date coverage is real but uneven across states (Mississippi ~27% of rows missing a start date vs. Wyoming's 0%). Full gotcha list is in the script's own header comment.
 
 ### 2026 midterm elections (`races_2026`)
 - No free live-results API exists (AP's is paid/commercial). Source: the **Wikipedia MediaWiki Action API** (`action=parse&prop=wikitext`, no key), parsing each race's infobox — there's no clean JSON feed. Page lists per chamber come from a Wikipedia category, not hand-typed.
@@ -153,6 +154,18 @@ A legislator's term — full historical record without duplicating `legislators`
   `state_id` (FK) · `party` (from OpenStates, normalized to `"Democrat"`/`"Republican"` — §3) ·
   `start_date`, `end_date` (not available from OpenStates — null). No history — one row per
   state, current officeholder only; full-replaced on every sync.
+
+### `governor_terms`
+Full governor history per state, back to statehood, from Wikidata (§3) — added after the MVP
+schema draft above, since OpenStates has no history endpoint. Shaped like `race_candidates`
+(plain `name`/`party`, no required FK to a person table) rather than `terms` — historical
+governors predate OpenStates entirely and have no `legislators.id`-style natural key.
+- `id` (PK) · `state_id` (FK) · `governor_id` (FK → `governors.id`, nullable — set only on a
+  state's current term row, the only one with a real `governors.id` to link) ·
+  `wikidata_person_id` · `name` · `party` (nullable — a real, if uncommon, Wikidata gap for
+  early-19th-century figures) · `start_date`, `end_date` (both nullable — real Wikidata gaps,
+  verified to vary a lot by state, e.g. Mississippi ~27% of rows missing a start date) ·
+  `is_current`.
 
 ### `races_2026`
 Senate + Governors only in the MVP (§3).

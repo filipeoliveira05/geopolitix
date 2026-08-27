@@ -3,8 +3,10 @@ name: Weekly data sync
 # Weekly cadence covers every currently-automated job (plan §6: legislators/
 # governors "weekly or biweekly", races "weekly normally, daily near election
 # day" — not set up here, bump the schedule manually if that's ever needed).
-# districts is deliberately excluded — redistricting happens ~once a decade,
-# manual-only per plan §6's own table.
+# governor-history rides along at the same cadence — cheap insurance against
+# a new governor's term not showing up in governor_terms until the next
+# manual run. districts is deliberately excluded — redistricting happens
+# ~once a decade, manual-only per plan §6's own table.
 on:
   schedule:
     - cron: "0 6 * * 1" # Monday 06:00 UTC
@@ -41,6 +43,12 @@ jobs:
       - id: sync_governors
         run: node scripts/sync/governors.mjs
         continue-on-error: true
+      # Reads the governors table (just-synced above) to link the current
+      # term's governor_id — order matters, same reasoning as states running
+      # first for legislators/governors/races' own FK dependency.
+      - id: sync_governor_history
+        run: node scripts/sync/governor-history.mjs
+        continue-on-error: true
       - id: sync_races
         run: node scripts/sync/races-2026.mjs
         continue-on-error: true
@@ -49,6 +57,7 @@ jobs:
         run: |
           if [ "${{ steps.sync_legislators.outcome }}" = "failure" ] ||
              [ "${{ steps.sync_governors.outcome }}" = "failure" ] ||
+             [ "${{ steps.sync_governor_history.outcome }}" = "failure" ] ||
              [ "${{ steps.sync_races.outcome }}" = "failure" ]; then
             echo "One or more sync steps failed — see the failing step's log above, and sync_logs in Supabase for details."
             exit 1
