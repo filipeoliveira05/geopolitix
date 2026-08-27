@@ -7,6 +7,7 @@ import {
   legislatorFullName,
 } from "@/lib/legislators-data";
 import { getGovernor, governorFullName } from "@/lib/governors-data";
+import { getStateName } from "@/lib/states";
 import { PartyBadge } from "@/components/PartyBadge";
 import { RepresentativesList } from "@/components/RepresentativesList";
 
@@ -14,9 +15,11 @@ type StatePanelProps = {
   abbr: string | null;
   /** District clicked on the map's districts layer, if any — highlights the matching row below. */
   selectedDistrict?: number | null;
+  /** Clears the selection, e.g. via a close button — omitted when the panel has nothing to close. */
+  onClose?: () => void;
 };
 
-export function StatePanel({ abbr, selectedDistrict = null }: StatePanelProps) {
+export function StatePanel({ abbr, selectedDistrict = null, onClose }: StatePanelProps) {
   const { data: governor } = useQuery({
     queryKey: ["governor", abbr],
     queryFn: () => getGovernor(abbr as string),
@@ -46,7 +49,31 @@ export function StatePanel({ abbr, selectedDistrict = null }: StatePanelProps) {
   return (
     <div className="flex flex-col gap-6 p-6">
       <div>
-        <h2 className="text-xl font-semibold">{abbr}</h2>
+        <div className="flex items-start justify-between gap-2">
+          <h2 className="text-xl font-semibold">
+            {getStateName(abbr) ?? abbr} <span className="text-zinc-400 dark:text-zinc-500">({abbr})</span>
+          </h2>
+          {onClose && (
+            <button
+              onClick={onClose}
+              aria-label="Close panel"
+              className="rounded-md p-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={2}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="h-5 w-5"
+              >
+                <path d="M18 6 6 18M6 6l12 12" />
+              </svg>
+            </button>
+          )}
+        </div>
         {summary && (
           <p className="text-sm text-zinc-500 dark:text-zinc-400">
             Capital: {summary.capital} · Population:{" "}

@@ -15,11 +15,15 @@ export default function Home() {
 
   return (
     <div className="flex h-dvh flex-col sm:flex-row">
-      <div className="relative flex-1">
+      <div className="relative min-h-0 flex-1">
         <UsMap selectedAbbr={selectedAbbr} onSelectState={handleSelectState} />
       </div>
-      <aside className="w-full border-t border-zinc-200 sm:w-80 sm:border-l sm:border-t-0 dark:border-zinc-800">
-        <StatePanel abbr={selectedAbbr} selectedDistrict={selectedDistrict} />
+      <aside className="w-full max-h-[45vh] overflow-y-auto border-t border-zinc-200 sm:max-h-none sm:w-80 sm:border-l sm:border-t-0 dark:border-zinc-800">
+        <StatePanel
+          abbr={selectedAbbr}
+          selectedDistrict={selectedDistrict}
+          onClose={() => handleSelectState(null)}
+        />
       </aside>
     </div>
   );

@@ -35,12 +35,12 @@ export function StateTabs(props: StateTabsProps) {
 
   return (
     <div>
-      <div className="flex gap-1 border-b border-zinc-200 dark:border-zinc-800">
+      <div className="flex gap-1 overflow-x-auto border-b border-zinc-200 dark:border-zinc-800">
         {TABS.map((t) => (
           <button
             key={t.key}
             onClick={() => setTab(t.key)}
-            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+            className={`shrink-0 whitespace-nowrap px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
               tab === t.key
                 ? "border-blue-600 text-blue-600 dark:border-blue-400 dark:text-blue-400"
                 : "border-transparent text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200"
