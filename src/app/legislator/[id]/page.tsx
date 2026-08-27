@@ -83,23 +83,41 @@ export default async function LegislatorPage(props: PageProps<"/legislator/[id]"
           Term history
         </h2>
         {terms.length > 0 ? (
-          <ul className="mt-1 flex flex-col gap-1">
-            {terms.map((term) => (
-              <li key={term.id}>
-                {CHAMBER_LABELS[term.chamber]} —{" "}
-                {term.chamber === "house"
-                  ? `${getStateName(term.stateId) ?? term.stateId} ${
-                      term.district === 0 ? "At-large" : `District ${term.district}`
-                    }`
-                  : getStateName(term.stateId) ?? term.stateId}{" "}
-                <PartyBadge party={term.party} />{" "}
-                <span className="text-zinc-500 dark:text-zinc-400">
-                  {term.startDate} – {term.endDate}
-                  {term.isCurrent ? " (current)" : ""}
-                </span>
-              </li>
-            ))}
-          </ul>
+          <div className="mt-1 overflow-x-auto overflow-y-hidden">
+            <table className="w-full min-w-[26rem] border-collapse text-sm">
+              <tbody>
+                {terms.map((term) => (
+                  <tr
+                    key={term.id}
+                    className="border-b border-zinc-100 last:border-0 dark:border-zinc-800"
+                  >
+                    <td className="w-px py-1.5 pr-1.5 align-middle">
+                      {term.isCurrent && (
+                        <span
+                          className="block h-1.5 w-1.5 rounded-full bg-emerald-500"
+                          title="Current term"
+                        />
+                      )}
+                    </td>
+                    <td className="py-1.5 pr-3 align-middle">
+                      {CHAMBER_LABELS[term.chamber]} —{" "}
+                      {term.chamber === "house"
+                        ? `${getStateName(term.stateId) ?? term.stateId} ${
+                            term.district === 0 ? "At-large" : `District ${term.district}`
+                          }`
+                        : getStateName(term.stateId) ?? term.stateId}
+                    </td>
+                    <td className="w-px py-1.5 pr-3 align-middle whitespace-nowrap">
+                      <PartyBadge party={term.party} />
+                    </td>
+                    <td className="py-1.5 text-right align-middle whitespace-nowrap text-zinc-500 dark:text-zinc-400">
+                      {term.startDate} – {term.endDate}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         ) : (
           <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">No term data.</p>
         )}
