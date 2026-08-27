@@ -18,28 +18,62 @@ const OFFICE_LABELS: Record<RaceOffice, string> = {
   house: "U.S. House",
 };
 
+// Every Senate/Governor race in this cycle is decided the same day, so a "called" count is
+// stuck at 0 for months beforehand — not useful until results actually start coming in. Until
+// then, the card shows the days-until-election and how many races' primaries have resolved
+// instead; it switches to the called count on its own once the date passes, no code change
+// needed when that day comes.
+const ELECTION_DATE = new Date(Date.UTC(2026, 10, 3));
+
+// Kept outside the component: reading the wall clock is inherently impure, but this page is
+// already `force-dynamic` and meant to reflect real time on every request — isolating it in a
+// plain function (rather than calling Date.now() directly in the component body) is what
+// satisfies the react-hooks/purity lint rule for that intentional case.
+function getElectionCountdown() {
+  const now = Date.now();
+  return {
+    hasPassed: now >= ELECTION_DATE.getTime(),
+    daysUntil: Math.ceil((ELECTION_DATE.getTime() - now) / 86_400_000),
+  };
+}
+
 function Scoreboard({ races }: { races: Race[] }) {
   const offices: RaceOffice[] = ["senate", "governor"];
+  const { hasPassed: electionHasPassed, daysUntil: daysUntilElection } = getElectionCountdown();
+
   return (
     <div className="grid grid-cols-2 gap-4 sm:grid-cols-2">
       {offices.map((office) => {
         const officeRaces = races.filter((r) => r.office === office);
         const called = officeRaces.filter((r) => r.status === "called").length;
+        const primariesHeld = officeRaces.filter((r) => !isPrimaryPending(r)).length;
         return (
           <div
             key={office}
             className="rounded-md border border-zinc-200 p-4 dark:border-zinc-800"
           >
-            <h2 className="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+            <h2 className="text-sm font-bold uppercase tracking-wide text-zinc-800 dark:text-zinc-100">
               {OFFICE_LABELS[office]}
             </h2>
-            <p className="mt-1 text-2xl font-semibold">
-              {called}
-              <span className="text-base font-normal text-zinc-500 dark:text-zinc-400">
-                {" "}
-                / {officeRaces.length} called
-              </span>
-            </p>
+            {electionHasPassed ? (
+              <p className="mt-1 text-2xl font-semibold">
+                {called}
+                <span className="text-base font-normal text-zinc-500 dark:text-zinc-400">
+                  {" "}
+                  / {officeRaces.length} called
+                </span>
+              </p>
+            ) : (
+              <>
+                <p className="mt-1 text-lg font-semibold text-zinc-800 dark:text-zinc-100">
+                  Election in {daysUntilElection} day{daysUntilElection === 1 ? "" : "s"}{" "}
+                  <span className="ml-0.5 inline-block h-2 w-2 animate-pulse rounded-full bg-amber-500 align-middle" />
+                </p>
+                <p className="mt-0.5 text-sm text-zinc-500 dark:text-zinc-400">
+                  {primariesHeld} / {officeRaces.length} primaries held
+                </p>
+              </>
+            )}
           </div>
         );
       })}
