@@ -24,9 +24,13 @@
 //   under repeated querying — fetchJson below retries like the other sync
 //   scripts' external-API calls do.
 import { supabaseAdmin, TRIGGERED_BY } from "./_supabase-admin.mjs";
+import {
+  USER_AGENT,
+  fetchWikipediaSummary,
+  mapWithConcurrency,
+  withHardTimeout,
+} from "./_wikipedia.mjs";
 
-const USER_AGENT =
-  "geopolitix-sync/1.0 (personal educational project; github.com/filipeoliveira05/geopolitix)";
 const WIKIDATA_API = "https://www.wikidata.org/w/api.php";
 const SPARQL_ENDPOINT = "https://query.wikidata.org/sparql";
 
@@ -287,15 +291,14 @@ async function syncState(supabase, state, currentGovernorsByState, warnings) {
 
 // Wikidata's own P18 (image)/description are one option for backfilling
 // /governor/[id] profile data for historical governors, but the Wikipedia
-// REST API's page-summary endpoint gives a real one-paragraph bio *and* a
-// photo thumbnail in one call — confirmed live to read noticeably better
-// than Wikidata's terse one-line description (e.g. "American politician
-// (1812-1883)"), and it's the same style of API races-2026.mjs already
-// uses. Needs the actual enwiki article title, not a guess from `name` —
-// confirmed live that guessing breaks on disambiguated titles (Wikidata
-// Q542663's "Edward Clark" is actually "Edward_Clark_(governor)").
-const WIKIPEDIA_SUMMARY_API = "https://en.wikipedia.org/api/rest_v1/page/summary";
-
+// REST API's page-summary endpoint (fetchWikipediaSummary, _wikipedia.mjs)
+// gives a real one-paragraph bio *and* a photo thumbnail in one call —
+// confirmed live to read noticeably better than Wikidata's terse one-line
+// description (e.g. "American politician (1812-1883)"), and it's the same
+// style of API races-2026.mjs already uses. Needs the actual enwiki
+// article title, not a guess from `name` — confirmed live that guessing
+// breaks on disambiguated titles (Wikidata Q542663's "Edward Clark" is
+// actually "Edward_Clark_(governor)").
 async function fetchSitelinkTitles(personQids) {
   const titleByPerson = new Map();
   const batches = chunk(personQids, 25);
@@ -318,56 +321,6 @@ async function fetchSitelinkTitles(personQids) {
     }
   }
   return titleByPerson;
-}
-
-async function fetchWikipediaSummary(title, attempt = 1) {
-  const url = `${WIKIPEDIA_SUMMARY_API}/${encodeURIComponent(title.replace(/ /g, "_"))}`;
-  // A higher retry ceiling than the other fetchers — this one genuinely hit
-  // a real 429 under sustained concurrent load across ~2,288 requests, so
-  // it needs more room to back off and recover rather than give up early.
-  const maxAttempts = 8;
-  let res;
-  try {
-    res = await fetch(url, {
-      headers: { "User-Agent": USER_AGENT, Accept: "application/json" },
-      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-    });
-  } catch (err) {
-    if (attempt <= maxAttempts) {
-      await sleep(2000 * attempt);
-      return fetchWikipediaSummary(title, attempt + 1);
-    }
-    throw err;
-  }
-  if (res.status === 404) return { photoUrl: null, bioSummary: null };
-  if (RETRYABLE_STATUSES.has(res.status) && attempt <= maxAttempts) {
-    await sleep(2000 * attempt);
-    return fetchWikipediaSummary(title, attempt + 1);
-  }
-  if (!res.ok) throw new Error(`Wikipedia summary failed: ${res.status} ${res.statusText} (${title})`);
-  const data = await res.json();
-  return {
-    photoUrl: data.thumbnail?.source ?? null,
-    bioSummary: data.extract ?? null,
-  };
-}
-
-/**
- * A short concurrency pool — 2,288 distinct people, one Wikipedia REST call
- * each, would take too long fully sequential and is unnecessary load fully
- * parallel. `limit` concurrent in-flight requests at a time.
- */
-async function mapWithConcurrency(items, limit, fn) {
-  const results = new Array(items.length);
-  let next = 0;
-  async function worker() {
-    while (next < items.length) {
-      const i = next++;
-      results[i] = await fn(items[i], i);
-    }
-  }
-  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
-  return results;
 }
 
 /**
@@ -435,7 +388,16 @@ async function backfillBios(supabase, warnings) {
     let photoUrl;
     let bioSummary;
     try {
-      ({ photoUrl, bioSummary } = await fetchWikipediaSummary(title));
+      // Same hard-timeout backstop as legislators.mjs's own bio backfill —
+      // an AbortSignal.timeout() alone isn't a guaranteed ceiling (see
+      // withHardTimeout's comment in _wikipedia.mjs), and this call's
+      // retry loop needs an active cancel, not just an abandoned await, to
+      // avoid leaving zombie retries running in the background.
+      ({ photoUrl, bioSummary } = await withHardTimeout(
+        (signal) => fetchWikipediaSummary(title, signal),
+        90_000,
+        `bio backfill (${qid})`,
+      ));
     } catch (err) {
       warnings.push(`bio backfill: fetch failed for ${name} (${qid}) — ${err.message}`);
       processed++;

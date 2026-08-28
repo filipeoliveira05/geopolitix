@@ -231,6 +231,27 @@ genuinely errored — **`continue-on-error` alone silently reports the whole job
 rate limit and errored, workflow still showed green) and fixed with that explicit check,
 so the job status is trustworthy without needing to cross-check `sync_logs` for a real
 failure. `districts` stays manual-only (redistricting is ~once/decade, per plan §6).
+**`legislators.bio_summary`/`photo_url` backfill runs on its own separate, much more frequent
+schedule** (`.github/workflows/legislator-bio-backfill.yml`, every 3 hours + manual
+`workflow_dispatch`) rather than riding along on the weekly sync — the population here (~12,700
+legislators, current + full House/Senate history) makes one full pass take multiple days even
+at the deliberately low concurrency Wikipedia's REST API needs (see `legislators.mjs`/
+`_wikipedia.mjs` comments — going higher reliably produces more 429s, not fewer, same lesson
+`governor-history.mjs` already learned). Each run sets `LEGISLATORS_BACKFILL_ONLY=true`
+(skips resyncing `legislators`/`terms` from congress-legislators entirely — that stays on the
+weekly cadence — since the Wikipedia article title needed for the backfill comes from the same
+YAML fetch regardless) and `BACKFILL_BUDGET_MS` (20 min) so a run stops cleanly and picks up
+next time rather than trying to process the whole backlog in one sitting; self-healing via the
+same `bio_summary IS NULL` filter as everywhere else in this codebase, so a missed/overlapping
+run is harmless. `mapWithConcurrency` (`_wikipedia.mjs`) grew a `shouldStop` hook for this.
+**A real hang was hit and fixed building this**: `withHardTimeout` (`_wikipedia.mjs`) went
+through two broken versions before converging — v1 raced a promise against a timer but never
+cancelled the original work, so abandoned retry chains piled up and progressively stalled later
+items; v2 dropped the race in favor of an AbortSignal for `fn` to observe, but a caller that
+didn't actually thread the signal through (legislators.mjs's Supabase `update()` call site) got
+zero timeout protection at all. The final version does both — a real `Promise.race` guarantees
+the outer `await` settles by `ms` regardless of whether `fn` honors the signal, and `fn` still
+receives the signal so a fetch()-based caller can actively cancel its in-flight request.
 Remaining: geography/sports sync (Phase 2).
 
 **Home page** (`src/app/page.tsx` + `UsMap.tsx`): interactive MapLibre map, two modes (see UI
@@ -280,8 +301,12 @@ browser verification, not assumed). Linked from senator/rep/governor names acros
 
 **Synced data**, via `npm run sync:<name>`:
 - `states` — minimal id/name seed (`us-atlas` + `fips-to-abbr.json`), 50 states + DC.
-- `legislators`/`terms` — current + historical Senate terms (House current-only), from
-  `unitedstates/congress-legislators`.
+- `legislators`/`terms` — current + full historical House and Senate terms, from
+  `unitedstates/congress-legislators`. `bio_summary`/`photo_url` backfill from Wikipedia runs on
+  its own frequent schedule (see the GitHub Actions note above) since the ~12,700-person
+  population takes multiple days to converge — check progress via `legislators.bio_summary is
+  not null` count, not `photo_url` (always set to a guessed `unitedstates/images` URL upfront,
+  regardless of backfill progress).
 - `governors` — current governor per state, from OpenStates v3 (`OPENSTATES_API_KEY` required).
   See the Data conventions gotchas above before re-running or modifying this one.
 - `governor_terms` — full governor history back to statehood, from Wikidata (2,426 rows across

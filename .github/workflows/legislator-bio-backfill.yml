@@ -1,0 +1,37 @@
+name: Legislator bio/photo backfill
+
+# Backfills legislators.bio_summary/photo_url from Wikipedia — a separate,
+# much more frequent schedule from sync.yml's weekly full sync, because the
+# population here (~12,700 legislators, current + full House/Senate
+# history) makes one full pass take multiple days even at the deliberately
+# low concurrency this needs (see legislators.mjs's own comments — going
+# higher reliably produces more 429s from Wikipedia's REST API, not less).
+# Each run is bounded to a short time budget and just picks up wherever
+# bio_summary IS NULL next (LEGISLATORS_BACKFILL_ONLY skips re-syncing
+# legislators/terms from congress-legislators entirely, so a run every few
+# hours doesn't repeatedly churn the 45k-row terms table for no reason —
+# that stays on sync.yml's weekly cadence). Self-healing/idempotent by
+# design, so a missed or overlapping run is harmless.
+on:
+  schedule:
+    - cron: "0 */3 * * *" # every 3 hours
+  workflow_dispatch: {} # allow an on-demand run from the Actions tab
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30 # safety margin above BACKFILL_BUDGET_MS below
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      SYNC_TRIGGERED_BY: cron
+      LEGISLATORS_BACKFILL_ONLY: "true"
+      BACKFILL_BUDGET_MS: "1200000" # 20 minutes
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: node scripts/sync/legislators.mjs

@@ -21,13 +21,18 @@ export function supabaseAdmin() {
 // absent when run by hand via `npm run sync:*`.
 export const TRIGGERED_BY = process.env.SYNC_TRIGGERED_BY === "cron" ? "cron" : "manual";
 
-export async function logSync(supabase, { source, startedAt, error }) {
+// `warnings` are non-fatal per-item issues (a missing lookup, a skipped
+// duplicate) that don't fail the run (status stays "success") but are
+// still worth surfacing — folded into error_message alongside a real
+// error's own message when present.
+export async function logSync(supabase, { source, startedAt, error, warnings }) {
+  const warningMessage = warnings?.length ? warnings.join("; ") : null;
   await supabase.from("sync_logs").insert({
     source,
     triggered_by: TRIGGERED_BY,
     started_at: startedAt,
     finished_at: new Date().toISOString(),
     status: error ? "error" : "success",
-    error_message: error?.message ?? null,
+    error_message: error?.message ?? warningMessage,
   });
 }
