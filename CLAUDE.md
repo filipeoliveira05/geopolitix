@@ -351,12 +351,20 @@ see `isPrimaryPending()` above).
 
 **`/midterms-2026`** (plan §5): aligned per-office race tables (state | candidates) for Senate
 and Governor, linked from the map's top-right corner. House (435 races) gets a Scoreboard card
-here too (called-count/primaries-held, same as Senate/Governor) but no flat national table —
-that's too much for one page; House race detail lives on each state's own MidtermsTab instead
-(deliberate, see the `house: []` comment in `page.tsx`). Every race resolves the same day (Nov
-3, 2026), so the top cards show a day-countdown + primaries-held count pre-election rather than
-a called-count stuck at 0/N for months; they switch to the real called-count automatically once
-that date passes (see `getElectionCountdown()`/`isPrimaryPending()` in
+too (called-count/primaries-held, same as Senate/Governor) plus its own section below —
+grouped by state, one native `<details>`/`<summary>` disclosure per state (collapsed by
+default, independent — expanding one doesn't close another), each summary line reusing the
+same `raceStats()`/`getElectionCountdown()` logic as the Scoreboard cards; expanding a state
+reveals its districts as rows in the same shape Senate/Governor use (`RaceRow`, shared across
+all three — state link swapped for a district label). Deliberately no flat 435-row table like
+Senate/Governor get — chosen specifically so nothing renders 435 rows uncollapsed by default;
+`<details>` was picked over a client-side accordion because it needs zero JS/component state,
+keeping this page a plain Server Component (note: the browser still renders collapsed content
+into the DOM, so this reduces visual length, not actual page weight). Every race resolves the
+same day (Nov 3, 2026), so the top cards show a day-countdown + primaries-held count
+pre-election rather than a called-count stuck at 0/N for months; they switch to the real
+called-count automatically once that date passes (see `getElectionCountdown()`/
+`isPrimaryPending()` in
 `src/app/midterms-2026/page.tsx`).
 `force-dynamic` — no dynamic route params here to make Next treat it as needing per-request
 data automatically, so without this it would prerender once at build time and serve stale race

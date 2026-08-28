@@ -37,6 +37,15 @@ function getElectionCountdown() {
   };
 }
 
+/** Called/primaries-held counts for a set of races — shared by the Scoreboard cards and each House state's collapsed summary line. */
+function raceStats(races: Race[]) {
+  return {
+    called: races.filter((r) => r.status === "called").length,
+    primariesHeld: races.filter((r) => !isPrimaryPending(r)).length,
+    total: races.length,
+  };
+}
+
 function Scoreboard({ races }: { races: Race[] }) {
   const offices: RaceOffice[] = ["senate", "governor", "house"];
   const { hasPassed: electionHasPassed, daysUntil: daysUntilElection } = getElectionCountdown();
@@ -44,9 +53,7 @@ function Scoreboard({ races }: { races: Race[] }) {
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
       {offices.map((office) => {
-        const officeRaces = races.filter((r) => r.office === office);
-        const called = officeRaces.filter((r) => r.status === "called").length;
-        const primariesHeld = officeRaces.filter((r) => !isPrimaryPending(r)).length;
+        const { called, primariesHeld, total } = raceStats(races.filter((r) => r.office === office));
         return (
           <div
             key={office}
@@ -60,7 +67,7 @@ function Scoreboard({ races }: { races: Race[] }) {
                 {called}
                 <span className="text-base font-normal text-zinc-500 dark:text-zinc-400">
                   {" "}
-                  / {officeRaces.length} called
+                  / {total} called
                 </span>
               </p>
             ) : (
@@ -70,7 +77,7 @@ function Scoreboard({ races }: { races: Race[] }) {
                   <span className="ml-0.5 inline-block h-2 w-2 animate-pulse rounded-full bg-amber-500 align-middle" />
                 </p>
                 <p className="mt-0.5 text-sm text-zinc-500 dark:text-zinc-400">
-                  {primariesHeld} / {officeRaces.length} primaries held
+                  {primariesHeld} / {total} primaries held
                 </p>
               </>
             )}
@@ -81,20 +88,87 @@ function Scoreboard({ races }: { races: Race[] }) {
   );
 }
 
+/** One race's row — state/district label + status dot + candidate faceoff. Shared by the Senate/Governor tables and each House state's expanded district table. */
+function RaceRow({ race, label }: { race: Race; label: React.ReactNode }) {
+  return (
+    <tr className="border-b border-zinc-100 last:border-0 dark:border-zinc-800">
+      <td className="w-px py-2 pr-1.5 align-middle">
+        {race.status !== "called" && (
+          <span
+            className="block h-1.5 w-1.5 animate-pulse rounded-full bg-amber-500"
+            title="Not yet decided"
+          />
+        )}
+      </td>
+      <td className="py-2 pr-3 align-middle whitespace-nowrap">{label}</td>
+      <td className="w-full py-2 pr-3 align-middle">
+        {isPrimaryPending(race) ? (
+          <span className="text-zinc-500 dark:text-zinc-400">Primary not yet held.</span>
+        ) : (
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            {race.candidates.map((candidate) => (
+              <span key={candidate.id} className="whitespace-nowrap">
+                {candidate.name} <PartyBadge party={candidate.party} />
+              </span>
+            ))}
+          </div>
+        )}
+      </td>
+    </tr>
+  );
+}
+
+/** One state's House races, collapsed by default — native <details>/<summary> disclosure needs no client-side state at all. */
+function HouseStateGroup({ stateId, races }: { stateId: string; races: Race[] }) {
+  const { hasPassed: electionHasPassed } = getElectionCountdown();
+  const { called, primariesHeld, total } = raceStats(races);
+  const summaryText = electionHasPassed
+    ? `${called}/${total} called`
+    : `${primariesHeld}/${total} primaries held`;
+  const sortedRaces = [...races].sort((a, b) => (a.districtNumber ?? 0) - (b.districtNumber ?? 0));
+
+  return (
+    <details className="border-b border-zinc-100 last:border-0 dark:border-zinc-800">
+      <summary className="flex cursor-pointer items-center justify-between py-2 text-sm">
+        <span>{getStateName(stateId) ?? stateId}</span>
+        <span className="text-zinc-500 dark:text-zinc-400">{summaryText}</span>
+      </summary>
+      <div className="overflow-x-auto overflow-y-hidden pb-2">
+        <table className="w-full min-w-[28rem] border-collapse text-sm">
+          <tbody>
+            {sortedRaces.map((race) => (
+              <RaceRow
+                key={race.id}
+                race={race}
+                label={race.districtNumber === 0 ? "At-large" : `District ${race.districtNumber}`}
+              />
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </details>
+  );
+}
+
 export default async function Midterms2026Page() {
   const races = await getAllRaces();
-  const byOffice: Record<RaceOffice, Race[]> = {
+  const byOffice: Record<"senate" | "governor", Race[]> = {
     senate: races
       .filter((r) => r.office === "senate")
       .sort((a, b) => a.stateId.localeCompare(b.stateId)),
     governor: races
       .filter((r) => r.office === "governor")
       .sort((a, b) => a.stateId.localeCompare(b.stateId)),
-    // Deliberately empty — 435 House races is too much for one flat national
-    // table; Scoreboard above still surfaces House's aggregate status, and
-    // per-race detail lives on each state's own MidtermsTab instead.
-    house: [],
   };
+
+  const houseByState = Object.entries(
+    races
+      .filter((r) => r.office === "house")
+      .reduce<Record<string, Race[]>>((acc, race) => {
+        (acc[race.stateId] ??= []).push(race);
+        return acc;
+      }, {}),
+  ).sort(([a], [b]) => a.localeCompare(b));
 
   return (
     <div className="mx-auto w-full max-w-3xl flex-1 p-6 sm:p-10">
@@ -107,9 +181,8 @@ export default async function Midterms2026Page() {
 
       <h1 className="mt-2 text-3xl font-semibold">2026 Midterms</h1>
       <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">
-        Senate and Governor races below; House races (all 435) are on each state&apos;s own
-        page instead of one long national list here. This is not a real-time results service:
-        race status updates on a periodic sync, not live on election night.
+        This is not a real-time results service: race status updates on a periodic sync, not
+        live on election night.
       </p>
 
       <div className="mt-6">
@@ -125,45 +198,32 @@ export default async function Midterms2026Page() {
             <table className="w-full min-w-[32rem] border-collapse text-sm">
               <tbody>
                 {byOffice[office].map((race) => (
-                  <tr
+                  <RaceRow
                     key={race.id}
-                    className="border-b border-zinc-100 last:border-0 dark:border-zinc-800"
-                  >
-                    <td className="w-px py-2 pr-1.5 align-middle">
-                      {race.status !== "called" && (
-                        <span
-                          className="block h-1.5 w-1.5 animate-pulse rounded-full bg-amber-500"
-                          title="Not yet decided"
-                        />
-                      )}
-                    </td>
-                    <td className="py-2 pr-3 align-middle whitespace-nowrap">
+                    race={race}
+                    label={
                       <Link href={`/state/${race.stateId}`} className="hover:underline">
                         {getStateName(race.stateId) ?? race.stateId}
                       </Link>
-                    </td>
-                    <td className="w-full py-2 pr-3 align-middle">
-                      {isPrimaryPending(race) ? (
-                        <span className="text-zinc-500 dark:text-zinc-400">
-                          Primary not yet held.
-                        </span>
-                      ) : (
-                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                          {race.candidates.map((candidate) => (
-                            <span key={candidate.id} className="whitespace-nowrap">
-                              {candidate.name} <PartyBadge party={candidate.party} />
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </td>
-                  </tr>
+                    }
+                  />
                 ))}
               </tbody>
             </table>
           </div>
         </div>
       ))}
+
+      <div className="mt-8">
+        <h2 className="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+          U.S. House races
+        </h2>
+        <div className="mt-2">
+          {houseByState.map(([stateId, stateRaces]) => (
+            <HouseStateGroup key={stateId} stateId={stateId} races={stateRaces} />
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
