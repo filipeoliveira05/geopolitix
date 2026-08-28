@@ -311,6 +311,18 @@ everywhere else in this codebase. A `concurrency: legislator-bio-backfill` group
 still-null rows at once — cheap insurance once the cadence got tight enough (hourly, ~25min
 runs) for a slow run to genuinely butt up against the next scheduled one.
 `mapWithConcurrency` (`_wikipedia.mjs`) grew a `shouldStop` hook for this.
+**The `schedule:` trigger itself has been unreliable in practice — confirmed live, not
+assumed**: it didn't fire even once in this workflow's first several hours live (`gh run list`
+showed zero `event: "schedule"` runs, only manual `workflow_dispatch` ones), despite every
+config check passing (workflow registered `state: "active"` via the API, repo not a fork/not in
+an org — both of which disable scheduled workflows — Actions enabled, YAML valid). This is
+genuinely GitHub-side platform flakiness, not a bug here, and not something a YAML change can
+fully fix — the cron was offset to `17 * * * *` (not the exact top of the hour, GitHub's own
+documented advice, since that's the single most congested moment for their scheduler) as a
+real but unguaranteed mitigation. **Treat manual triggers (the "Run workflow" button on the
+Actions tab, or `gh workflow run legislator-bio-backfill.yml`) as the primary mechanism, not a
+fallback** — there's no fixed cadence to hit, just whenever convenient; every run is safe and
+idempotent regardless of how long the gaps between them are.
 **Tuned from one real run's numbers, not guessed**: a manual trigger (used to confirm the
 workflow itself was healthy after its `schedule` trigger mysteriously never fired on its own in
 GitHub Actions for 8+ hours after being added — a known GitHub platform flakiness, not a config
