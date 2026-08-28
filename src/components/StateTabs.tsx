@@ -28,6 +28,7 @@ export type StateTabsProps = {
   senators: TermWithLegislator[];
   representatives: TermWithLegislator[];
   senateHistory: TermWithLegislator[];
+  houseHistory: TermWithLegislator[];
   governorHistory: GovernorTerm[];
   races: Race[];
 };
@@ -121,7 +122,7 @@ function CurrentTab({
   );
 }
 
-function HistoryTab({ senateHistory, governorHistory }: StateTabsProps) {
+function HistoryTab({ senateHistory, houseHistory, governorHistory }: StateTabsProps) {
   return (
     <div className="flex flex-col gap-6">
       <Section title="Senators over time">
@@ -160,6 +161,48 @@ function HistoryTab({ senateHistory, governorHistory }: StateTabsProps) {
           </div>
         ) : (
           <Empty>No Senate history data.</Empty>
+        )}
+      </Section>
+
+      <Section title="Representatives over time">
+        {houseHistory.length > 0 ? (
+          <div className="overflow-x-auto overflow-y-hidden">
+            <table className="w-full min-w-[26rem] border-collapse text-sm">
+              <tbody>
+                {houseHistory.map(({ legislator, term }) => (
+                  <tr
+                    key={term.id}
+                    className="border-b border-zinc-100 last:border-0 dark:border-zinc-800"
+                  >
+                    <td className="w-px py-1.5 pr-1.5 align-middle">
+                      {term.isCurrent && (
+                        <span
+                          className="block h-1.5 w-1.5 rounded-full bg-emerald-500"
+                          title="Current representative"
+                        />
+                      )}
+                    </td>
+                    <td className="py-1.5 pr-3 align-middle">
+                      <Link href={`/legislator/${legislator.id}`} className="hover:underline">
+                        {legislatorFullName(legislator)}
+                      </Link>
+                    </td>
+                    <td className="w-px py-1.5 pr-3 align-middle whitespace-nowrap text-zinc-500 dark:text-zinc-400">
+                      {term.district === 0 ? "At-large" : `District ${term.district}`}
+                    </td>
+                    <td className="w-px py-1.5 pr-3 align-middle whitespace-nowrap">
+                      <PartyBadge party={term.party} />
+                    </td>
+                    <td className="py-1.5 text-right align-middle whitespace-nowrap text-zinc-500 dark:text-zinc-400">
+                      {term.startDate} – {term.endDate}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <Empty>No House history data.</Empty>
         )}
       </Section>
 

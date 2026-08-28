@@ -144,13 +144,20 @@ export async function getCurrentRepresentatives(
   return terms.sort((a, b) => (a.term.district ?? 0) - (b.term.district ?? 0));
 }
 
-/**
- * All Senate terms ever held for a state (current + past), newest first.
- * The plan's History tab (§5) only calls for senators/governors over time —
- * House history isn't in scope there, so no equivalent getter for the House.
- */
+/** All Senate terms ever held for a state (current + past), newest first. */
 export async function getSenateHistory(stateAbbr: string): Promise<TermWithLegislator[]> {
   const terms = await getTerms(stateAbbr, "senate", { currentOnly: false });
+  return terms.sort((a, b) => b.term.startDate.localeCompare(a.term.startDate));
+}
+
+/**
+ * All House terms ever held for a state (current + past), newest first —
+ * a flat chronological list, not grouped by district. District lines have
+ * been redrawn many times since 1789, so a "district group" isn't a stable
+ * real-world seat the way Senate's fixed 2-per-state slots are.
+ */
+export async function getHouseHistory(stateAbbr: string): Promise<TermWithLegislator[]> {
+  const terms = await getTerms(stateAbbr, "house", { currentOnly: false });
   return terms.sort((a, b) => b.term.startDate.localeCompare(a.term.startDate));
 }
 

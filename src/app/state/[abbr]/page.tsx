@@ -7,6 +7,7 @@ import {
   getCurrentSenators,
   getCurrentRepresentatives,
   getSenateHistory,
+  getHouseHistory,
 } from "@/lib/legislators-data";
 import { getGovernor, getGovernorHistory, governorFullName } from "@/lib/governors-data";
 import { getRacesForState } from "@/lib/races-data";
@@ -31,15 +32,23 @@ export default async function StatePage(props: PageProps<"/state/[abbr]">) {
 
   const name = getStateName(abbr)!;
   const summary = getMockStateSummary(abbr);
-  const [governor, senators, representatives, senateHistory, governorHistory, races] =
-    await Promise.all([
-      getGovernor(abbr),
-      getCurrentSenators(abbr),
-      getCurrentRepresentatives(abbr),
-      getSenateHistory(abbr),
-      getGovernorHistory(abbr),
-      getRacesForState(abbr),
-    ]);
+  const [
+    governor,
+    senators,
+    representatives,
+    senateHistory,
+    houseHistory,
+    governorHistory,
+    races,
+  ] = await Promise.all([
+    getGovernor(abbr),
+    getCurrentSenators(abbr),
+    getCurrentRepresentatives(abbr),
+    getSenateHistory(abbr),
+    getHouseHistory(abbr),
+    getGovernorHistory(abbr),
+    getRacesForState(abbr),
+  ]);
 
   return (
     <div className="mx-auto w-full max-w-3xl flex-1 p-6 sm:p-10">
@@ -68,6 +77,7 @@ export default async function StatePage(props: PageProps<"/state/[abbr]">) {
           senators={senators}
           representatives={representatives}
           senateHistory={senateHistory}
+          houseHistory={houseHistory}
           governorHistory={governorHistory}
           races={races}
         />

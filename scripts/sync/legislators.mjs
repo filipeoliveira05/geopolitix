@@ -9,11 +9,8 @@
 //   history (all chambers) — kept in full, since the "Current representation" tab
 //   needs current House terms too.
 // - legislators-historical.yaml: former members (huge — ~9MB, every House member
-//   back to 1789). We only need this for the Senate "history over time" tab, so
-//   historical members are trimmed to their Senate terms only; their House terms
-//   (and House-only historical members entirely) are dropped to keep the output
-//   from ballooning with data nothing in the app displays yet. Revisit this scope
-//   if a House-history feature ever gets built (plan's open decision, §8).
+//   back to 1789). Kept in full (all chambers) to power both the Senate and House
+//   "history over time" tabs.
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -107,13 +104,13 @@ async function main() {
   for (const person of historical) {
     const legislator = buildLegislator(person);
     if (!legislator || seenIds.has(legislator.id)) continue; // current takes precedence
-    const senateTerms = buildTerms(legislator.id, person.terms ?? [], today, {
-      onlySenate: true,
+    const historicalTerms = buildTerms(legislator.id, person.terms ?? [], today, {
+      onlySenate: false,
     });
-    if (senateTerms.length === 0) continue; // House-only historical member — out of scope
+    if (historicalTerms.length === 0) continue;
     seenIds.add(legislator.id);
     legislators.push(legislator);
-    terms.push(...senateTerms);
+    terms.push(...historicalTerms);
   }
 
   const supabase = supabaseAdmin();
@@ -129,7 +126,8 @@ async function main() {
   // legislators, keyed on bioguide_id) — this script owns the whole table's
   // contents, so a full resync clears it first rather than accumulating
   // duplicates. Chunked inserts because Supabase's REST endpoint rejects a
-  // single request this large (~15k historical Senate terms + current terms).
+  // single request this large (tens of thousands of historical House + Senate
+  // terms, plus current terms).
   if (!error) {
     ({ error } = await supabase.from("terms").delete().not("id", "is", null));
   }
