@@ -262,18 +262,30 @@ rate limit and errored, workflow still showed green) and fixed with that explici
 so the job status is trustworthy without needing to cross-check `sync_logs` for a real
 failure. `districts` stays manual-only (redistricting is ~once/decade, per plan §6).
 **`legislators.bio_summary`/`photo_url` backfill runs on its own separate, much more frequent
-schedule** (`.github/workflows/legislator-bio-backfill.yml`, every 3 hours + manual
+schedule** (`.github/workflows/legislator-bio-backfill.yml`, every hour + manual
 `workflow_dispatch`) rather than riding along on the weekly sync — the population here (~12,700
-legislators, current + full House/Senate history) makes one full pass take multiple days even
-at the deliberately low concurrency Wikipedia's REST API needs (see `legislators.mjs`/
+legislators, current + full House/Senate history) makes one full pass take a while even at the
+deliberately low concurrency Wikipedia's REST API needs (see `legislators.mjs`/
 `_wikipedia.mjs` comments — going higher reliably produces more 429s, not fewer, same lesson
-`governor-history.mjs` already learned). Each run sets `LEGISLATORS_BACKFILL_ONLY=true`
-(skips resyncing `legislators`/`terms` from congress-legislators entirely — that stays on the
-weekly cadence — since the Wikipedia article title needed for the backfill comes from the same
-YAML fetch regardless) and `BACKFILL_BUDGET_MS` (20 min) so a run stops cleanly and picks up
-next time rather than trying to process the whole backlog in one sitting; self-healing via the
-same `bio_summary IS NULL` filter as everywhere else in this codebase, so a missed/overlapping
-run is harmless. `mapWithConcurrency` (`_wikipedia.mjs`) grew a `shouldStop` hook for this.
+`governor-history.mjs` already learned; cadence and per-run budget are the levers tuned instead,
+not concurrency). Each run sets `LEGISLATORS_BACKFILL_ONLY=true` (skips resyncing
+`legislators`/`terms` from congress-legislators entirely — that stays on the weekly cadence —
+since the Wikipedia article title needed for the backfill comes from the same YAML fetch
+regardless) and `BACKFILL_BUDGET_MS` (25 min, comfortably under the job's 32min
+`timeout-minutes`) so a run stops cleanly and picks up next time rather than trying to process
+the whole backlog in one sitting; self-healing via the same `bio_summary IS NULL` filter as
+everywhere else in this codebase. A `concurrency: legislator-bio-backfill` group queues
+(doesn't cancel) an overlapping run rather than letting two runs process the same
+still-null rows at once — cheap insurance once the cadence got tight enough (hourly, ~25min
+runs) for a slow run to genuinely butt up against the next scheduled one.
+`mapWithConcurrency` (`_wikipedia.mjs`) grew a `shouldStop` hook for this.
+**Tuned from one real run's numbers, not guessed**: a manual trigger (used to confirm the
+workflow itself was healthy after its `schedule` trigger mysteriously never fired on its own in
+GitHub Actions for 8+ hours after being added — a known GitHub platform flakiness, not a config
+bug; confirmed by manually dispatching it and watching it run cleanly) processed 255/12,322
+people in 20 minutes with only 2 failures, both transient 429s correctly left for the next run.
+At the original 3-hourly/20min settings that was ~6 days to clear the backlog; hourly + 25min
+cuts that to under 2 days.
 **A real hang was hit and fixed building this**: `withHardTimeout` (`_wikipedia.mjs`) went
 through two broken versions before converging — v1 raced a promise against a timer but never
 cancelled the original work, so abandoned retry chains piled up and progressively stalled later

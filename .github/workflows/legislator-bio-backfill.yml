@@ -12,21 +12,41 @@ name: Legislator bio/photo backfill
 # hours doesn't repeatedly churn the 45k-row terms table for no reason —
 # that stays on sync.yml's weekly cadence). Self-healing/idempotent by
 # design, so a missed or overlapping run is harmless.
+#
+# Cadence/budget tuned from a real run's numbers, not guessed: a manual
+# trigger processed 255 people in a 20-minute budget with only 2 failures
+# (both transient 429s, both correctly left for the next run to retry —
+# see legislators.mjs's `bio_summary IS NULL` re-query). At the original
+# every-3-hours/20-min settings that's ~6 days to clear the backlog;
+# hourly + a slightly longer budget cuts that to under 2 days — this
+# scales cadence and budget, NOT concurrency, which is the one lever
+# already proven to make things worse, not better, if pushed further.
 on:
   schedule:
-    - cron: "0 */3 * * *" # every 3 hours
+    - cron: "0 * * * *" # every hour
   workflow_dispatch: {} # allow an on-demand run from the Actions tab
+
+# Hourly with a ~25min budget leaves less slack than the old 3-hourly/20min
+# pairing — if a run ever runs long, the next hourly trigger could
+# otherwise start while the previous one is still finishing, and both
+# would query/process the same bio_summary IS NULL set at once (wasted
+# duplicate work, not incorrect, since updates are idempotent — but still
+# worth avoiding). Queues instead of overlapping; doesn't cancel an
+# in-progress run's work.
+concurrency:
+  group: legislator-bio-backfill
+  cancel-in-progress: false
 
 jobs:
   backfill:
     runs-on: ubuntu-latest
-    timeout-minutes: 30 # safety margin above BACKFILL_BUDGET_MS below
+    timeout-minutes: 32 # safety margin above BACKFILL_BUDGET_MS below
     env:
       NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
       SYNC_TRIGGERED_BY: cron
       LEGISLATORS_BACKFILL_ONLY: "true"
-      BACKFILL_BUDGET_MS: "1200000" # 20 minutes
+      BACKFILL_BUDGET_MS: "1500000" # 25 minutes
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
