@@ -136,6 +136,7 @@ async function main() {
   const CHUNK_SIZE = 1000;
   for (let i = 0; !error && i < terms.length; i += CHUNK_SIZE) {
     ({ error } = await supabase.from("terms").insert(terms.slice(i, i + CHUNK_SIZE)));
+    console.log(`Inserted terms ${Math.min(i + CHUNK_SIZE, terms.length)}/${terms.length}`);
   }
 
   await logSync(supabase, {

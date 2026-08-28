@@ -170,8 +170,9 @@ function determineStatus(fields, candidates) {
 
 async function collectRaces(office, category, parseStateFromTitle, stateNameToAbbr) {
   const titles = await fetchCategoryMembers(category);
+  console.log(`${office}: ${titles.length} candidate pages in "${category}"`);
   const races = [];
-  for (const title of titles) {
+  for (const [i, title] of titles.entries()) {
     const stateName = parseStateFromTitle(title);
     if (!stateName) continue; // the category's own overview page, not a per-state race
     const stateAbbr = stateNameToAbbr.get(stateName);
@@ -192,6 +193,7 @@ async function collectRaces(office, category, parseStateFromTitle, stateNameToAb
     const candidates = extractCandidates(fields);
     const { status, winnerIndex } = determineStatus(fields, candidates);
     races.push({ office, state_id: stateAbbr, status, candidates, winnerIndex, title });
+    console.log(`[${office} ${i + 1}/${titles.length}] ${stateAbbr}: ${status}`);
     await sleep(1000);
   }
   return races;

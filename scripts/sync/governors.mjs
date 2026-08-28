@@ -127,7 +127,7 @@ async function main() {
   // Sequential with a small delay — OpenStates' free tier allows ~10 req/sec,
   // 50 states in ~50 requests comfortably clears that without needing
   // concurrency limiting.
-  for (const abbr of STATE_ABBRS) {
+  for (const [i, abbr] of STATE_ABBRS.entries()) {
     const executives = await fetchExecutives(abbr);
     const governor = executives.find((p) => p.current_role?.title === "Governor");
     if (governor) {
@@ -137,6 +137,7 @@ async function main() {
     } else {
       gaps.push(abbr);
     }
+    console.log(`[${i + 1}/${STATE_ABBRS.length}] ${abbr}${governor ? "" : GOVERNOR_OVERRIDES[abbr] ? " (override)" : " (gap)"}`);
     await sleep(1000);
   }
 
