@@ -90,7 +90,7 @@ function buildLegislator(person) {
   };
 }
 
-function buildTerms(bioguideId, rawTerms, today, { onlySenate }) {
+function buildTerms(bioguideId, rawTerms, today, syncedAt, { onlySenate }) {
   return rawTerms
     .filter((term) => (!onlySenate || term.type === "sen") && VALID_STATE_IDS.has(term.state))
     .map((term) => ({
@@ -102,6 +102,7 @@ function buildTerms(bioguideId, rawTerms, today, { onlySenate }) {
       start_date: term.start,
       end_date: term.end,
       is_current: term.start <= today && today <= term.end,
+      last_synced_at: syncedAt,
     }));
 }
 
@@ -301,7 +302,9 @@ async function main() {
     if (!BACKFILL_ONLY) {
       keepExistingOrGuessedPhoto(legislator);
       legislators.push(legislator);
-      terms.push(...buildTerms(legislator.id, person.terms ?? [], today, { onlySenate: false }));
+      terms.push(
+        ...buildTerms(legislator.id, person.terms ?? [], today, startedAt, { onlySenate: false }),
+      );
     }
     if (person.id?.wikipedia) wikipediaTitleByBioguideId.set(legislator.id, person.id.wikipedia);
   }
@@ -309,7 +312,7 @@ async function main() {
   for (const person of historical) {
     const legislator = buildLegislator(person);
     if (!legislator || seenIds.has(legislator.id)) continue; // current takes precedence
-    const historicalTerms = buildTerms(legislator.id, person.terms ?? [], today, {
+    const historicalTerms = buildTerms(legislator.id, person.terms ?? [], today, startedAt, {
       onlySenate: false,
     });
     if (!BACKFILL_ONLY) {
@@ -333,18 +336,36 @@ async function main() {
     error = legislatorsResult.error;
 
     // terms has no natural stable key to upsert against across runs (unlike
-    // legislators, keyed on bioguide_id) — this script owns the whole table's
-    // contents, so a full resync clears it first rather than accumulating
-    // duplicates. Chunked inserts because Supabase's REST endpoint rejects a
-    // single request this large (tens of thousands of historical House + Senate
-    // terms, plus current terms).
-    if (!error) {
-      ({ error } = await supabase.from("terms").delete().not("id", "is", null));
-    }
+    // legislators, keyed on bioguide_id) — this script still owns the whole
+    // table's contents, so a full resync fully replaces it each run, but
+    // inserts the fresh set FIRST and only removes the previous run's rows
+    // after, rather than the reverse. Confirmed live: delete-then-insert
+    // left `terms` genuinely incomplete (not just stale) if any chunk
+    // failed partway through — everything already deleted, only some
+    // chunks re-inserted. Same reorder races_2026.mjs went through for the
+    // same reason. Chunked inserts because Supabase's REST endpoint
+    // rejects a single request this large (tens of thousands of
+    // historical House + Senate terms, plus current terms).
     const CHUNK_SIZE = 1000;
     for (let i = 0; !error && i < terms.length; i += CHUNK_SIZE) {
       ({ error } = await supabase.from("terms").insert(terms.slice(i, i + CHUNK_SIZE)));
       console.log(`Inserted terms ${Math.min(i + CHUNK_SIZE, terms.length)}/${terms.length}`);
+    }
+    if (!error) {
+      // Every fresh chunk above succeeded — remove the previous run's rows.
+      // `.is.null` covers any pre-existing row from before this column
+      // existed.
+      ({ error } = await supabase
+        .from("terms")
+        .delete()
+        .or(`last_synced_at.lt.${startedAt},last_synced_at.is.null`));
+    } else {
+      // Something failed partway through — roll back only the partial
+      // chunks this run inserted (all stamped >= startedAt), so the
+      // previous run's complete data is left exactly as it was rather
+      // than mixed with an incomplete new set. The run still reports as
+      // failed below.
+      await supabase.from("terms").delete().gte("last_synced_at", startedAt);
     }
   }
 

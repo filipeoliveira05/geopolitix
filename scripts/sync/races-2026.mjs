@@ -323,10 +323,20 @@ async function main() {
 
   const supabase = supabaseAdmin();
 
-  // races_2026.id has no natural key (unlike legislators/governors) — full
-  // replace each run. race_candidates cascade-deletes via its FK, so
-  // clearing races_2026 is enough.
-  let { error } = await supabase.from("races_2026").delete().not("id", "is", null);
+  // races_2026.id has no natural key (unlike legislators/governors) to
+  // upsert against, so this still fully replaces the table's contents each
+  // run — but inserts the fresh set FIRST and only removes old rows after,
+  // rather than the reverse. Confirmed live: the original delete-then-insert
+  // order left races_2026 (and race_candidates via cascade) genuinely
+  // incomplete, not just stale, if any single race's insert failed partway
+  // through — everything already deleted, only some of the fresh races
+  // re-inserted. Same reorder governors.mjs went through for the same
+  // reason. `last_synced_at` (already on every row) is the cutover marker:
+  // on success, anything older than `startedAt` is the previous run's data
+  // and gets removed; on failure, it's this run's own partial rows (all
+  // >= startedAt) that get rolled back instead, leaving the previous
+  // run's complete data untouched.
+  let error = null;
 
   for (const race of races) {
     if (error) break;
@@ -373,6 +383,23 @@ async function main() {
         .eq("id", raceRow.id));
       if (error) break;
     }
+  }
+
+  if (!error) {
+    // Every fresh race above succeeded — remove the previous run's rows
+    // (race_candidates cascade-deletes via its FK, so clearing races_2026
+    // is enough). `.is.null` covers any pre-existing row from before this
+    // column existed.
+    ({ error } = await supabase
+      .from("races_2026")
+      .delete()
+      .or(`last_synced_at.lt.${startedAt},last_synced_at.is.null`));
+  } else {
+    // Something failed partway through — roll back only the partial rows
+    // this run inserted (all stamped >= startedAt), so the previous run's
+    // complete data is left exactly as it was rather than mixed with an
+    // incomplete new set. The run still reports as failed below.
+    await supabase.from("races_2026").delete().gte("last_synced_at", startedAt);
   }
 
   await logSync(supabase, {

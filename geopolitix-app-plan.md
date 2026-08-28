@@ -144,7 +144,11 @@ A legislator's term — full historical record without duplicating `legislators`
   only; populated independently of `district_id` — nothing populates the FK itself yet, even
   though `districts` now exists; `getCurrentRepsByDistrictKey()` still joins on
   `district_number`) · `party` (nullable — some historical terms predate parties) ·
-  `start_date` · `end_date` (nullable if current) · `is_current` (bool)
+  `start_date` · `end_date` (nullable if current) · `is_current` (bool) · `last_synced_at`
+  (the cutover marker `legislators.mjs` cleans up against — full resync inserts the fresh
+  set first, only removing the previous run's rows once every new row succeeds, rather than
+  deleting first; a chunk failing partway through used to leave this table genuinely
+  incomplete, not just stale).
 
 ### `districts`
 - `id` (PK, text — the Census GEOID, e.g. `"4801"` for Texas's 1st district; same natural-key
@@ -188,11 +192,15 @@ governors predate OpenStates entirely and have no `legislators.id`-style natural
   people, 99.96%).
 
 ### `races_2026`
-Senate + Governors only in the MVP (§3).
+Senate + Governor + House (§3) — House added after the MVP once its different Wikipedia page
+structure (one page per state, not per race) was scoped.
 - `id` (PK) · `office` (`house`|`senate`|`governor`) · `state_id` (FK) · `district_id` (FK,
-  nullable) · `candidates` — a related table `race_candidates` (`race_id` FK, `name`, `party`,
-  `is_incumbent`), not a JSON array, so a winner can reference a real row · `status`
-  (`open`|`called`) · `winner_candidate_id` (FK → `race_candidates`, nullable) · `last_synced_at`
+  nullable — unused by anything, same as `terms.district_id`) · `district_number` (plain int,
+  nullable — House-only, same convention as `terms.district_number`) · `candidates` — a related
+  table `race_candidates` (`race_id` FK, `name`, `party`, `is_incumbent`), not a JSON array, so
+  a winner can reference a real row · `status` (`open`|`called`) · `winner_candidate_id`
+  (FK → `race_candidates`, nullable) · `last_synced_at` (also the cutover marker
+  `races-2026.mjs` cleans up against — see `terms.last_synced_at`'s note above for why)
 
 ### `cities`
 - `id` (PK) · `name` · `state_id` (FK) · `population` · `is_capital` (bool) · `latitude`, `longitude`

@@ -120,7 +120,21 @@ Build order: **Phase 1 politics → Phase 2 geography → Phase 3 quiz.** Don't 
   California's 1st congressional district special election") — none of those titles match the
   "...elections? in `<State>`" shape, so no separate exclusion list was needed; confirmed live,
   506 races synced (35 Senate, 36 Governor, 435 House) with only territory-page skips as
-  warnings.
+  warnings. **Syncs insert-then-cleanup, not delete-then-insert** — same reorder as
+  `governors.mjs` (§3, above) and for the same class of bug: the original delete-all-then-
+  insert-one-race-at-a-time order left `races_2026`/`race_candidates` genuinely incomplete
+  (not just stale) if any single race's insert failed partway through. Now every fresh race
+  is inserted first (stamped with this run's `last_synced_at`); only once the whole set
+  succeeds does a cleanup step remove rows stamped before this run — and if something fails
+  partway instead, only this run's own partial rows (all stamped at/after this run's start)
+  get rolled back, leaving the previous run's complete data untouched. Verified live against
+  the real table (not just reasoned through): inserted dummy rows with an old timestamp, a
+  null timestamp (covers any pre-existing row from before this column existed), and a
+  future timestamp, confirmed each filter path caught exactly the right one.
+- **`legislators.mjs`'s `terms` sync got the identical insert-then-cleanup reorder**, for the
+  identical reason — chunked delete-then-insert (45k+ rows) left `terms` incomplete on a
+  chunk failure partway through. Needed a new `terms.last_synced_at` column first (`terms`,
+  unlike `races_2026`, never had one) to have a cutover marker to clean up against.
 - **Not built yet:** geography/sports sync (Phase 2). Source research is in plan §3.
 - **House terms/races carry `district_number` (plain int) separately from `district_id`** (FK
   into `districts` — still unused by anything, on both `terms` and `races_2026`; the map,
