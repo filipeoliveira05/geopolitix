@@ -78,6 +78,13 @@ export type GovernorTerm = {
   startDate: string | null;
   endDate: string | null;
   isCurrent: boolean;
+  // Per-person facts (identical across a person's own multiple term rows,
+  // if any), from the Wikipedia REST API — not Wikidata's own P18/description,
+  // which read noticeably thinner. Only ever populated for historical
+  // governors; a current officeholder's profile still reads Governor.photoUrl/
+  // bioSummary (OpenStates) instead.
+  photoUrl: string | null;
+  bioSummary: string | null;
 };
 
 type GovernorTermRow = {
@@ -90,6 +97,8 @@ type GovernorTermRow = {
   start_date: string | null;
   end_date: string | null;
   is_current: boolean;
+  photo_url: string | null;
+  bio_summary: string | null;
 };
 
 function termFromRow(row: GovernorTermRow): GovernorTerm {
@@ -103,6 +112,8 @@ function termFromRow(row: GovernorTermRow): GovernorTerm {
     startDate: row.start_date,
     endDate: row.end_date,
     isCurrent: row.is_current,
+    photoUrl: row.photo_url,
+    bioSummary: row.bio_summary,
   };
 }
 
@@ -134,4 +145,23 @@ export async function getTermsForGovernor(
   const current = stateHistory.find((t) => t.governorId === governorId);
   if (!current) return [];
   return stateHistory.filter((t) => t.wikidataPersonId === current.wikidataPersonId);
+}
+
+/**
+ * Every term served by one person, looked up directly by their
+ * `wikidata_person_id` — for /governor/[id] when `id` isn't a current
+ * `governors.id` (getGovernorById returns null), so the route falls back to
+ * treating it as a historical governor's Wikidata id instead. Unlike
+ * getTermsForGovernor, doesn't need a state up front (queries across all
+ * states) since the caller doesn't know which one yet at this point.
+ */
+export async function getTermsForPerson(wikidataPersonId: string): Promise<GovernorTerm[]> {
+  const { data, error } = await supabase
+    .from("governor_terms")
+    .select("*")
+    .eq("wikidata_person_id", wikidataPersonId);
+  if (error) throw error;
+  return (data as unknown as GovernorTermRow[])
+    .map(termFromRow)
+    .sort((a, b) => (b.startDate ?? "").localeCompare(a.startDate ?? ""));
 }

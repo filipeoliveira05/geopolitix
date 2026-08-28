@@ -182,13 +182,12 @@ function HistoryTab({ senateHistory, governorHistory }: StateTabsProps) {
                       )}
                     </td>
                     <td className="py-1.5 pr-3 align-middle">
-                      {term.governorId ? (
-                        <Link href={`/governor/${term.governorId}`} className="hover:underline">
-                          {term.name}
-                        </Link>
-                      ) : (
-                        term.name
-                      )}
+                      <Link
+                        href={`/governor/${term.governorId ?? term.wikidataPersonId}`}
+                        className="hover:underline"
+                      >
+                        {term.name}
+                      </Link>
                     </td>
                     <td className="w-px py-1.5 pr-3 align-middle whitespace-nowrap">
                       <PartyBadge party={term.party} />

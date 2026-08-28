@@ -40,8 +40,30 @@ function sleep(ms) {
 // theoretical.
 const RETRYABLE_STATUSES = new Set([429, 502, 503, 504]);
 
+// No timeout at all let a hung connection block a run indefinitely with
+// zero progress and zero error — hit for real (a run sat with 0 new log
+// lines and flat CPU time for 40+ minutes before being killed by hand).
+// AbortSignal.timeout() turns that into a retryable error instead.
+const FETCH_TIMEOUT_MS = 30_000;
+
 async function fetchJson(url, headers = {}, attempt = 1) {
-  const res = await fetch(url, { headers: { "User-Agent": USER_AGENT, ...headers } });
+  let res;
+  try {
+    res = await fetch(url, {
+      headers: { "User-Agent": USER_AGENT, ...headers },
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    });
+  } catch (err) {
+    // A thrown fetch (DNS failure, connection reset — "TypeError: fetch
+    // failed" wrapping a SocketError, hit for real mid-run against the
+    // query service; or now a timeout abort) never reaches a status code
+    // at all, so it needs its own retry path alongside the below.
+    if (attempt <= 5) {
+      await sleep(3000 * attempt);
+      return fetchJson(url, headers, attempt + 1);
+    }
+    throw err;
+  }
   if (RETRYABLE_STATUSES.has(res.status) && attempt <= 5) {
     await sleep(3000 * attempt);
     return fetchJson(url, headers, attempt + 1);
@@ -263,6 +285,181 @@ async function syncState(supabase, state, currentGovernorsByState, warnings) {
   return rows.length;
 }
 
+// Wikidata's own P18 (image)/description are one option for backfilling
+// /governor/[id] profile data for historical governors, but the Wikipedia
+// REST API's page-summary endpoint gives a real one-paragraph bio *and* a
+// photo thumbnail in one call — confirmed live to read noticeably better
+// than Wikidata's terse one-line description (e.g. "American politician
+// (1812-1883)"), and it's the same style of API races-2026.mjs already
+// uses. Needs the actual enwiki article title, not a guess from `name` —
+// confirmed live that guessing breaks on disambiguated titles (Wikidata
+// Q542663's "Edward Clark" is actually "Edward_Clark_(governor)").
+const WIKIPEDIA_SUMMARY_API = "https://en.wikipedia.org/api/rest_v1/page/summary";
+
+async function fetchSitelinkTitles(personQids) {
+  const titleByPerson = new Map();
+  const batches = chunk(personQids, 25);
+  for (const [i, batch] of batches.entries()) {
+    if (i > 0 && i % 20 === 0) console.log(`  sitelink batch ${i}/${batches.length}`);
+    const values = batch.map((q) => `wd:${q}`).join(" ");
+    const query = `SELECT ?person ?article WHERE {
+  VALUES ?person { ${values} }
+  OPTIONAL {
+    ?article schema:about ?person ;
+             schema:isPartOf <https://en.wikipedia.org/> .
+  }
+}`;
+    const rows = await sparql(query);
+    for (const r of rows) {
+      if (!r.article) continue;
+      const personQid = qidFromUri(r.person.value);
+      const title = decodeURIComponent(r.article.value.replace("https://en.wikipedia.org/wiki/", ""));
+      titleByPerson.set(personQid, title);
+    }
+  }
+  return titleByPerson;
+}
+
+async function fetchWikipediaSummary(title, attempt = 1) {
+  const url = `${WIKIPEDIA_SUMMARY_API}/${encodeURIComponent(title.replace(/ /g, "_"))}`;
+  // A higher retry ceiling than the other fetchers — this one genuinely hit
+  // a real 429 under sustained concurrent load across ~2,288 requests, so
+  // it needs more room to back off and recover rather than give up early.
+  const maxAttempts = 8;
+  let res;
+  try {
+    res = await fetch(url, {
+      headers: { "User-Agent": USER_AGENT, Accept: "application/json" },
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    });
+  } catch (err) {
+    if (attempt <= maxAttempts) {
+      await sleep(2000 * attempt);
+      return fetchWikipediaSummary(title, attempt + 1);
+    }
+    throw err;
+  }
+  if (res.status === 404) return { photoUrl: null, bioSummary: null };
+  if (RETRYABLE_STATUSES.has(res.status) && attempt <= maxAttempts) {
+    await sleep(2000 * attempt);
+    return fetchWikipediaSummary(title, attempt + 1);
+  }
+  if (!res.ok) throw new Error(`Wikipedia summary failed: ${res.status} ${res.statusText} (${title})`);
+  const data = await res.json();
+  return {
+    photoUrl: data.thumbnail?.source ?? null,
+    bioSummary: data.extract ?? null,
+  };
+}
+
+/**
+ * A short concurrency pool — 2,288 distinct people, one Wikipedia REST call
+ * each, would take too long fully sequential and is unnecessary load fully
+ * parallel. `limit` concurrent in-flight requests at a time.
+ */
+async function mapWithConcurrency(items, limit, fn) {
+  const results = new Array(items.length);
+  let next = 0;
+  async function worker() {
+    while (next < items.length) {
+      const i = next++;
+      results[i] = await fn(items[i], i);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return results;
+}
+
+/**
+ * Backfills photo_url/bio_summary for every distinct person already synced
+ * into governor_terms, from the Wikipedia REST API — run as a second pass
+ * after all states' term rows exist, so it only ever fetches each real
+ * person once regardless of how many terms/states they appear under.
+ */
+// Wikidata's SPARQL label service falls back to emitting the bare entity
+// id (e.g. "Q651820") as if it were the label when a person genuinely has
+// no rdfs:label in any fallback language — confirmed live via Wikidata's
+// own raw entity JSON: Bill Owens (CO governor 1999-2007) has `labels.en:
+// null` despite a full, real Wikipedia article. Not a fetch glitch, a real
+// (if rare) gap in Wikidata itself — 3 of 2,288 people hit this.
+const BARE_QID_PATTERN = /^Q\d+$/;
+
+/** "Bill_Owens_(Colorado_politician)" -> "Bill Owens" */
+function cleanNameFromTitle(title) {
+  return title.replace(/_/g, " ").replace(/\s*\([^)]*\)\s*$/, "").trim();
+}
+
+async function backfillBios(supabase, warnings) {
+  // Two separate criteria for "still needs work", merged: missing a bio
+  // (filters on bio_summary, not photo_url — confirmed live that ~32
+  // people legitimately have no Wikipedia thumbnail but do have a real
+  // extract, and filtering on photo_url would re-select and re-fetch them
+  // forever), OR a name that's really just the bare Wikidata id (self-heals
+  // this on every future run, not just a one-off manual fix, in case more
+  // cases turn up later).
+  const { data: missingBio, error: missingBioError } = await supabase
+    .from("governor_terms")
+    .select("wikidata_person_id, name")
+    .is("bio_summary", null);
+  if (missingBioError) throw missingBioError;
+
+  const { data: badName, error: badNameError } = await supabase
+    .from("governor_terms")
+    .select("wikidata_person_id, name")
+    .filter("name", "match", "^Q[0-9]+$");
+  if (badNameError) throw badNameError;
+
+  const people = [...new Map([...missingBio, ...badName].map((r) => [r.wikidata_person_id, r.name])).entries()];
+  if (people.length === 0) return 0;
+  console.log(`Backfilling ${people.length} people — resolving Wikipedia article titles...`);
+
+  const titleByPerson = await fetchSitelinkTitles(people.map(([qid]) => qid));
+  console.log(`Resolved ${titleByPerson.size}/${people.length} article titles — fetching summaries...`);
+
+  let updated = 0;
+  let processed = 0;
+  // Concurrency 8, then 3, both still produced sustained 429s from
+  // Wikipedia's REST API across ~900+ people in real runs (confirmed: 66
+  // failures even at concurrency 3 with an 8-attempt retry budget) —
+  // dialed back further to 2. A single person's fetch failing (after its
+  // own retries) is logged and skipped rather than allowed to crash the
+  // entire backfill; re-running the script only re-attempts whoever is
+  // still missing photo_url/bio_summary, so this converges over reruns.
+  await mapWithConcurrency(people, 2, async ([qid, name]) => {
+    const title = titleByPerson.get(qid);
+    if (!title) {
+      warnings.push(`bio backfill: no Wikipedia article found for ${name} (${qid})`);
+      processed++;
+      return;
+    }
+    let photoUrl;
+    let bioSummary;
+    try {
+      ({ photoUrl, bioSummary } = await fetchWikipediaSummary(title));
+    } catch (err) {
+      warnings.push(`bio backfill: fetch failed for ${name} (${qid}) — ${err.message}`);
+      processed++;
+      return;
+    }
+    const updates = { photo_url: photoUrl, bio_summary: bioSummary };
+    if (BARE_QID_PATTERN.test(name)) updates.name = cleanNameFromTitle(title);
+    const { error: updateError } = await supabase
+      .from("governor_terms")
+      .update(updates)
+      .eq("wikidata_person_id", qid);
+    if (updateError) {
+      warnings.push(`bio backfill: update failed for ${name} (${qid}) — ${updateError.message}`);
+      processed++;
+      return;
+    }
+    updated++;
+    processed++;
+    if (processed % 100 === 0) console.log(`  ${processed}/${people.length} processed`);
+  });
+
+  return updated;
+}
+
 async function main() {
   const supabase = supabaseAdmin();
   const startedAt = new Date().toISOString();
@@ -281,16 +478,25 @@ async function main() {
 
   const warnings = [];
   let totalRows = 0;
+  let bioCount = 0;
   let error = null;
 
   try {
-    for (const state of states) {
+    for (const [i, state] of states.entries()) {
+      // Per-state progress — everything else (warnings, the final summary)
+      // only prints once the whole run finishes, so a slow or stuck run
+      // was otherwise silent for its entire duration with no way to tell
+      // which state or phase it was on.
+      const startedState = Date.now();
       const count = await syncState(supabase, state, currentGovernorsByState, warnings);
       totalRows += count;
+      console.log(`[${i + 1}/${states.length}] ${state.id}: ${count} terms (${Date.now() - startedState}ms)`);
       // Courtesy pacing between states — no documented Wikidata rate limit,
       // but 3 requests/state x 50 states deserves some restraint anyway.
       await sleep(500);
     }
+    console.log("States done — backfilling photo/bio for every distinct person...");
+    bioCount = await backfillBios(supabase, warnings);
   } catch (err) {
     error = err;
   }
@@ -314,7 +520,9 @@ async function main() {
   });
   if (error) throw error;
 
-  console.log(`Synced ${totalRows} governor terms across ${states.length} states (${warnings.length} warning(s)).`);
+  console.log(
+    `Synced ${totalRows} governor terms across ${states.length} states, backfilled bio/photo for ${bioCount} people (${warnings.length} warning(s)).`,
+  );
 }
 
 main().catch((err) => {

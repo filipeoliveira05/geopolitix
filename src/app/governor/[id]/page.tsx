@@ -3,24 +3,75 @@ import Image from "next/image";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { getStateName } from "@/lib/states";
-import { getGovernorById, getTermsForGovernor, governorFullName } from "@/lib/governors-data";
+import {
+  getGovernorById,
+  getTermsForGovernor,
+  getTermsForPerson,
+  governorFullName,
+  type GovernorTerm,
+} from "@/lib/governors-data";
 import { PartyBadge } from "@/components/PartyBadge";
+
+type Profile = {
+  name: string;
+  party: string | null;
+  photoUrl: string | null;
+  bioSummary: string | null;
+  stateId: string;
+  terms: GovernorTerm[];
+};
+
+/**
+ * `id` is either a current officeholder's `governors.id` (OpenStates) or,
+ * falling back, a historical governor's `wikidata_person_id` — the two id
+ * formats don't collide, so trying the current lookup first and falling
+ * back is safe. A current officeholder's own photo/bio still come from
+ * `governors` (OpenStates) rather than `governor_terms`, since only
+ * historical rows get backfilled from Wikipedia — see governors-data.ts.
+ */
+async function loadProfile(id: string): Promise<Profile | null> {
+  const governor = await getGovernorById(id);
+  if (governor) {
+    const terms = await getTermsForGovernor(id, governor.stateId);
+    return {
+      name: governorFullName(governor),
+      party: governor.party,
+      photoUrl: governor.photoUrl,
+      bioSummary: governor.bioSummary,
+      stateId: governor.stateId,
+      terms,
+    };
+  }
+
+  const terms = await getTermsForPerson(id);
+  if (terms.length === 0) return null;
+  // Terms are newest-first — the most recent one best represents "current"
+  // party/state for someone who may have served non-consecutive terms.
+  const [mostRecent] = terms;
+  return {
+    name: mostRecent.name,
+    party: mostRecent.party,
+    photoUrl: mostRecent.photoUrl,
+    bioSummary: mostRecent.bioSummary,
+    stateId: mostRecent.stateId,
+    terms,
+  };
+}
 
 export async function generateMetadata(props: PageProps<"/governor/[id]">): Promise<Metadata> {
   const { id } = await props.params;
-  const governor = await getGovernorById(id);
+  const profile = await loadProfile(id);
   return {
-    title: governor ? `${governorFullName(governor)} — Geopolitix` : "Geopolitix",
+    title: profile ? `${profile.name} — Geopolitix` : "Geopolitix",
   };
 }
 
 export default async function GovernorPage(props: PageProps<"/governor/[id]">) {
   const { id } = await props.params;
-  const governor = await getGovernorById(id);
-  if (!governor) notFound();
+  const profile = await loadProfile(id);
+  if (!profile) notFound();
 
-  const stateName = getStateName(governor.stateId) ?? governor.stateId;
-  const terms = await getTermsForGovernor(id, governor.stateId);
+  const stateName = getStateName(profile.stateId) ?? profile.stateId;
 
   return (
     <div className="mx-auto w-full max-w-3xl flex-1 p-6 sm:p-10">
@@ -32,9 +83,9 @@ export default async function GovernorPage(props: PageProps<"/governor/[id]">) {
       </Link>
 
       <div className="mt-2 flex items-center gap-4">
-        {governor.photoUrl && (
+        {profile.photoUrl && (
           <Image
-            src={governor.photoUrl}
+            src={profile.photoUrl}
             alt=""
             width={80}
             height={80}
@@ -43,10 +94,10 @@ export default async function GovernorPage(props: PageProps<"/governor/[id]">) {
           />
         )}
         <div>
-          <h1 className="text-3xl font-semibold">{governorFullName(governor)}</h1>
+          <h1 className="text-3xl font-semibold">{profile.name}</h1>
           <p className="text-sm text-zinc-500 dark:text-zinc-400">
-            <PartyBadge party={governor.party} /> Governor of{" "}
-            <Link href={`/state/${governor.stateId}`} className="hover:underline">
+            <PartyBadge party={profile.party} /> Governor of{" "}
+            <Link href={`/state/${profile.stateId}`} className="hover:underline">
               {stateName}
             </Link>
           </p>
@@ -58,7 +109,7 @@ export default async function GovernorPage(props: PageProps<"/governor/[id]">) {
           Biography
         </h2>
         <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-          {governor.bioSummary ?? "Not synced yet."}
+          {profile.bioSummary ?? "Not synced yet."}
         </p>
       </div>
 
@@ -66,11 +117,11 @@ export default async function GovernorPage(props: PageProps<"/governor/[id]">) {
         <h2 className="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
           Term history
         </h2>
-        {terms.length > 0 ? (
+        {profile.terms.length > 0 ? (
           <div className="mt-1 overflow-x-auto overflow-y-hidden">
             <table className="w-full min-w-[26rem] border-collapse text-sm">
               <tbody>
-                {terms.map((term) => (
+                {profile.terms.map((term) => (
                   <tr
                     key={term.id}
                     className="border-b border-zinc-100 last:border-0 dark:border-zinc-800"
@@ -83,7 +134,9 @@ export default async function GovernorPage(props: PageProps<"/governor/[id]">) {
                         />
                       )}
                     </td>
-                    <td className="py-1.5 pr-3 align-middle">Governor of {stateName}</td>
+                    <td className="py-1.5 pr-3 align-middle">
+                      Governor of {getStateName(term.stateId) ?? term.stateId}
+                    </td>
                     <td className="w-px py-1.5 pr-3 align-middle whitespace-nowrap">
                       <PartyBadge party={term.party} />
                     </td>

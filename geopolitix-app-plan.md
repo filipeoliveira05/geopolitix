@@ -165,7 +165,11 @@ governors predate OpenStates entirely and have no `legislators.id`-style natural
   `wikidata_person_id` · `name` · `party` (nullable — a real, if uncommon, Wikidata gap for
   early-19th-century figures) · `start_date`, `end_date` (both nullable — real Wikidata gaps,
   verified to vary a lot by state, e.g. Mississippi ~27% of rows missing a start date) ·
-  `is_current`.
+  `is_current` · `photo_url`, `bio_summary` (both nullable, from the Wikipedia REST API, not
+  Wikidata's own P18/description — added after the initial history sync, once photo/bio
+  feasibility for historical governors' own `/governor/[id]` profile pages was confirmed live
+  at 97-100% coverage across three sampled states, then built at full scale: 2,287/2,288
+  people, 99.96%).
 
 ### `races_2026`
 Senate + Governors only in the MVP (§3).

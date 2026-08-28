@@ -56,6 +56,27 @@ Build order: **Phase 1 politics → Phase 2 geography → Phase 3 quiz.** Don't 
   statement for the same person/term (confirmed: NJ's A. Harry Moore), which crashes a
   same-batch upsert with "ON CONFLICT DO UPDATE command cannot affect row a second time" unless
   de-duped by `(state_id, wikidata_person_id, start_date)` first.
+  **Second pass (`backfillBios()`) fills `photo_url`/`bio_summary`** for every distinct person
+  from the Wikipedia REST API (`/api/rest_v1/page/summary/<title>`), not Wikidata's own
+  P18/description — confirmed live to read noticeably better, e.g. a real sentence vs.
+  Wikidata's "American politician (1812-1883)". Coverage confirmed live across the *entire*
+  synced set, not sampled: 2,287/2,288 people (99.96%) — the one exception has no Wikipedia
+  article on Wikidata at all, a genuine permanent gap, not a bug. Filters on `bio_summary is
+  null` (not `photo_url`) to decide who still needs work — ~30 people legitimately have no
+  Wikipedia thumbnail but do have a real extract, and filtering on `photo_url` would re-fetch
+  them forever. Powers `/governor/[id]` for historical governors too (see below) — this is the
+  only place their photo/bio come from, since OpenStates only ever has current people.
+  **Real gotchas hit running this at full scale, not just the 3-state research spike:**
+  Wikipedia's REST API rate-limits under sustained concurrent load (429s survived 8 states at
+  concurrency 8, then more at concurrency 3 — settled on 2); a `fetch()` can hang with no
+  timeout and sit frozen indefinitely with zero progress/error (added `AbortSignal.timeout()`
+  after a real 40+-minute stall); and Wikidata's own SPARQL label service falls back to
+  emitting the bare entity id (e.g. `"Q651820"`) as the "label" when a person genuinely has no
+  English label at all — confirmed via Wikidata's raw entity JSON showing `labels.en: null` for
+  Bill Owens (CO governor 1999-2007) despite a full Wikipedia article existing. `backfillBios()`
+  detects and repairs this (`BARE_QID_PATTERN`) using the already-resolved Wikipedia article
+  title, and self-heals any future occurrence via a `name ~ '^Q[0-9]+$'` filter, not just a
+  one-off fix for the 3 people found this way so far.
 - **`districts` migrated, but geometry lives outside Postgres.** `sync:districts` writes two
   things: lightweight metadata rows (`id` = Census GEOID, `state_id`, `district_number`, no
   geometry) into the `districts` table, and the combined TopoJSON topology (~2.5MB, one blob
@@ -241,12 +262,17 @@ data automatically, so without this it would prerender once at build time and se
 data forever (caught before shipping, not after).
 
 **`/legislator/[id]`** and **`/governor/[id]`** (plan §5): photo, party, term history for one
-person — legislator term history from `terms`; governor term history from `governor_terms`
-(`getTermsForGovernor()`, matched via `wikidata_person_id` so a non-consecutive past term by
-the same person would also show, not just their current one). `/governor/[id]` itself only ever
-exists for the current officeholder (`governors.id`), so this page always shows at least one
-row; historical governors have no profile page of their own to link to — see the state page's
-History tab for the full per-state list. `id` is `legislators.id`
+person — legislator term history from `terms`. `/governor/[id]`'s `id` resolves two different
+ways (`loadProfile()`): a current officeholder's `governors.id` (OpenStates) first, falling
+back to treating `id` as a historical governor's `wikidata_person_id` if that lookup returns
+nothing — the two id formats never collide, so this fallback is safe. A current officeholder's
+photo/bio still come from `governors` (OpenStates, usually null for bio); a historical
+governor's come from `governor_terms` (Wikipedia-backfilled, see above — in practice richer,
+since OpenStates never provides a bio at all). Term history comes from `getTermsForGovernor()`
+(current) or `getTermsForPerson()` (historical), both matched via `wikidata_person_id` so a
+non-consecutive past term by the same person also shows, not just one term. `StateTabs.tsx`'s
+History tab links every governor row this way too, current or historical — same as Senate
+history already does for every senator. `id` is `legislators.id`
 (`bioguide_id`) / `governors.id` (OpenStates person id with its `"ocd-person/"` prefix stripped
 at sync time — the raw id contains a `/`, which broke the route; caught via a real 404 in
 browser verification, not assumed). Linked from senator/rep/governor names across
@@ -259,7 +285,8 @@ browser verification, not assumed). Linked from senator/rep/governor names acros
 - `governors` — current governor per state, from OpenStates v3 (`OPENSTATES_API_KEY` required).
   See the Data conventions gotchas above before re-running or modifying this one.
 - `governor_terms` — full governor history back to statehood, from Wikidata (2,426 rows across
-  50 states, no key). See the Data conventions gotchas above before re-running or modifying
+  50 states, no key), plus photo/bio for 2,287/2,288 distinct people (99.96%) from the
+  Wikipedia REST API. See the Data conventions gotchas above before re-running or modifying
   this one.
 - `races_2026`/`race_candidates` — Senate + Governor races, from Wikipedia (71 races, no key).
   See the Data conventions gotchas above before re-running or modifying this one.
