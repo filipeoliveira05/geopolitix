@@ -250,17 +250,27 @@ city?" Modes: by topic or mixed.
 
 Sync frequency is differentiated per table, not blanket — most political/geographic facts
 (who holds a seat, a state's capital) change on the order of weeks to years; only
-`races_2026` is genuinely time-sensitive as election day approaches. A manual refresh remains
-available for every table regardless of automatic cadence.
+`races_2026` is genuinely time-sensitive as election day approaches, and legislator bio/photo
+backfill needed its own much-tighter cadence purely to converge in reasonable time (§3). A
+manual refresh remains available for every table regardless of automatic cadence — either
+`npm run sync:<name>` locally, or a workflow's own "Run workflow" button on the GitHub Actions
+tab.
 
-| Job | Source | Suggested frequency | Populates |
+**Actual frequency, verified against the live workflow files** (not aspirational — this table
+previously listed several jobs at a frequency that was never implemented, and omitted two jobs
+entirely; corrected below):
+
+| Job | Source | Actual frequency | Populates |
 |---|---|---|---|
-| Sync legislators | unitedstates/congress-legislators | Weekly/biweekly | `legislators`, `terms` |
-| Sync governors | OpenStates API | Weekly/biweekly | `governors` |
-| Sync districts/geometry | Census cartographic boundary files | Manual only (~static) | `districts` |
-| Sync geography | Census Bureau API, Wikidata | Monthly | `states`, `cities` |
-| Sync sports | TheSportsDB API | Manual only (~static) | `sports_teams` |
-| Sync 2026 races (Senate + Governors) | Wikipedia infobox parsing | Weekly, daily near election day | `races_2026` |
+| Sync states (minimal seed) | `us-atlas` + `fips-to-abbr.json` | Weekly (`sync.yml`, rides along with the jobs below) | `states` (id/name only — see the geography row below for the rest) |
+| Sync legislators | unitedstates/congress-legislators | Weekly (`sync.yml`, Monday 06:00 UTC) | `legislators`, `terms` |
+| Sync legislator bio/photo backfill | Wikipedia REST API | **Hourly** — its own separate workflow (`legislator-bio-backfill.yml`), not the weekly one; the ~12,700-person population needs this much tighter cadence just to converge (§3) | `legislators.bio_summary`/`photo_url` |
+| Sync governors | OpenStates API | Weekly (`sync.yml`) | `governors` |
+| Sync governor history | Wikidata | Weekly (`sync.yml`, rides along with governors in the same run) | `governor_terms` |
+| Sync districts/geometry | Census cartographic boundary files | Manual only (~static, redistricting is ~once/decade) | `districts` |
+| Sync geography (population/capital/cities) | Census Bureau API, Wikidata | **Not built yet** (Phase 2) — suggested monthly once it exists | `states` (population/capital columns), `cities` |
+| Sync sports | TheSportsDB API | Not built yet (Phase 2) — manual only once built (~static) | `sports_teams` |
+| Sync 2026 races (Senate + Governor + House) | Wikipedia infobox parsing | Weekly (`sync.yml`) — **the "daily near election day" escalation was never actually implemented**; would need a manual cadence bump if ever needed, same as `sync.yml`'s own header comment already says | `races_2026`, `race_candidates` |
 
 Each job writes a `sync_logs` row for diagnostics and UI freshness indicators ("data last updated X days ago").
 

@@ -255,6 +255,24 @@ pass (mobile responsiveness, map framing, table formatting — see below and UI 
 a data-completeness pass (governor history, loading/error states) has since shipped on top of
 it. Next up per the build order is Phase 2 (geography/sports sync), unless told otherwise.
 
+**Profile data coverage (name/photo/bio/term history), verified live — a living snapshot, not a
+one-time claim; re-check the actual counts before trusting old numbers here:**
+
+| | Name | Photo | Bio | Term history |
+|---|---|---|---|---|
+| **Governor, current** | ✅ | ✅ 50/50 (100%) | ✅ 50/50 (100%) | ✅ full non-consecutive history |
+| **Governor, past** | ✅ | ✅ 2,313/2,376 (97.4%) | ✅ 2,375/2,376 (99.96%) | ✅ full history |
+| **Senator/Rep, current** | ✅ | ⚠️ 519/532 resolve directly (97.6%, checked live one-by-one across every current senator+rep); the other 13 are almost all very recently-seated members not yet in `unitedstates/images`, and 12/13 already have a Wikipedia photo ready once the backfill reaches them | 🟡 in progress, shared pool below | ✅ full, all chambers |
+| **Senator/Rep, past** | ✅ | ⚠️ same guessed-URL/Wikipedia-fallback mechanism, not separately measured (12,712-person pool is overwhelmingly historical) | 🟡 in progress, shared pool below | ✅ full |
+
+Governors went from "current bio is a permanent, never-wired-up gap" to fully solved (see the
+`governors.mjs`/`governor-history.mjs` gotchas above) — nothing left to do there. Legislator
+bio backfill (current + past, Senate + House all share one pool/one job) is **778/12,712
+(6.1%)** as of this writing, running unattended via `legislator-bio-backfill.yml` (see the
+GitHub Actions note below) — 110 of those 778 needed the Wikipedia photo fallback (their
+`unitedstates/images` guess was broken), the rest resolved directly. No ETA: throughput is
+bottlenecked by Wikipedia's own rate limiting, not by anything actionable on our end.
+
 Base Next.js + Tailwind + TypeScript scaffold in place. Infra checklist (plan §7) mostly done:
 GitHub repo pushed and tracked; Supabase project linked via CLI (credentials in gitignored
 `.env.local`); schema applied as versioned migrations (`supabase/migrations/`); Vercel project
