@@ -59,10 +59,10 @@ No hardcoded data in the codebase.
 ### Governors and state legislatures
 - **OpenStates API v3** (`v3.openstates.org`, now under Plural/SAI360 — the consumer app was discontinued but the API/bulk data remain active). Free, requires an account + API key (`X-API-KEY` header or `?apikey=`); ~10 req/sec, 500 req/day, plenty for a weekly sync.
 - No dedicated governors endpoint — use `GET /people?jurisdiction=<id>&org_classification=executive`, filter client-side on `current_role.title === "Governor"`. `/jurisdictions` mixes in ~1800 municipalities — filter to `classification === "state"` first, and use each entry's structured `id` (not a name string) as the `jurisdiction` param.
-- **Known gap, bigger than initially assumed:** 11 states (not just California) return no `"Governor"` entry despite one existing — a real crowdsourced-data completeness gap, verified via raw API responses, not a bug in the query. `governors.mjs` logs missing states to `sync_logs` rather than failing, backed by a hand-maintained `GOVERNOR_OVERRIDES` list (name/party sourced via web search against Wikipedia's current-governors list, cross-checked — not guessed from memory, given these are real people's current offices). DC is separately excluded (has a Mayor, not a Governor — zero results, not a gap).
+- **Known gap, bigger than initially assumed:** 12 states (not just California) return no `"Governor"` entry despite one existing — a real crowdsourced-data completeness gap, verified via raw API responses, not a bug in the query. `governors.mjs` logs missing states to `sync_logs` rather than failing. Originally backed by a hand-maintained `GOVERNOR_OVERRIDES` list (name/party) — **removed**, once it became clear that data goes stale the moment one of those governors leaves office (confirmed live: NJ and VA both changed governors in Jan 2026, silently, since nothing updated the hardcoded literals). `getGovernor()` in `governors-data.ts` now falls back to `governor_terms`' current-term row instead — already synced from Wikidata for every state regardless of OpenStates coverage, so no hardcoding needed at all. DC is separately excluded (has a Mayor, not a Governor — zero results, not a gap).
 - **Party strings need normalizing.** OpenStates returns `"Democratic"` (and Minnesota's official `"Democratic-Farmer-Labor"`) — the app's convention, already used by `terms.party` from `congress-legislators`, is `"Democrat"`. Mismatched strings silently render as "no party data" in the UI rather than erroring, so this is easy to ship unnoticed — `governors.mjs`'s `normalizeParty()` handles it.
 - **Rate limiting is stricter in practice than "~10 req/sec" suggests** — repeated full-table sync runs in a short window triggered sustained 429s that took several minutes to clear, not seconds. `governors.mjs` paces at 1 req/sec with retry-and-backoff.
-- **No term dates or bio in the v3 API** — `start_date`/`end_date`/`bio_summary` stay null for the MVP. Wikidata (already planned for Phase 2 geography) is a plausible future backfill source for just these fields.
+- **No term dates or bio in the v3 API** — `governors.start_date`/`end_date`/`bio_summary` stay null forever at the source; not a gap in practice, though. **Resolved via Wikidata, not by OpenStates ever providing it:** `governor-history.mjs`'s `copyCurrentBiosToGovernors()` copies `bio_summary`/`photo_url` from the matching (already Wikipedia-backfilled) `governor_terms` current-term row onto `governors` every weekly sync (confirmed live, 50/50 states). Term dates never actually needed the same treatment — every date shown in the UI (term history tables, `/governor/[id]`) already reads from `governor_terms` directly, not from `governors.start_date`/`end_date`, so those two columns are simply unused dead columns, not a user-facing gap.
 - **Governor history (`governor_terms`) — resolved via Wikidata**, not OpenStates (no history endpoint there at all). Each state's "Governor of `<state>`" position item's P39 ("position held") statements, one per term, back to statehood — verified live via real SPARQL queries (Texas, Wyoming, Mississippi) before writing `governor-history.mjs`, not assumed to exist. Two gotchas confirmed real, not theoretical: a person's party (P102) isn't date-scoped to the specific term, so party-switchers need client-side date-overlap matching against the term being synced rather than a naive SPARQL join; and start/end date coverage is real but uneven across states (Mississippi ~27% of rows missing a start date vs. Wyoming's 0%). Full gotcha list is in the script's own header comment.
 
 ### 2026 midterm elections (`races_2026`)
@@ -127,8 +127,15 @@ General reports, SCOTUS volumes, etc.) has no connection to this app's scope.
 
 ### `legislators`
 - `id` (PK, `bioguide_id`) · `bioguide_id` · `govtrack_id` · `first_name`, `last_name` ·
-  `photo_url` · `birthday` · `bio_summary` (column exists but `sync:legislators` never
-  populates it — always null today, same as `governors.bio_summary`)
+  `photo_url` (guessed `unitedstates/images` URL at sync time; ~97.6% actually resolves,
+  confirmed live by checking all 532 current senators/reps individually — the rest are almost
+  always very recently-seated members not yet in that community-maintained image set) ·
+  `birthday` · `bio_summary` (was permanently null — no source ever wired up. Now backfilled
+  from Wikipedia via a dedicated GitHub Actions schedule, `legislator-bio-backfill.yml`, every 3
+  hours — the ~12,700-person population makes one full pass take multiple days even at the low
+  concurrency Wikipedia's REST API tolerates, so each run is time-boxed and resumes where it
+  left off; still converging as of this writing, not yet 100%. Same job also fixes a broken
+  `photo_url` by falling back to a Wikipedia thumbnail, once that person's bio backfill runs).
 
 ### `terms`
 A legislator's term — full historical record without duplicating `legislators`.
@@ -149,19 +156,28 @@ A legislator's term — full historical record without duplicating `legislators`
 - `id` (PK, text — OpenStates' own person id with its `"ocd-person/"` prefix stripped, e.g.
   `d73f10ee-...`, same natural-key pattern as `legislators.id`/`bioguide_id`; the prefix is
   stripped because it contains a `/`, which broke the `/governor/[id]` route — caught via a
-  real 404 in browser verification) · `first_name`, `last_name`, `photo_url` (from OpenStates,
-  or a manual override — §3) · `bio_summary` (not available from OpenStates — null) ·
+  real 404 in browser verification) · `first_name`, `last_name`, `photo_url` (from OpenStates —
+  §3; no manual override anymore, see §3) · `bio_summary` (not available from OpenStates itself,
+  but populated anyway — copied from `governor_terms` by `governor-history.mjs`, see §3) ·
   `state_id` (FK) · `party` (from OpenStates, normalized to `"Democrat"`/`"Republican"` — §3) ·
-  `start_date`, `end_date` (not available from OpenStates — null). No history — one row per
-  state, current officeholder only; full-replaced on every sync.
+  `start_date`, `end_date` (not available from OpenStates — stay null forever; not a user-facing
+  gap, since the UI never reads dates from here — see §3). No history — one row per state,
+  current officeholder only, and only for the states OpenStates actually covers (§3's 12-state
+  gap has no row here at all, `getGovernor()` falls back to `governor_terms` instead); **upserted**
+  each sync, not full-replaced — `governor_terms.governor_id`'s FK onto this table's `id` (added
+  after this table's original design) means a blind delete-then-reinsert throws once any state
+  has a linked `governor_id`, which is always true after the first `governor-history.mjs` run.
 
 ### `governor_terms`
 Full governor history per state, back to statehood, from Wikidata (§3) — added after the MVP
 schema draft above, since OpenStates has no history endpoint. Shaped like `race_candidates`
 (plain `name`/`party`, no required FK to a person table) rather than `terms` — historical
 governors predate OpenStates entirely and have no `legislators.id`-style natural key.
-- `id` (PK) · `state_id` (FK) · `governor_id` (FK → `governors.id`, nullable — set only on a
-  state's current term row, the only one with a real `governors.id` to link) ·
+- `id` (PK) · `state_id` (FK) · `governor_id` (FK → `governors.id` **on delete set null**,
+  nullable — set only on a state's current term row, the only one with a real `governors.id` to
+  link; the plain default-RESTRICT FK this started as blocked `governors.mjs` from ever
+  deleting a still-referenced row, turning "remove a departed/gap-state governor" into a
+  permanent no-op rather than a one-off transient conflict — see §3) ·
   `wikidata_person_id` · `name` · `party` (nullable — a real, if uncommon, Wikidata gap for
   early-19th-century figures) · `start_date`, `end_date` (both nullable — real Wikidata gaps,
   verified to vary a lot by state, e.g. Mississippi ~27% of rows missing a start date) ·
