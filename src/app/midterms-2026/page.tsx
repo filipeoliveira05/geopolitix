@@ -38,11 +38,11 @@ function getElectionCountdown() {
 }
 
 function Scoreboard({ races }: { races: Race[] }) {
-  const offices: RaceOffice[] = ["senate", "governor"];
+  const offices: RaceOffice[] = ["senate", "governor", "house"];
   const { hasPassed: electionHasPassed, daysUntil: daysUntilElection } = getElectionCountdown();
 
   return (
-    <div className="grid grid-cols-2 gap-4 sm:grid-cols-2">
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
       {offices.map((office) => {
         const officeRaces = races.filter((r) => r.office === office);
         const called = officeRaces.filter((r) => r.status === "called").length;
@@ -90,6 +90,9 @@ export default async function Midterms2026Page() {
     governor: races
       .filter((r) => r.office === "governor")
       .sort((a, b) => a.stateId.localeCompare(b.stateId)),
+    // Deliberately empty — 435 House races is too much for one flat national
+    // table; Scoreboard above still surfaces House's aggregate status, and
+    // per-race detail lives on each state's own MidtermsTab instead.
     house: [],
   };
 
@@ -104,9 +107,9 @@ export default async function Midterms2026Page() {
 
       <h1 className="mt-2 text-3xl font-semibold">2026 Midterms</h1>
       <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">
-        Senate and Governor races only — see the House delegation on the map instead. This is
-        not a real-time results service: race status updates on a periodic sync, not live on
-        election night.
+        Senate and Governor races below; House races (all 435) are on each state&apos;s own
+        page instead of one long national list here. This is not a real-time results service:
+        race status updates on a periodic sync, not live on election night.
       </p>
 
       <div className="mt-6">

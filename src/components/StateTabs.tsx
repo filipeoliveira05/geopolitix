@@ -283,12 +283,30 @@ const OFFICE_LABELS: Record<Race["office"], string> = {
   house: "U.S. House",
 };
 
+const OFFICE_ORDER: Record<Race["office"], number> = { senate: 0, governor: 1, house: 2 };
+
+// A House race's section title needs the district too — unlike Senate/Governor
+// (one race per state, "U.S. Senate" alone is unambiguous), a state can have
+// dozens of House races and every one would otherwise render as an
+// indistinguishable "U.S. House" section.
+function raceSectionTitle(race: Race): string {
+  if (race.office !== "house") return OFFICE_LABELS[race.office];
+  const district = race.districtNumber === 0 ? "At-large" : `District ${race.districtNumber}`;
+  return `${OFFICE_LABELS.house} — ${district}`;
+}
+
 function MidtermsTab({ races }: StateTabsProps) {
+  const sortedRaces = [...races].sort((a, b) => {
+    const officeDiff = OFFICE_ORDER[a.office] - OFFICE_ORDER[b.office];
+    if (officeDiff !== 0) return officeDiff;
+    return (a.districtNumber ?? 0) - (b.districtNumber ?? 0);
+  });
+
   return (
     <div className="flex flex-col gap-6">
-      {races.length > 0 ? (
-        races.map((race) => (
-          <Section key={race.id} title={OFFICE_LABELS[race.office]}>
+      {sortedRaces.length > 0 ? (
+        sortedRaces.map((race) => (
+          <Section key={race.id} title={raceSectionTitle(race)}>
             <p className="mb-1 flex items-center gap-1.5 text-xs text-zinc-500 dark:text-zinc-400">
               {race.status !== "called" && (
                 <span className="h-2 w-2 animate-pulse rounded-full bg-amber-500" />
@@ -316,10 +334,7 @@ function MidtermsTab({ races }: StateTabsProps) {
         ))
       ) : (
         <Section title="2026 Midterms">
-          <Empty>
-            No Senate or Governor race in this state this cycle. House isn&apos;t synced (see
-            the plan&apos;s non-goals) — this is not a real-time results feed either way.
-          </Empty>
+          <Empty>No race data for this state this cycle.</Empty>
         </Section>
       )}
     </div>

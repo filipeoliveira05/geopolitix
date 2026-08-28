@@ -1,6 +1,15 @@
 // Populates the Supabase `races_2026`/`race_candidates` tables (plan §4)
-// from Wikipedia, for Senate + Governors only (plan §3 — House's 435 races
-// are out of scope). Run manually via `npm run sync:races`.
+// from Wikipedia, for Senate, Governor, and House. Run manually via
+// `npm run sync:races`.
+//
+// House races are structured differently from Senate/Governor: one
+// Wikipedia page per STATE (not per race), e.g. "2026 United States House
+// of Representatives elections in Texas", with one `==District N==`
+// section per district inside it — each still using the same
+// `{{Infobox election}}` template and field names as Senate/Governor
+// pages (verified live), so all the candidate-parsing helpers below are
+// shared across all three offices; only the page-fetching/splitting
+// strategy differs (see collectHouseRaces).
 //
 // No key needed: the public MediaWiki Action API. Race pages are listed via
 // two Wikipedia categories, then each page's lead section (section=0,
@@ -40,6 +49,7 @@ const USER_AGENT =
 
 const SENATE_CATEGORY = "Category:2026 United States Senate elections";
 const GOVERNOR_CATEGORY = "Category:2026 United States gubernatorial elections";
+const HOUSE_CATEGORY = "Category:2026 United States House of Representatives elections";
 
 function buildStateNameToAbbr() {
   // Same source as scripts/sync/states.mjs — us-atlas state names match
@@ -79,8 +89,12 @@ async function fetchCategoryMembers(category) {
   return data.query.categorymembers.map((m) => m.title);
 }
 
-async function fetchWikitext(title) {
-  const url = `${API_BASE}?action=parse&page=${encodeURIComponent(title)}&prop=wikitext&section=0&format=json`;
+async function fetchWikitext(title, { fullPage = false } = {}) {
+  // House state pages need the *whole* page — each district's infobox
+  // lives under its own `==District N==` section further down, not in the
+  // lead section (section=0) where Senate/Governor pages keep theirs.
+  const sectionParam = fullPage ? "" : "&section=0";
+  const url = `${API_BASE}?action=parse&page=${encodeURIComponent(title)}&prop=wikitext${sectionParam}&format=json`;
   const data = await fetchJson(url);
   return data.parse?.wikitext?.["*"] ?? "";
 }
@@ -209,6 +223,82 @@ function parseGovernorTitle(title) {
   return m ? m[1] : null;
 }
 
+function parseHouseTitle(title) {
+  // "elections in <State>" (multi-district, e.g. Texas) vs "election in
+  // <State>" (single-district/at-large, e.g. Wyoming) — verified live,
+  // both forms exist. This same pattern naturally excludes the category's
+  // two overview pages ("...House of Representatives elections",
+  // "...election ratings") and the 9 standalone special-election pages
+  // (e.g. "2026 California's 1st congressional district special
+  // election") confirmed live in the category — none of them match "in
+  // <State>" with this exact title shape, so no separate exclusion list
+  // is needed.
+  const m = title.match(/^2026 United States House of Representatives elections? in (.+)$/);
+  return m ? m[1] : null;
+}
+
+const DISTRICT_HEADING_RE = /^==\s*District\s+(\d+)\s*==\s*$/gm;
+
+/**
+ * Splits a House state page into one text block per district, keyed by
+ * district number — verified live that every multi-district state's page
+ * uses a consistent `==District N==` heading with exactly one
+ * `{{Infobox election}}` in each section (sampled Texas's all 38). A page
+ * with no such heading at all is a single-district (at-large) state
+ * (verified live: Wyoming) — the whole page is that one race, district
+ * number 0 to match the `terms`/`legislators` at-large convention used
+ * elsewhere in this app.
+ */
+function splitIntoDistrictSections(wikitext) {
+  const matches = [...wikitext.matchAll(DISTRICT_HEADING_RE)];
+  if (matches.length === 0) return [{ districtNumber: 0, text: wikitext }];
+  return matches.map((match, i) => {
+    const start = match.index + match[0].length;
+    const end = i + 1 < matches.length ? matches[i + 1].index : wikitext.length;
+    return { districtNumber: Number(match[1]), text: wikitext.slice(start, end) };
+  });
+}
+
+async function collectHouseRaces(stateNameToAbbr) {
+  const titles = await fetchCategoryMembers(HOUSE_CATEGORY);
+  console.log(`house: ${titles.length} candidate pages in "${HOUSE_CATEGORY}"`);
+  const races = [];
+  for (const [i, title] of titles.entries()) {
+    const stateName = parseHouseTitle(title);
+    if (!stateName) continue; // overview/special-election page, not a per-state page
+
+    const stateAbbr = stateNameToAbbr.get(stateName);
+    if (!stateAbbr) {
+      console.warn(`Skipping "${title}" — no matching state (territory, or name mismatch)`);
+      continue;
+    }
+
+    const wikitext = await fetchWikitext(title, { fullPage: true });
+    const sections = splitIntoDistrictSections(wikitext);
+    let districtCount = 0;
+    for (const { districtNumber, text } of sections) {
+      const block = extractInfobox(text);
+      if (!block) continue; // a non-election section that happens to fall between district headings
+      const fields = parseInfoboxFields(block);
+      const candidates = extractCandidates(fields);
+      const { status, winnerIndex } = determineStatus(fields, candidates);
+      races.push({
+        office: "house",
+        state_id: stateAbbr,
+        district_number: districtNumber,
+        status,
+        candidates,
+        winnerIndex,
+        title,
+      });
+      districtCount++;
+    }
+    console.log(`[house ${i + 1}/${titles.length}] ${stateAbbr}: ${districtCount} district(s)`);
+    await sleep(1000);
+  }
+  return races;
+}
+
 async function main() {
   const stateNameToAbbr = buildStateNameToAbbr();
   const startedAt = new Date().toISOString();
@@ -228,7 +318,8 @@ async function main() {
     parseGovernorTitle,
     stateNameToAbbr,
   );
-  const races = [...senateRaces, ...governorRaces];
+  const houseRaces = await collectHouseRaces(stateNameToAbbr);
+  const races = [...senateRaces, ...governorRaces, ...houseRaces];
 
   const supabase = supabaseAdmin();
 
@@ -246,6 +337,7 @@ async function main() {
         office: race.office,
         state_id: race.state_id,
         district_id: null,
+        district_number: race.district_number ?? null,
         status: race.status,
         last_synced_at: new Date().toISOString(),
       })
@@ -293,7 +385,7 @@ async function main() {
 
   const called = races.filter((r) => r.status === "called").length;
   console.log(
-    `Synced ${races.length} races (${senateRaces.length} Senate, ${governorRaces.length} Governor), ${called} called.`,
+    `Synced ${races.length} races (${senateRaces.length} Senate, ${governorRaces.length} Governor, ${houseRaces.length} House), ${called} called.`,
   );
 }
 

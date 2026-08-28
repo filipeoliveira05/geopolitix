@@ -105,11 +105,27 @@ Build order: **Phase 1 politics → Phase 2 geography → Phase 3 quiz.** Don't 
   candidate*, not just be non-empty (some pages use a `"TBD"` placeholder pre-results); and
   `cleanWikiText()` strips wiki markup but not raw HTML (`<br />` has leaked into candidate
   names before) — if a candidate name ever looks malformed, check for un-stripped HTML first.
+  **House races are structured differently on Wikipedia and need their own fetch path** — one
+  page per STATE (e.g. "2026 United States House of Representatives elections in Texas"), not
+  one page per race like Senate/Governor; each district lives in its own `==District N==`
+  section within that page (verified live sampling Texas's all 38, Colorado's 8, Wyoming's
+  single at-large), each still using the identical `{{Infobox election}}` field names, so
+  `collectHouseRaces()` reuses every candidate-parsing helper unchanged and only differs in
+  page-fetching (`fetchWikitext(title, { fullPage: true })`, not the lead-section-only fetch
+  Senate/Governor use, since district infoboxes live past the lead section) and splitting
+  (`splitIntoDistrictSections()`). A single-district state's page has no `==District N==`
+  heading at all — treated as one race, district number 0 (at-large), matching the
+  `terms`/`legislators` convention. `parseHouseTitle()`'s title regex naturally excludes both
+  the category's 2 overview pages and its 9 standalone special-election pages (e.g. "2026
+  California's 1st congressional district special election") — none of those titles match the
+  "...elections? in `<State>`" shape, so no separate exclusion list was needed; confirmed live,
+  506 races synced (35 Senate, 36 Governor, 435 House) with only territory-page skips as
+  warnings.
 - **Not built yet:** geography/sports sync (Phase 2). Source research is in plan §3.
-- **House terms carry `district_number` (plain int) separately from `district_id`** (FK into
-  `districts`, populated but currently unused by any other table). `getCurrentRepsByDistrictKey()`
-  and `UsMap.tsx` join on `district_number`, not `district_id` — nothing has been changed to
-  populate/use the FK yet even though it can now resolve.
+- **House terms/races carry `district_number` (plain int) separately from `district_id`** (FK
+  into `districts` — still unused by anything, on both `terms` and `races_2026`; the map,
+  `getCurrentRepsByDistrictKey()`, and every House `StateTabs.tsx` display all join on
+  `district_number` instead).
 - **New Supabase tables need an explicit `GRANT`, not just an RLS policy** — Supabase's cloud
   default gives a fresh table no Data API access at all. Add the `anon` `SELECT` grant when a
   table's read path is actually built (not speculatively); `service_role` already has a
@@ -279,19 +295,25 @@ link to the full state page. On mobile the panel is a capped-height (`45vh`), in
 scrolling bottom sheet rather than pushing the map off-screen.
 
 **`/state/[abbr]` page** (`src/app/state/[abbr]/page.tsx` + `StateTabs.tsx`): four tabs per
-plan §5 — current representation (real, including governor); history (real Senate AND governor
-history back to statehood as aligned tables, current officeholder marked with a dot rather than
-"(current)" text — see UI conventions; House history still out of scope, no equivalent to
-`getSenateHistory()` exists for it); geography (mock, cities/sports flagged "Phase 2, not built"); 2026 midterms
-(real — Senate/Governor races for this state, per-candidate party + incumbent flag; House out
-of scope; a race with an unresolved primary shows a disclaimer instead of raw candidate text —
+plan §5 — current representation (real, including governor); history (real Senate, House, AND
+governor history back to statehood as aligned tables, current officeholder marked with a dot
+rather than "(current)" text — see UI conventions; `getHouseHistory()` mirrors
+`getSenateHistory()`); geography (mock, cities/sports flagged "Phase 2, not built"); 2026 midterms
+(real — Senate, Governor, AND House races for this state, per-candidate party + incumbent flag;
+a House race's `Section` title includes its district number/"At-large" since a state can have
+dozens of them, sorted by district — see `raceSectionTitle()`/`OFFICE_ORDER` in `StateTabs.tsx`;
+a race with an unresolved primary shows a disclaimer instead of raw candidate text —
 see `isPrimaryPending()` above).
 
-**`/midterms-2026`** (plan §5): aligned per-office race tables (state | candidates), linked from
-the map's top-right corner. Every race resolves the same day (Nov 3, 2026), so the top cards
-show a day-countdown + primaries-held count pre-election rather than a called-count stuck at
-0/N for months; they switch to the real called-count automatically once that date passes (see
-`getElectionCountdown()`/`isPrimaryPending()` in `src/app/midterms-2026/page.tsx`).
+**`/midterms-2026`** (plan §5): aligned per-office race tables (state | candidates) for Senate
+and Governor, linked from the map's top-right corner. House (435 races) gets a Scoreboard card
+here too (called-count/primaries-held, same as Senate/Governor) but no flat national table —
+that's too much for one page; House race detail lives on each state's own MidtermsTab instead
+(deliberate, see the `house: []` comment in `page.tsx`). Every race resolves the same day (Nov
+3, 2026), so the top cards show a day-countdown + primaries-held count pre-election rather than
+a called-count stuck at 0/N for months; they switch to the real called-count automatically once
+that date passes (see `getElectionCountdown()`/`isPrimaryPending()` in
+`src/app/midterms-2026/page.tsx`).
 `force-dynamic` — no dynamic route params here to make Next treat it as needing per-request
 data automatically, so without this it would prerender once at build time and serve stale race
 data forever (caught before shipping, not after).
@@ -336,8 +358,10 @@ browser verification, not assumed). Linked from senator/rep/governor names acros
   50 states, no key), plus photo/bio for 2,287/2,288 distinct people (99.96%) from the
   Wikipedia REST API. See the Data conventions gotchas above before re-running or modifying
   this one.
-- `races_2026`/`race_candidates` — Senate + Governor races, from Wikipedia (71 races, no key).
-  See the Data conventions gotchas above before re-running or modifying this one.
+- `races_2026`/`race_candidates` — Senate, Governor, AND House races, from Wikipedia (506
+  races: 35 Senate, 36 Governor, 435 House — confirmed live, 435 exactly matches the real total
+  House seat count, no key). See the Data conventions gotchas above before re-running or
+  modifying this one — House in particular needs its own gotcha entry, see there.
 - `districts` (metadata table) + `district-geometry/topology.json` (Storage blob) — current
   (119th Congress) House boundaries from the Census Bureau, 436 districts. See the Data
   conventions note above on why geometry isn't a table column.

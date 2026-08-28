@@ -1,8 +1,8 @@
 import { supabase } from "./supabase";
 
 // Reads the Supabase `races_2026`/`race_candidates` tables (plan §4), synced
-// via `npm run sync:races` (see scripts/sync/races-2026.mjs). Senate and
-// Governors only — House is out of scope for the MVP (plan §3).
+// via `npm run sync:races` (see scripts/sync/races-2026.mjs) — Senate,
+// Governor, and House.
 
 export type RaceOffice = "house" | "senate" | "governor";
 export type RaceStatus = "open" | "called";
@@ -18,6 +18,10 @@ export type Race = {
   id: string;
   office: RaceOffice;
   stateId: string;
+  // House-only (state-level Senate/Governor races have no district) — 0
+  // means at-large, matching the same convention terms.district_number
+  // already uses for a single-district state's House seat.
+  districtNumber: number | null;
   status: RaceStatus;
   winnerCandidateId: string | null;
   candidates: RaceCandidate[];
@@ -27,6 +31,7 @@ type RaceRow = {
   id: string;
   office: RaceOffice;
   state_id: string;
+  district_number: number | null;
   status: RaceStatus;
   winner_candidate_id: string | null;
   race_candidates: {
@@ -42,6 +47,7 @@ function fromRow(row: RaceRow): Race {
     id: row.id,
     office: row.office,
     stateId: row.state_id,
+    districtNumber: row.district_number,
     status: row.status,
     winnerCandidateId: row.winner_candidate_id,
     candidates: row.race_candidates.map((c) => ({
