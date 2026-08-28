@@ -324,6 +324,40 @@ async function fetchSitelinkTitles(personQids) {
 }
 
 /**
+ * Copies bio_summary/photo_url from each state's current-term governor_terms
+ * row onto the matching governors.id row, unconditionally overwriting. A
+ * current officeholder's own data (governors table, from OpenStates) has no
+ * bio at all (governors.mjs hardcodes bio_summary: null) and only ~76%
+ * photo coverage — confirmed live all 50 states' current-term rows already
+ * carry a real bio+photo from backfillBios() above, so this is a plain
+ * same-process copy, not a new fetch. Every governor_id on a current-term
+ * row was confirmed live to match a real governors.id (including Vermont's
+ * "manual-override-vt-governor"), so no join ever comes up empty.
+ */
+async function copyCurrentBiosToGovernors(supabase, warnings) {
+  const { data: currentTerms, error: selectError } = await supabase
+    .from("governor_terms")
+    .select("governor_id, bio_summary, photo_url")
+    .eq("is_current", true)
+    .not("governor_id", "is", null);
+  if (selectError) throw selectError;
+
+  let updated = 0;
+  for (const term of currentTerms) {
+    const { error: updateError } = await supabase
+      .from("governors")
+      .update({ bio_summary: term.bio_summary, photo_url: term.photo_url })
+      .eq("id", term.governor_id);
+    if (updateError) {
+      warnings.push(`copy current bio: update failed for ${term.governor_id} — ${updateError.message}`);
+      continue;
+    }
+    updated++;
+  }
+  return updated;
+}
+
+/**
  * Backfills photo_url/bio_summary for every distinct person already synced
  * into governor_terms, from the Wikipedia REST API — run as a second pass
  * after all states' term rows exist, so it only ever fetches each real
@@ -441,6 +475,7 @@ async function main() {
   const warnings = [];
   let totalRows = 0;
   let bioCount = 0;
+  let currentCopyCount = 0;
   let error = null;
 
   try {
@@ -459,6 +494,8 @@ async function main() {
     }
     console.log("States done — backfilling photo/bio for every distinct person...");
     bioCount = await backfillBios(supabase, warnings);
+    console.log("Copying current-term bio/photo onto governors...");
+    currentCopyCount = await copyCurrentBiosToGovernors(supabase, warnings);
   } catch (err) {
     error = err;
   }
@@ -483,7 +520,7 @@ async function main() {
   if (error) throw error;
 
   console.log(
-    `Synced ${totalRows} governor terms across ${states.length} states, backfilled bio/photo for ${bioCount} people (${warnings.length} warning(s)).`,
+    `Synced ${totalRows} governor terms across ${states.length} states, backfilled bio/photo for ${bioCount} people, copied current bio/photo onto ${currentCopyCount} governors (${warnings.length} warning(s)).`,
   );
 }
 

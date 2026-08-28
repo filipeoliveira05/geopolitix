@@ -13,8 +13,17 @@
 // DC is excluded: OpenStates returns zero executive-branch results for it
 // (DC has a Mayor, not a Governor — not a data gap, a real absence).
 // Other states can genuinely be missing a Governor entry despite one
-// existing (confirmed: California) — a crowdsourced-data completeness gap,
-// not a bug in this query. Logged as a gap, not treated as a sync failure.
+// existing (confirmed: California, New Jersey, Virginia, and others — a
+// crowdsourced-data completeness gap, not a bug in this query). Logged as a
+// gap, not treated as a sync failure, and not hand-patched here either —
+// src/lib/governors-data.ts's getGovernor() falls back to the current-term
+// row in `governor_terms` (synced from Wikidata by governor-history.mjs
+// for every state regardless of OpenStates coverage) instead. An earlier
+// version of this script hand-maintained a GOVERNOR_OVERRIDES map of
+// hardcoded name/party literals for these gap states — removed once it was
+// clear that data goes stale the moment one of those governors leaves
+// office (confirmed live: NJ and VA both changed governors in Jan 2026,
+// and Wikidata already had it right while a hardcoded map would not).
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -43,40 +52,6 @@ function normalizeParty(party) {
   return party;
 }
 
-// A handful of states OpenStates is known to be missing a Governor entry
-// for despite one existing (plan §3) — hand-maintained, cheap at this
-// scale. Re-check occasionally whether OpenStates has filled the gap on
-// its own and drop the override once it's no longer needed.
-function override(stateId, fullName, party, photoUrl = null) {
-  const [first_name, ...rest] = fullName.split(" ");
-  return {
-    id: `manual-override-${stateId.toLowerCase()}-governor`,
-    first_name,
-    last_name: rest.join(" "),
-    photo_url: photoUrl,
-    bio_summary: null,
-    state_id: stateId,
-    party,
-    start_date: null,
-    end_date: null,
-  };
-}
-
-const GOVERNOR_OVERRIDES = {
-  CA: override("CA", "Gavin Newsom", "Democrat"),
-  DE: override("DE", "Matt Meyer", "Democrat"),
-  IN: override("IN", "Mike Braun", "Republican"),
-  MO: override("MO", "Mike Kehoe", "Republican"),
-  MT: override("MT", "Greg Gianforte", "Republican"),
-  NH: override("NH", "Kelly Ayotte", "Republican"),
-  NJ: override("NJ", "Mikie Sherrill", "Democrat"),
-  NC: override("NC", "Josh Stein", "Democrat"),
-  ND: override("ND", "Kelly Armstrong", "Republican"),
-  UT: override("UT", "Spencer Cox", "Republican"),
-  VT: override("VT", "Phil Scott", "Republican"),
-  VA: override("VA", "Abigail Spanberger", "Democrat"),
-};
-
 function jurisdictionId(abbr) {
   return `ocd-jurisdiction/country:us/state:${abbr.toLowerCase()}/government`;
 }
@@ -85,10 +60,18 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// 502/503/504 alongside 429 — confirmed live a real run crashed the whole
+// script on a single PA 502, losing all progress on the other 49 states
+// it had already fetched (nothing gets written to Supabase until every
+// state is done). The other sync scripts in this codebase already treat
+// all four as retryable (see _wikipedia.mjs's RETRYABLE_STATUSES) for the
+// same reason.
+const RETRYABLE_STATUSES = new Set([429, 502, 503, 504]);
+
 async function fetchExecutives(abbr, attempt = 1) {
   const url = `${BASE_URL}/people?jurisdiction=${encodeURIComponent(jurisdictionId(abbr))}&org_classification=executive`;
   const res = await fetch(url, { headers: { "X-API-KEY": API_KEY } });
-  if (res.status === 429 && attempt <= 5) {
+  if (RETRYABLE_STATUSES.has(res.status) && attempt <= 5) {
     await sleep(5000 * attempt);
     return fetchExecutives(abbr, attempt + 1);
   }
@@ -132,40 +115,72 @@ async function main() {
     const governor = executives.find((p) => p.current_role?.title === "Governor");
     if (governor) {
       governors.push(buildGovernor(abbr, governor));
-    } else if (GOVERNOR_OVERRIDES[abbr]) {
-      governors.push(GOVERNOR_OVERRIDES[abbr]);
     } else {
       gaps.push(abbr);
     }
-    console.log(`[${i + 1}/${STATE_ABBRS.length}] ${abbr}${governor ? "" : GOVERNOR_OVERRIDES[abbr] ? " (override)" : " (gap)"}`);
+    console.log(`[${i + 1}/${STATE_ABBRS.length}] ${abbr}${governor ? "" : " (gap)"}`);
     await sleep(1000);
   }
 
   if (gaps.length > 0) {
-    console.warn(`No Governor entry found for: ${gaps.join(", ")} — add to GOVERNOR_OVERRIDES if this persists.`);
+    console.warn(
+      `No Governor entry found for: ${gaps.join(", ")} — getGovernor() falls back to governor_terms for these (see governors-data.ts), not a sync failure.`,
+    );
   }
 
   const supabase = supabaseAdmin();
   const startedAt = new Date().toISOString();
 
-  // Governors table only tracks the current officeholder per state (no
-  // history) — full replace each run, same pattern as terms, so a
-  // mid-term change is reflected cleanly instead of leaving a stale row.
-  let { error } = await supabase.from("governors").delete().not("id", "is", null);
+  // Upsert in place (matches legislators.mjs's own pattern) rather than a
+  // full delete-then-reinsert — governor_terms.governor_id carries a
+  // foreign key onto governors.id (added by the governor_terms migration,
+  // after this script's original delete-then-reinsert design), so
+  // deleting a still-referenced row throws. Confirmed live: with
+  // governor_id already linked for every state, the old delete-all
+  // approach fails every run from here on. Upserting the fresh set by id
+  // never needs to delete a continuing governor's row at all.
+  let { error } = await supabase.from("governors").upsert(governors, { onConflict: "id" });
+
+  // Remove governors no longer returned by OpenStates — the genuine
+  // "departed officeholder" case the old delete-all was actually for.
+  // Their old row can still be referenced by a stale governor_terms row
+  // until governor-history.mjs (running right after this in the
+  // pipeline) relinks governor_id to the new officeholder — that FK
+  // conflict is expected and transient here, not a sync failure, so it's
+  // logged as a warning rather than thrown.
+  const staleWarnings = [];
   if (!error) {
-    ({ error } = await supabase.from("governors").insert(governors));
+    const freshIds = new Set(governors.map((g) => g.id));
+    const { data: existing, error: existingError } = await supabase.from("governors").select("id");
+    if (existingError) {
+      error = existingError;
+    } else {
+      const staleIds = existing.map((r) => r.id).filter((id) => !freshIds.has(id));
+      for (const id of staleIds) {
+        const { error: deleteError } = await supabase.from("governors").delete().eq("id", id);
+        if (deleteError) {
+          staleWarnings.push(`could not remove departed governor ${id} — ${deleteError.message}`);
+        }
+      }
+    }
   }
 
   // A gap isn't a sync failure (status stays "success") but is still worth
   // surfacing in sync_logs.error_message rather than only the console.
+  const warningMessages = [
+    ...(gaps.length > 0 ? [`No Governor entry for: ${gaps.join(", ")}`] : []),
+    ...staleWarnings,
+  ];
+  if (staleWarnings.length > 0) {
+    console.warn(`${staleWarnings.length} stale-governor warning(s):\n${staleWarnings.join("\n")}`);
+  }
   await supabase.from("sync_logs").insert({
     source: `${BASE_URL}/people (org_classification=executive)`,
     triggered_by: TRIGGERED_BY,
     started_at: startedAt,
     finished_at: new Date().toISOString(),
     status: error ? "error" : "success",
-    error_message:
-      error?.message ?? (gaps.length > 0 ? `No Governor entry for: ${gaps.join(", ")}` : null),
+    error_message: error?.message ?? (warningMessages.length > 0 ? warningMessages.join("; ") : null),
   });
 
   if (error) throw error;

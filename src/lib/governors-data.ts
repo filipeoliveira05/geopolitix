@@ -47,6 +47,19 @@ export async function getGovernorById(id: string): Promise<Governor | null> {
   return data ? fromRow(data as unknown as GovernorRow) : null;
 }
 
+/**
+ * OpenStates (the `governors` table's source) genuinely has no Governor
+ * entry for a handful of states despite one existing (confirmed live: CA,
+ * NJ, VA, and others) — a crowdsourced-data gap, not a bug. Rather than a
+ * hand-maintained override list (the previous approach — removed once it
+ * went stale the moment one of those governors left office, confirmed
+ * live for NJ/VA in Jan 2026), falls back to `governor_terms`' current-term
+ * row, which governor-history.mjs already syncs from Wikidata for every
+ * state regardless of OpenStates coverage. Uses the term's
+ * `wikidata_person_id` as this Governor's `id` — /governor/[id]'s existing
+ * fallback (treating an unrecognized id as a historical governor's
+ * Wikidata id) already resolves that correctly, no route changes needed.
+ */
 export async function getGovernor(stateAbbr: string): Promise<Governor | null> {
   const { data, error } = await supabase
     .from("governors")
@@ -54,7 +67,17 @@ export async function getGovernor(stateAbbr: string): Promise<Governor | null> {
     .eq("state_id", stateAbbr)
     .maybeSingle();
   if (error) throw error;
-  return data ? fromRow(data as unknown as GovernorRow) : null;
+  if (data) return fromRow(data as unknown as GovernorRow);
+
+  const { data: term, error: termError } = await supabase
+    .from("governor_terms")
+    .select("*")
+    .eq("state_id", stateAbbr)
+    .eq("is_current", true)
+    .maybeSingle();
+  if (termError) throw termError;
+  if (!term) return null;
+  return governorFromTerm(termFromRow(term as unknown as GovernorTermRow));
 }
 
 export function governorFullName(governor: Governor): string {
@@ -80,9 +103,10 @@ export type GovernorTerm = {
   isCurrent: boolean;
   // Per-person facts (identical across a person's own multiple term rows,
   // if any), from the Wikipedia REST API — not Wikidata's own P18/description,
-  // which read noticeably thinner. Only ever populated for historical
-  // governors; a current officeholder's profile still reads Governor.photoUrl/
-  // bioSummary (OpenStates) instead.
+  // which read noticeably thinner. governor-history.mjs's
+  // copyCurrentBiosToGovernors() also copies these onto the matching
+  // `governors` row for a current officeholder, so Governor.photoUrl/
+  // bioSummary end up with the same values, not a separate OpenStates source.
   photoUrl: string | null;
   bioSummary: string | null;
 };
@@ -114,6 +138,22 @@ function termFromRow(row: GovernorTermRow): GovernorTerm {
     isCurrent: row.is_current,
     photoUrl: row.photo_url,
     bioSummary: row.bio_summary,
+  };
+}
+
+/** Shapes a governor_terms current-term row as a Governor — see getGovernor()'s fallback. */
+function governorFromTerm(term: GovernorTerm): Governor {
+  const [firstName, ...rest] = term.name.split(" ");
+  return {
+    id: term.wikidataPersonId,
+    firstName,
+    lastName: rest.join(" "),
+    photoUrl: term.photoUrl,
+    bioSummary: term.bioSummary,
+    stateId: term.stateId,
+    party: term.party,
+    startDate: term.startDate,
+    endDate: term.endDate,
   };
 }
 

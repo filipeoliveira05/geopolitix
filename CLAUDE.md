@@ -40,10 +40,24 @@ Build order: **Phase 1 politics → Phase 2 geography → Phase 3 quiz.** Don't 
   realtime/auth needs. Sync scripts (Node-only, write access) use `@supabase/supabase-js` + the
   `ws` package via `scripts/sync/_supabase-admin.mjs`.
 - **`governors.mjs` — full source research/gotchas are in plan §3, don't re-derive them.** The
-  two that bite hardest if forgotten: party strings need `normalizeParty()` (OpenStates'
-  `"Democratic"` → our `"Democrat"`) or Democrat governors silently render `(?)` badges; and
+  ones that bite hardest if forgotten: party strings need `normalizeParty()` (OpenStates'
+  `"Democratic"` → our `"Democrat"`) or Democrat governors silently render `(?)` badges;
   OpenStates' rate limit is much stricter in practice than its docs suggest (sustained 429s
-  taking minutes to clear, not seconds — expect this if re-running repeatedly in one session).
+  taking minutes to clear, not seconds — expect this if re-running repeatedly in one session,
+  and treat 502/503/504 as retryable too, not just 429 — a real run crashed on a single PA 502
+  otherwise, losing all 50 states' already-fetched progress since nothing writes to Supabase
+  until the whole loop finishes); and OpenStates genuinely has no Governor entry for a handful
+  of states despite one existing (confirmed live: CA, NJ, VA, and others) — logged as a gap,
+  not hand-patched here (an earlier version hand-maintained a `GOVERNOR_OVERRIDES` map of
+  hardcoded name/party literals, removed once it went stale the moment one of those governors
+  left office — confirmed live for NJ/VA in Jan 2026; `getGovernor()` in governors-data.ts falls
+  back to `governor_terms` instead, see below). Syncs via `upsert`, not delete-then-reinsert —
+  `governor_terms.governor_id`'s FK onto `governors.id` (added by the `governor_terms`
+  migration, after this script's original design) makes a full-table delete throw once any
+  state has a linked `governor_id`, which is always true after the first `governor-history.mjs`
+  run. A truly departed/gap-state governor's row still needs an explicit delete, which the FK
+  (now `on delete set null`, not the Postgres-default `restrict` — see the
+  `governor_terms_governor_id_set_null` migration) lets succeed cleanly.
 - **`governor-history.mjs` — full source research (a real Wikidata SPARQL spike, not guessed)
   is written up in the script's own header comment, don't re-derive it.** Shaped like
   `race_candidates` (plain `name`/`party`, no required FK to a person table) rather than
@@ -284,12 +298,21 @@ data forever (caught before shipping, not after).
 
 **`/legislator/[id]`** and **`/governor/[id]`** (plan §5): photo, party, term history for one
 person — legislator term history from `terms`. `/governor/[id]`'s `id` resolves two different
-ways (`loadProfile()`): a current officeholder's `governors.id` (OpenStates) first, falling
-back to treating `id` as a historical governor's `wikidata_person_id` if that lookup returns
-nothing — the two id formats never collide, so this fallback is safe. A current officeholder's
-photo/bio still come from `governors` (OpenStates, usually null for bio); a historical
-governor's come from `governor_terms` (Wikipedia-backfilled, see above — in practice richer,
-since OpenStates never provides a bio at all). Term history comes from `getTermsForGovernor()`
+ways (`loadProfile()`): a current officeholder's `governors.id` (OpenStates, except for the
+handful of states OpenStates has no Governor entry for at all — `getGovernor(stateAbbr)` in
+governors-data.ts falls back to that state's current-term `governor_terms` row there instead,
+using its `wikidata_person_id` as the `Governor.id` — see the `governors.mjs` gotcha above)
+first, falling back to treating `id` as a historical governor's `wikidata_person_id` if that
+lookup returns nothing — the two id formats never collide, so this fallback is safe, and it's
+also exactly what makes the state-page-level fallback above resolve correctly with no route
+changes needed. A current officeholder's
+`governors.bio_summary`/`photo_url` are themselves always empty at the source (OpenStates never
+provides a bio; only ~76% have a photo) — `governor-history.mjs`'s `copyCurrentBiosToGovernors()`
+copies both from the matching (already Wikipedia-backfilled) current-term `governor_terms` row
+onto `governors` every weekly sync, so the page's read is unchanged (still just `governors`) but
+the column is now always populated; confirmed live 50/50 states after first running this. A
+historical governor's photo/bio come from `governor_terms` directly (Wikipedia-backfilled, see
+above). Term history comes from `getTermsForGovernor()`
 (current) or `getTermsForPerson()` (historical), both matched via `wikidata_person_id` so a
 non-consecutive past term by the same person also shows, not just one term. `StateTabs.tsx`'s
 History tab links every governor row this way too, current or historical — same as Senate

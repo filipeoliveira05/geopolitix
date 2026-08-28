@@ -22,12 +22,12 @@ type Profile = {
 };
 
 /**
- * `id` is either a current officeholder's `governors.id` (OpenStates) or,
- * falling back, a historical governor's `wikidata_person_id` — the two id
- * formats don't collide, so trying the current lookup first and falling
- * back is safe. A current officeholder's own photo/bio still come from
- * `governors` (OpenStates) rather than `governor_terms`, since only
- * historical rows get backfilled from Wikipedia — see governors-data.ts.
+ * `id` is either a current officeholder's `governors.id` (OpenStates,
+ * except for the states OpenStates has no Governor entry for — see
+ * getGovernor()'s fallback in governors-data.ts, which uses a Wikidata id
+ * there instead) or, falling back, a historical governor's
+ * `wikidata_person_id` — the two id formats don't collide, so trying the
+ * current lookup first and falling back is safe.
  */
 async function loadProfile(id: string): Promise<Profile | null> {
   const governor = await getGovernorById(id);
