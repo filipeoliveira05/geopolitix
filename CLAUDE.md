@@ -322,7 +322,15 @@ documented advice, since that's the single most congested moment for their sched
 real but unguaranteed mitigation. **Treat manual triggers (the "Run workflow" button on the
 Actions tab, or `gh workflow run legislator-bio-backfill.yml`) as the primary mechanism, not a
 fallback** — there's no fixed cadence to hit, just whenever convenient; every run is safe and
-idempotent regardless of how long the gaps between them are.
+idempotent regardless of how long the gaps between them are. **Triggering back-to-back
+(immediately after the previous run finishes) is fine, not just tolerated** — the
+`concurrency` group above prevents two runs ever actually overlapping regardless of timing, and
+unlike the real rate-limiting this session hit from repeated *local* testing (same machine, same
+IP, in a tight window), each GitHub Actions run gets its own fresh ephemeral runner — there's no
+strong reason for one run's Wikipedia traffic to compound into the next one's. Two consecutive
+real runs support this: 2/257 (0.8%) then 8/300 (2.7%) failures, later in the day with more
+cumulative traffic — a rising trend would show up here if back-to-back runs were compounding,
+and it hasn't. Worth re-checking if that ever changes, not assumed to hold forever.
 **Tuned from one real run's numbers, not guessed**: a manual trigger (used to confirm the
 workflow itself was healthy after its `schedule` trigger mysteriously never fired on its own in
 GitHub Actions for 8+ hours after being added — a known GitHub platform flakiness, not a config
