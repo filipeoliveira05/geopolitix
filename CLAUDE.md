@@ -351,16 +351,28 @@ see `isPrimaryPending()` above).
 
 **`/midterms-2026`** (plan §5): aligned per-office race tables (state | candidates) for Senate
 and Governor, linked from the map's top-right corner. House (435 races) gets a Scoreboard card
-too (called-count/primaries-held, same as Senate/Governor) plus its own section below —
-grouped by state, one native `<details>`/`<summary>` disclosure per state (collapsed by
-default, independent — expanding one doesn't close another), each summary line reusing the
-same `raceStats()`/`getElectionCountdown()` logic as the Scoreboard cards; expanding a state
-reveals its districts as rows in the same shape Senate/Governor use (`RaceRow`, shared across
-all three — state link swapped for a district label). Deliberately no flat 435-row table like
-Senate/Governor get — chosen specifically so nothing renders 435 rows uncollapsed by default;
-`<details>` was picked over a client-side accordion because it needs zero JS/component state,
-keeping this page a plain Server Component (note: the browser still renders collapsed content
-into the DOM, so this reduces visual length, not actual page weight). Every race resolves the
+too plus its own section below, grouped by state and collapsed by default — but **genuinely
+lazy, not just visually collapsed**: an initial `<details>`-based version still fetched all 435
+races' candidates on every page load (the browser renders collapsed content into the DOM
+either way), which measurably slowed the page down, so it was replaced with
+`HouseRacesByState.tsx` (client component) — the page itself fetches only a cheap per-state
+`{ total, called }` count with **no candidates join** (`getHouseRaceCountsByState()`), and each
+state's full race detail (`getHouseRacesForState()`, via `useQuery`, `enabled: isOpen`) is
+fetched only the first time a user expands that specific state; collapsing and re-expanding
+doesn't re-fetch (TanStack Query's cache). A rotating chevron (not the native `<details>`
+marker) reflects each row's own `isOpen` state — an inline SVG (matching `StatePanel.tsx`'s
+close-button icon style), not a rotated text glyph: a `›` character's ink isn't centered in its
+own em box, so rotating it 90° via CSS left it visibly off-center against the state name next
+to it (caught in a real screenshot, not assumed) — an SVG's viewBox has no such asymmetry.
+Real, visible tradeoff from going this route: pre-election, Senate/Governor's cards and rows
+still show a real "X/N primaries held"
+(needs inspecting candidate names for Wikipedia's TBD/presumptive placeholders — see
+`isPrimaryPending()`), but House's Scoreboard card and each collapsed state row can only show a
+plain race count, since computing "primaries held" needs exactly the per-candidate data this
+design deliberately avoids fetching until expansion — `ScoreboardCard`'s `primariesHeld: null`
+prop is what switches a card to that plainer count-only display. `RaceRow` (`src/components/`)
+is shared by Senate/Governor's server-rendered rows and every House state's client-rendered
+expanded rows — same row shape, state link swapped for a district label. Every race resolves the
 same day (Nov 3, 2026), so the top cards show a day-countdown + primaries-held count
 pre-election rather than a called-count stuck at 0/N for months; they switch to the real
 called-count automatically once that date passes (see `getElectionCountdown()`/

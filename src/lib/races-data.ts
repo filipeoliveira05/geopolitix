@@ -90,9 +90,60 @@ export async function getRacesForState(stateAbbr: string): Promise<Race[]> {
   return (data as unknown as RaceRow[]).map(fromRow);
 }
 
-/** Every Senate + Governor race nationwide — for the /midterms-2026 scoreboard. */
-export async function getAllRaces(): Promise<Race[]> {
-  const { data, error } = await supabase.from("races_2026").select(RACE_WITH_CANDIDATES_SELECT);
+/**
+ * Senate + Governor races nationwide, with full candidate detail — small
+ * enough (~71 rows) to fetch eagerly for /midterms-2026. House (435 races)
+ * deliberately isn't included here — see getHouseRaceCountsByState()/
+ * getHouseRacesForState() below, split out once fetching all 506 races'
+ * candidates on every page load measurably slowed this page down.
+ */
+export async function getSenateAndGovernorRaces(): Promise<Race[]> {
+  const { data, error } = await supabase
+    .from("races_2026")
+    .select(RACE_WITH_CANDIDATES_SELECT)
+    .in("office", ["senate", "governor"]);
   if (error) throw error;
   return (data as unknown as RaceRow[]).map(fromRow);
+}
+
+export type HouseStateSummary = { stateId: string; total: number; called: number };
+
+/**
+ * Per-state House race counts — status only, no candidates join — for
+ * /midterms-2026's collapsed per-state summary lines and the Scoreboard's
+ * House card. Deliberately cheap: this is what runs on every page load,
+ * unlike getHouseRacesForState() below which only runs once a user expands
+ * that specific state.
+ */
+export async function getHouseRaceCountsByState(): Promise<HouseStateSummary[]> {
+  const { data, error } = await supabase
+    .from("races_2026")
+    .select("state_id, status")
+    .eq("office", "house");
+  if (error) throw error;
+  const byState = new Map<string, HouseStateSummary>();
+  for (const row of data as unknown as { state_id: string; status: RaceStatus }[]) {
+    const entry = byState.get(row.state_id) ?? { stateId: row.state_id, total: 0, called: 0 };
+    entry.total++;
+    if (row.status === "called") entry.called++;
+    byState.set(row.state_id, entry);
+  }
+  return [...byState.values()].sort((a, b) => a.stateId.localeCompare(b.stateId));
+}
+
+/**
+ * Full House race detail (candidates included) for one state — fetched
+ * client-side only once a user expands that state's disclosure on
+ * /midterms-2026, not upfront for all 50 states.
+ */
+export async function getHouseRacesForState(stateAbbr: string): Promise<Race[]> {
+  const { data, error } = await supabase
+    .from("races_2026")
+    .select(RACE_WITH_CANDIDATES_SELECT)
+    .eq("state_id", stateAbbr)
+    .eq("office", "house");
+  if (error) throw error;
+  return (data as unknown as RaceRow[])
+    .map(fromRow)
+    .sort((a, b) => (a.districtNumber ?? 0) - (b.districtNumber ?? 0));
 }
