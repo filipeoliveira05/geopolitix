@@ -12,7 +12,7 @@ import {
 import { getGovernor, getGovernorHistory, governorFullName } from "@/lib/governors-data";
 import { getRacesForState } from "@/lib/races-data";
 import { StateTabs } from "@/components/StateTabs";
-import { SyncFreshnessNote } from "@/components/SyncFreshnessNote";
+import { SyncFreshnessRow } from "@/components/SyncFreshnessNote";
 import { getJobFreshness } from "@/lib/sync-freshness";
 
 export async function generateMetadata(
@@ -51,7 +51,11 @@ export default async function StatePage(props: PageProps<"/state/[abbr]">) {
     getGovernorHistory(abbr),
     getRacesForState(abbr),
   ]);
-  const representationSyncedAt = await getJobFreshness(["legislators", "governors", "governor_history"]);
+  const [legislatorsSyncedAt, governorsSyncedAt, governorHistorySyncedAt] = await Promise.all([
+    getJobFreshness(["legislators"]),
+    getJobFreshness(["governors"]),
+    getJobFreshness(["governor_history"]),
+  ]);
 
   return (
     <div className="mx-auto w-full max-w-3xl flex-1 p-6 sm:p-10">
@@ -65,7 +69,14 @@ export default async function StatePage(props: PageProps<"/state/[abbr]">) {
       <h1 className="mt-2 text-3xl font-semibold">
         {name} <span className="text-zinc-400 dark:text-zinc-600">({abbr})</span>
       </h1>
-      <SyncFreshnessNote label="Representation data" syncedAt={representationSyncedAt} className="mt-1" />
+      <SyncFreshnessRow
+        items={[
+          { label: "Legislators", syncedAt: legislatorsSyncedAt },
+          { label: "Governor", syncedAt: governorsSyncedAt },
+          { label: "Governor history", syncedAt: governorHistorySyncedAt },
+        ]}
+        className="mt-1"
+      />
 
       <div className="mt-6">
         <StateTabs

@@ -191,26 +191,34 @@ Build order: **Phase 1 politics → Phase 2 geography → Phase 3 quiz.** Don't 
   in history tables. Place it `inline-block` with `align-middle` next to text that might wrap
   (not a `flex items-center` sibling) — flex-centering against a block that wraps to two lines
   misaligns the dot against the wrapped text; inline keeps it pinned to the line it's actually on.
-- **Data-freshness indicators** (`SyncFreshnessNote`/`GlobalFooter`, `src/lib/sync-freshness.ts`):
-  small muted "Data synced X ago" text reading `sync_logs`, which every sync script now stamps
-  with a stable `job` slug instead of relying on the free-text `source` field (which already
-  varies by scope/mode within the same script). Each note is prefixed by a small dot reusing the
-  app's "Live/pending" convention rather than a new one: pulsing emerald for synced within the
-  last day (the one tier where "live" is an honest claim), static amber for 1-7 days, static
-  neutral gray beyond that — same pulse-means-something discipline as `RaceRow`'s not-yet-decided
-  dot elsewhere in the app.
-  **Two kinds of note, not shown together:** `/state/[abbr]` and `/midterms-2026` each show a
-  page-specific line for just the job(s) that page actually reads (e.g. "Representation data
-  synced 1 hour ago"). `GlobalFooter` — the "oldest of every core job's latest run" figure,
-  deliberately excluding `legislators_bio_backfill` since it runs far more often than the
-  political data underneath it and would otherwise permanently read "synced within the hour" —
-  is a **fallback for pages with no page-specific note** (`/legislator/[id]`, `/governor/[id]`)
-  only. An earlier version showed both on the same page; caught live as genuinely confusing (a
-  page reading "synced 1 hour ago" at the top and "synced 1 day ago" at the bottom look
-  contradictory even though they answer different questions — one page's data vs. the whole
-  site's stalest job) and removed the redundant one rather than just re-labeling it. The home
-  map (`/`) gets neither — its `h-dvh` fullscreen layout has no room for a footer row without
-  either overflowing the viewport or getting clipped.
+- **Data-freshness indicators** (`SyncFreshnessNote`/`SyncFreshnessRow`/`GlobalFooter`,
+  `src/lib/sync-freshness.ts`): small muted "X synced Y ago" text reading `sync_logs`, which
+  every sync script now stamps with a stable `job` slug instead of relying on the free-text
+  `source` field (which already varies by scope/mode within the same script). Each item is
+  prefixed by a small dot reusing the app's "Live/pending" convention rather than a new one:
+  pulsing emerald for synced within the last day (the one tier where "live" is an honest claim),
+  static amber for 1-7 days, static neutral gray beyond that — same pulse-means-something
+  discipline as `RaceRow`'s not-yet-decided dot elsewhere in the app.
+  **Two kinds of note, not shown together:** `/state/[abbr]` shows three separate items via
+  `SyncFreshnessRow` — Legislators/Governor/Governor history, each its own dot and timestamp
+  (wraps via `flex-wrap` on narrow viewports, no per-breakpoint branching needed) — rather than
+  one combined number. An earlier version used a single `getJobFreshness(["legislators",
+  "governors", "governor_history"])` call, which takes the MOST RECENT of the three — caught live
+  as dishonest in the opposite direction from the global figure's own fix below: it could read
+  "synced 1 hour ago" while one of the three jobs was actually days stale, silently hiding it
+  behind whichever job happened to run most recently. `/midterms-2026` still shows one item
+  (`SyncFreshnessNote`, a thin wrapper over `SyncFreshnessRow` for the single-item case) since
+  races is one atomic sync covering Senate/Governor/House together — nothing to split.
+  `GlobalFooter` — the "oldest of every core job's latest run" figure, deliberately excluding
+  `legislators_bio_backfill` since it runs far more often than the political data underneath it
+  and would otherwise permanently read "synced within the hour" — is a **fallback for pages with
+  no page-specific note** (`/legislator/[id]`, `/governor/[id]`) only. An earlier version showed
+  both the global footer and a page-specific note on the same page; caught live as genuinely
+  confusing (a page reading "synced 1 hour ago" at the top and "synced 1 day ago" at the bottom
+  look contradictory even though they answer different questions — one page's data vs. the whole
+  site's stalest job) and removed the redundant one rather than just re-labeling it. The home map
+  (`/`) gets neither — its `h-dvh` fullscreen layout has no room for a footer row without either
+  overflowing the viewport or getting clipped.
 
 ## Open decisions
 

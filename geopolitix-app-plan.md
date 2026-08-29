@@ -279,7 +279,11 @@ CLAUDE.md's data-conventions section):
 | Sync sports | TheSportsDB API | Not built yet (Phase 2) — manual only once built (~static) | `sports_teams` |
 | Sync 2026 races (Senate + Governor + House) | Wikipedia infobox parsing | Weekly, **its own separate workflow** (`races-sync.yml`, decoupled from `sync.yml` since 2026-08-29 specifically so this cadence can move independently — e.g. paused after the last 2026 primaries (Sep 15) and resumed near the Nov 3 general — without touching legislators/governors' schedule) | `races_2026`, `race_candidates` |
 
-Each job writes a `sync_logs` row for diagnostics and UI freshness indicators ("data last updated X days ago").
+Each job writes a `sync_logs` row for diagnostics — and, as of 2026-08-29, for the app's own
+"data synced X ago" freshness indicators too (`SyncFreshnessNote`/`SyncFreshnessRow`/
+`GlobalFooter`, `src/lib/sync-freshness.ts`), not just an aspirational future use. See
+CLAUDE.md's UI conventions for the current design (per-job breakdown vs. global fallback, the
+tiered pulsing-dot convention, and the `job` slug each script stamps).
 
 ---
 
