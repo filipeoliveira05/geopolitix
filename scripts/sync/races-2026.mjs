@@ -104,18 +104,58 @@ async function fetchCategoryMembers(category) {
 // candidates (74%) landed on an election/race overview page instead of a
 // person page before this filter existed (e.g. Ken Paxton's search top
 // hit was "2026 United States Senate election in Texas", whose thumbnail
-// is the Seal of Texas, not a photo of him). Requesting more than one
-// result and skipping any whose title itself reads as a race/election
-// page fixes the dominant failure mode; a candidate with no non-race hit
-// in the top 5 is left unresolved (bio_summary stays null, retried next
-// run) rather than accepting an obviously-wrong article.
+// is the Seal of Texas, not a photo of him).
 const ELECTION_PAGE_TITLE_PATTERN = /\belections?\b|\bcongressional district\b/i;
 
-async function searchWikipediaTitle(query) {
+/**
+ * Even after excluding election pages, MediaWiki's full-text search can
+ * still rank a completely unrelated article above anything to do with the
+ * candidate — confirmed live at real scale: auditing the first backfill
+ * pass found 243/455 "successful" matches (53%) had zero connection to the
+ * candidate's actual name (e.g. "Joseph Chou" -> "Deaths in 2026", "Sam
+ * Gallucci" -> "Eagles (band)", "Aaron Gies" -> "Anne Frank") — wrong data
+ * shown confidently, which is worse than showing nothing. Requiring the
+ * candidate's own SURNAME (not just any word in their name) to appear in
+ * the article title rejects nearly all of these — an earlier version of
+ * this check accepted a match on ANY shared word, which let "Tommy Hanson"
+ * match "Tommy Vietor" on the shared first name alone despite a completely
+ * different surname, caught live during verification before this landed.
+ * A genuine same-surname different-person match (e.g. an unrelated
+ * "Kingston") is a narrower, harder-to-avoid residual risk than "shares a
+ * common first name with someone famous", not one this function tries to
+ * solve — same tradeoff this codebase's other name-matching (legislator/
+ * governor) already accepts.
+ */
+// Generational suffixes would otherwise get picked as "the surname" for
+// someone like "Jeffrey Hulum III" — length alone doesn't filter "iii"
+// (3 characters) the way it does "jr"/"sr"/"ii"/"iv" (<=2).
+const NAME_SUFFIX_WORDS = new Set(["jr", "sr", "ii", "iii", "iv", "v"]);
+
+function normalizeNameWords(str) {
+  return str
+    .toLowerCase()
+    .replace(/[^a-z\s]/g, " ")
+    .split(/\s+/)
+    .filter((word) => word.length > 2 && !NAME_SUFFIX_WORDS.has(word));
+}
+
+function candidateSurname(candidateName) {
+  const words = normalizeNameWords(candidateName);
+  return words[words.length - 1];
+}
+
+function titleMatchesCandidateName(candidateName, title) {
+  if (ELECTION_PAGE_TITLE_PATTERN.test(title)) return false;
+  const surname = candidateSurname(candidateName);
+  if (!surname) return false;
+  return normalizeNameWords(title).includes(surname);
+}
+
+async function searchWikipediaTitle(query, candidateName) {
   const url = `${API_BASE}?action=query&list=search&srsearch=${encodeURIComponent(query)}&srlimit=5&format=json`;
   const data = await fetchJson(url);
   const hits = data.query?.search ?? [];
-  const personHit = hits.find((hit) => !ELECTION_PAGE_TITLE_PATTERN.test(hit.title));
+  const personHit = hits.find((hit) => titleMatchesCandidateName(candidateName, hit.title));
   return personHit?.title ?? null;
 }
 
@@ -507,7 +547,11 @@ async function backfillCandidateBios(supabase, abbrToStateName, warnings, { budg
 
     let title;
     try {
-      title = await withHardTimeout(() => searchWikipediaTitle(query), 30_000, `candidate search (${candidate.id})`);
+      title = await withHardTimeout(
+        () => searchWikipediaTitle(query, candidate.name),
+        30_000,
+        `candidate search (${candidate.id})`,
+      );
     } catch (err) {
       warnings.push(`candidate bio backfill: search failed for ${candidate.name} — ${err.message}`);
       processed++;
