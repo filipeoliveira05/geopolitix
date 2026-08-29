@@ -554,8 +554,16 @@ async function main() {
       totalRows += count;
       console.log(`[${i + 1}/${states.length}] ${state.id}: ${count} terms (${Date.now() - startedState}ms)`);
       // Courtesy pacing between states — no documented Wikidata rate limit,
-      // but 3 requests/state x 50 states deserves some restraint anyway.
-      await sleep(500);
+      // but requests/state x 50 states deserves some restraint anyway.
+      // Bumped from 500ms after a real GOVERNOR_HISTORY_SCOPE=current run
+      // hit a 429 on the 21st state: scope="current" shrank each state's
+      // own work (fetchPartyHistory now queries 1 person instead of a
+      // whole state's history, and the upsert is 1 row instead of up to
+      // 60+), so states finish faster and the same 500ms pacing produces a
+      // tighter request rate against Wikidata than before — despite total
+      // request volume actually going down. This restores headroom closer
+      // to the original per-state pacing.
+      await sleep(1500);
     }
     console.log("States done — backfilling photo/bio for every distinct person...");
     bioCount = await backfillBios(supabase, warnings, { scope: BACKFILL_SCOPE });

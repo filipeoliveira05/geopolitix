@@ -316,6 +316,16 @@ delete is scoped to only the bioguide ids a given run actually touched (chunked 
 not one query with thousands of ids) specifically so a `current`-scoped run can never sweep up
 and delete historical rows stamped by an earlier `historical` run, or vice versa —
 `governor_terms` needed no equivalent fix since it's pure upsert, no delete-based cleanup at all.
+**`legislators.wikipedia_title` is a persisted column, not re-derived per run** — a real bug on
+the first `LEGISLATORS_SCOPE=current` live run: `BACKFILL_SCOPE=recent`'s population includes
+recently-departed people who now live in `legislators-historical.yaml`, which a `current`-scoped
+run never fetches, so their Wikipedia title was nowhere and all 152/152 backfills that run failed
+with "no Wikipedia title". Fixed by persisting the title onto the row (`buildLegislator`) instead
+of an in-memory map rebuilt from that run's own YAML fetch, so `backfillLegislatorBios` reads it
+straight off the row regardless of which scope last touched them. One consequence: since this
+column is brand new, historical/recently-departed rows have no title yet until the next
+`sync:legislators-historical` run seeds it — run that once after this ships, or the recent-scope
+backfill will keep warning "no Wikipedia title" for anyone not already in `legislators-current.yaml`.
 **`legislators.bio_summary`/`photo_url` backfill runs on its own separate, much more frequent
 schedule** (`.github/workflows/legislator-bio-backfill.yml`, every hour + manual
 `workflow_dispatch`) rather than riding along on the weekly sync — the population here (~12,700

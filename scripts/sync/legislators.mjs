@@ -120,6 +120,11 @@ function buildLegislator(person) {
     last_name: person.name?.last ?? null,
     photo_url: photoUrl(bioguideId),
     birthday: person.bio?.birthday ?? null,
+    // Persisted (not re-derived from the YAML every run) so
+    // backfillLegislatorBios can look it up straight from the row —
+    // needed once LEGISLATORS_SCOPE=current stopped always fetching
+    // legislators-historical.yaml (see the wikipedia_title migration).
+    wikipedia_title: person.id?.wikipedia ?? null,
   };
 }
 
@@ -177,21 +182,21 @@ async function fetchRecentLegislatorIds(supabase) {
 /**
  * Backfills bio_summary (always) and photo_url (only when the existing
  * unitedstates/images photo 404s) for every legislator still missing a
- * bio — a second pass after the main upsert, run in the same process so
- * it reuses the Wikipedia article titles already loaded from the YAML
- * rather than re-deriving them. Filters on bio_summary alone (not photo)
- * so a legislator with a real bio but no Wikipedia thumbnail — and no
- * working unitedstates/images photo either — isn't re-fetched forever;
- * same accepted tradeoff as governor-history.mjs's backfillBios().
+ * bio — a second pass after the main upsert, run in the same process.
+ * Reads the Wikipedia article title from the row's own wikipedia_title
+ * column (persisted by buildLegislator on whichever run last upserted that
+ * person) rather than an in-memory map built from this run's own YAML
+ * fetch — required once LEGISLATORS_SCOPE=current stopped always fetching
+ * legislators-historical.yaml, since BACKFILL_SCOPE=recent's population
+ * includes recently-departed people a "current"-scoped run never parses.
+ * Filters on bio_summary alone (not photo) so a legislator with a real bio
+ * but no Wikipedia thumbnail — and no working unitedstates/images photo
+ * either — isn't re-fetched forever; same accepted tradeoff as
+ * governor-history.mjs's backfillBios().
  */
-async function backfillLegislatorBios(
-  supabase,
-  wikipediaTitleByBioguideId,
-  warnings,
-  { budgetMs, scope = "all" } = {},
-) {
+async function backfillLegislatorBios(supabase, warnings, { budgetMs, scope = "all" } = {}) {
   let people = await selectAllPages(() =>
-    supabase.from("legislators").select("id, photo_url").is("bio_summary", null),
+    supabase.from("legislators").select("id, photo_url, wikipedia_title").is("bio_summary", null),
   );
   if (scope === "recent") {
     const recentIds = await fetchRecentLegislatorIds(supabase);
@@ -229,7 +234,7 @@ async function backfillLegislatorBios(
     people,
     2,
     async (person) => {
-      const title = wikipediaTitleByBioguideId.get(person.id);
+      const title = person.wikipedia_title;
       if (!title) {
         warnings.push(`bio backfill: no Wikipedia title for ${person.id}`);
         recordProcessed();
@@ -301,12 +306,14 @@ async function backfillLegislatorBios(
 // Set by the frequent bio-backfill-only GitHub Actions schedule (see
 // .github/workflows/legislator-bio-backfill.yml) — the weekly full sync
 // (sync.yml) leaves both unset. Skips the legislators/terms upsert
-// entirely (the YAML is still fetched — cheap, a few seconds — since the
-// Wikipedia title map comes from it regardless) so a run every few hours
-// doesn't repeatedly churn the 45k-row terms table for no reason; only
-// existing legislators (already inserted by the last full sync) can be
-// backfilled this way. BACKFILL_BUDGET_MS bounds how long the backfill
-// pass keeps picking up new people before stopping cleanly — see
+// entirely, and now (since wikipedia_title is a persisted column, not a
+// map re-derived from this run's own YAML fetch) skips fetching either
+// YAML file too — nothing in backfill-only mode needs them anymore — so a
+// run every few hours doesn't repeatedly churn the 45k-row terms table,
+// or spend time downloading legislators-historical.yaml, for no reason.
+// Only existing legislators (already inserted by a prior current/historical
+// sync) can be backfilled this way. BACKFILL_BUDGET_MS bounds how long the
+// backfill pass keeps picking up new people before stopping cleanly — see
 // backfillLegislatorBios's own comment on why this run can't just
 // process the whole backlog in one sitting.
 const BACKFILL_ONLY = process.env.LEGISLATORS_BACKFILL_ONLY === "true";
@@ -322,14 +329,21 @@ async function main() {
   const supabase = supabaseAdmin();
   const startedAt = new Date().toISOString();
 
+  // Nothing in backfill-only mode reads current/historical below anymore
+  // (wikipedia_title comes from the DB row, not this run's YAML fetch), so
+  // both stay empty and neither file is fetched. Otherwise,
   // legislators-current.yaml is always fetched, even in "historical" scope
   // — it's small, and its bioguide ids are needed there purely for the
   // "current takes precedence" dedup below. legislators-historical.yaml
   // (~9MB) is skipped entirely in "current" scope.
-  const [current, historical] = await Promise.all([
-    fetchYaml(CURRENT_URL),
-    processHistorical ? fetchYaml(HISTORICAL_URL) : Promise.resolve([]),
-  ]);
+  let current = [];
+  let historical = [];
+  if (!BACKFILL_ONLY) {
+    [current, historical] = await Promise.all([
+      fetchYaml(CURRENT_URL),
+      processHistorical ? fetchYaml(HISTORICAL_URL) : Promise.resolve([]),
+    ]);
+  }
   const currentBioguideIds = new Set(
     current.map((p) => p.id?.bioguide).filter(Boolean),
   );
@@ -353,11 +367,6 @@ async function main() {
   const legislators = [];
   const terms = [];
   const seenIds = new Set();
-  // Captured here (not re-fetched) for backfillLegislatorBios below — the
-  // congress-legislators YAML already carries the enwiki article title
-  // directly (`id.wikipedia`, ~100% coverage, confirmed live), so unlike
-  // governor-history.mjs there's no separate Wikidata lookup step needed.
-  const wikipediaTitleByBioguideId = new Map();
 
   function keepExistingOrGuessedPhoto(legislator) {
     const guessed = legislator.photo_url;
@@ -365,19 +374,19 @@ async function main() {
     legislator.photo_url = existing && existing !== guessed ? existing : guessed;
   }
 
+  // current/historical are empty arrays in BACKFILL_ONLY mode (see above),
+  // so these loops naturally do nothing then — no need for their own
+  // BACKFILL_ONLY branch.
   if (processCurrent) {
     for (const person of current) {
       const legislator = buildLegislator(person);
       if (!legislator || seenIds.has(legislator.id)) continue;
       seenIds.add(legislator.id);
-      if (!BACKFILL_ONLY) {
-        keepExistingOrGuessedPhoto(legislator);
-        legislators.push(legislator);
-        terms.push(
-          ...buildTerms(legislator.id, person.terms ?? [], today, startedAt, { onlySenate: false }),
-        );
-      }
-      if (person.id?.wikipedia) wikipediaTitleByBioguideId.set(legislator.id, person.id.wikipedia);
+      keepExistingOrGuessedPhoto(legislator);
+      legislators.push(legislator);
+      terms.push(
+        ...buildTerms(legislator.id, person.terms ?? [], today, startedAt, { onlySenate: false }),
+      );
     }
   }
 
@@ -391,16 +400,11 @@ async function main() {
       const historicalTerms = buildTerms(legislator.id, person.terms ?? [], today, startedAt, {
         onlySenate: false,
       });
-      if (!BACKFILL_ONLY) {
-        if (historicalTerms.length === 0) continue;
-        seenIds.add(legislator.id);
-        keepExistingOrGuessedPhoto(legislator);
-        legislators.push(legislator);
-        terms.push(...historicalTerms);
-      } else {
-        seenIds.add(legislator.id);
-      }
-      if (person.id?.wikipedia) wikipediaTitleByBioguideId.set(legislator.id, person.id.wikipedia);
+      if (historicalTerms.length === 0) continue;
+      seenIds.add(legislator.id);
+      keepExistingOrGuessedPhoto(legislator);
+      legislators.push(legislator);
+      terms.push(...historicalTerms);
     }
   }
 
@@ -464,7 +468,7 @@ async function main() {
   let bioCount = 0;
   if (!error) {
     try {
-      bioCount = await backfillLegislatorBios(supabase, wikipediaTitleByBioguideId, warnings, {
+      bioCount = await backfillLegislatorBios(supabase, warnings, {
         budgetMs: BACKFILL_BUDGET_MS,
         scope: BACKFILL_SCOPE,
       });
@@ -478,7 +482,11 @@ async function main() {
   }
 
   await logSync(supabase, {
-    source: processHistorical ? `${CURRENT_URL}, ${HISTORICAL_URL}` : CURRENT_URL,
+    source: BACKFILL_ONLY
+      ? "legislators (bio backfill only, no YAML fetch)"
+      : processHistorical
+        ? `${CURRENT_URL}, ${HISTORICAL_URL}`
+        : CURRENT_URL,
     startedAt,
     error,
     warnings,

@@ -1,0 +1,12 @@
+-- Persists congress-legislators' `id.wikipedia` article title onto the row
+-- itself, instead of re-deriving it every run from an in-memory map built
+-- from whichever YAML file (current/historical) that run happened to
+-- fetch. Needed once legislators.mjs started supporting LEGISLATORS_SCOPE:
+-- a "current"-scoped run never fetches legislators-historical.yaml, so any
+-- recently-departed person in BACKFILL_SCOPE=recent's pool (which includes
+-- them) had no title available and the bio backfill silently failed for
+-- all of them (confirmed live: 152/152 "no Wikipedia title" warnings on
+-- the first current-scoped run). Nullable: existing rows predate this
+-- column and self-heal the next time a current/historical-scoped sync
+-- upserts them.
+alter table legislators add column wikipedia_title text;
