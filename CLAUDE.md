@@ -191,6 +191,22 @@ Build order: **Phase 1 politics → Phase 2 geography → Phase 3 quiz.** Don't 
   in history tables. Place it `inline-block` with `align-middle` next to text that might wrap
   (not a `flex items-center` sibling) — flex-centering against a block that wraps to two lines
   misaligns the dot against the wrapped text; inline keeps it pinned to the line it's actually on.
+- **Data-freshness indicators** (`SyncFreshnessNote`/`GlobalFooter`, `src/lib/sync-freshness.ts`):
+  small muted "Data synced X ago" text reading `sync_logs`, which every sync script now stamps
+  with a stable `job` slug instead of relying on the free-text `source` field (which already
+  varies by scope/mode within the same script). `GlobalFooter` is dropped into every top-level
+  page **except the home map** (`/`) — its `h-dvh` fullscreen layout has no room for a footer row
+  without either overflowing the viewport or getting clipped, so home intentionally has no
+  freshness note at all rather than forcing one in. The global figure deliberately excludes
+  `legislators_bio_backfill` from its "oldest of each core job's latest run" calculation — that
+  job runs far more often (hourly, sometimes back-to-back manual runs) than the actual political
+  data underneath it, and including it would make the figure read "synced within the hour"
+  almost permanently, hiding a genuinely stale core sync. `/state/[abbr]` and `/midterms-2026`
+  additionally show a page-specific line for just the job(s) that page reads. Each note is
+  prefixed by a small dot reusing the app's "Live/pending" convention rather than a new one:
+  pulsing emerald for synced within the last day (the one tier where "live" is an honest claim),
+  static amber for 1-7 days, static neutral gray beyond that — same pulse-means-something
+  discipline as `RaceRow`'s not-yet-decided dot elsewhere in the app.
 
 ## Open decisions
 
