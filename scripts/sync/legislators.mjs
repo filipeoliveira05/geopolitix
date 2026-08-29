@@ -490,6 +490,7 @@ async function main() {
     startedAt,
     error,
     warnings,
+    job: BACKFILL_ONLY ? "legislators_bio_backfill" : "legislators",
   });
 
   if (error) throw error;

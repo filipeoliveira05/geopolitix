@@ -9,6 +9,7 @@ import {
   legislatorFullName,
 } from "@/lib/legislators-data";
 import { PartyBadge } from "@/components/PartyBadge";
+import { GlobalFooter } from "@/components/GlobalFooter";
 
 const CHAMBER_LABELS = { senate: "U.S. Senate", house: "U.S. House" } as const;
 
@@ -122,6 +123,8 @@ export default async function LegislatorPage(props: PageProps<"/legislator/[id]"
           <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">No term data.</p>
         )}
       </div>
+
+      <GlobalFooter />
     </div>
   );
 }

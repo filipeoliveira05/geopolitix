@@ -25,10 +25,17 @@ export const TRIGGERED_BY = process.env.SYNC_TRIGGERED_BY === "cron" ? "cron" : 
 // duplicate) that don't fail the run (status stays "success") but are
 // still worth surfacing — folded into error_message alongside a real
 // error's own message when present.
-export async function logSync(supabase, { source, startedAt, error, warnings }) {
+//
+// `job` is a stable slug (e.g. "legislators", "legislators_bio_backfill")
+// used by the app's data-freshness indicator (src/lib/sync-freshness.ts) to
+// find "the latest successful run of X" — `source` isn't reliable for this
+// since the same script logs different `source` strings depending on its
+// own scope/mode.
+export async function logSync(supabase, { source, startedAt, error, warnings, job }) {
   const warningMessage = warnings?.length ? warnings.join("; ") : null;
   await supabase.from("sync_logs").insert({
     source,
+    job,
     triggered_by: TRIGGERED_BY,
     started_at: startedAt,
     finished_at: new Date().toISOString(),

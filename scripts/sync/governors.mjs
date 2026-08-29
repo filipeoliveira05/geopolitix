@@ -176,6 +176,7 @@ async function main() {
   }
   await supabase.from("sync_logs").insert({
     source: `${BASE_URL}/people (org_classification=executive)`,
+    job: "governors",
     triggered_by: TRIGGERED_BY,
     started_at: startedAt,
     finished_at: new Date().toISOString(),

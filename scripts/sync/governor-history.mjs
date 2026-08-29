@@ -584,6 +584,7 @@ async function main() {
   // is truthy, so a real failure still needs its own call.
   await supabase.from("sync_logs").insert({
     source: "wikidata.org (governor history)",
+    job: "governor_history",
     triggered_by: TRIGGERED_BY,
     started_at: startedAt,
     finished_at: new Date().toISOString(),

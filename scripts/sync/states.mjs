@@ -35,7 +35,7 @@ async function main() {
   const startedAt = new Date().toISOString();
   const { error } = await supabase.from("states").upsert(states, { onConflict: "id" });
 
-  await logSync(supabase, { source: "us-atlas + fips-to-abbr.json", startedAt, error });
+  await logSync(supabase, { source: "us-atlas + fips-to-abbr.json", startedAt, error, job: "states" });
 
   if (error) throw error;
 

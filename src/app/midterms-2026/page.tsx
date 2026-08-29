@@ -10,6 +10,9 @@ import {
 } from "@/lib/races-data";
 import { RaceRow } from "@/components/RaceRow";
 import { HouseRacesByState } from "@/components/HouseRacesByState";
+import { GlobalFooter } from "@/components/GlobalFooter";
+import { SyncFreshnessNote } from "@/components/SyncFreshnessNote";
+import { getJobFreshness } from "@/lib/sync-freshness";
 
 export const metadata: Metadata = { title: "2026 Midterms — Geopolitix" };
 // No dynamic route params here (unlike /state/[abbr]), so Next would
@@ -93,6 +96,7 @@ function ScoreboardCard({
 export default async function Midterms2026Page() {
   const senateAndGovernorRaces = await getSenateAndGovernorRaces();
   const houseCounts = await getHouseRaceCountsByState();
+  const racesSyncedAt = await getJobFreshness(["races"]);
 
   const { hasPassed: electionHasPassed, daysUntil: daysUntilElection } = getElectionCountdown();
 
@@ -122,6 +126,7 @@ export default async function Midterms2026Page() {
         This is not a real-time results service: race status updates on a periodic sync, not
         live on election night.
       </p>
+      <SyncFreshnessNote label="Race data" syncedAt={racesSyncedAt} className="mt-1" />
 
       <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
         {(["senate", "governor"] as const).map((office) => {
@@ -184,6 +189,8 @@ export default async function Midterms2026Page() {
           <HouseRacesByState summaries={houseCounts} electionHasPassed={electionHasPassed} />
         </div>
       </div>
+
+      <GlobalFooter />
     </div>
   );
 }

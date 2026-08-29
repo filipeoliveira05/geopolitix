@@ -12,6 +12,9 @@ import {
 import { getGovernor, getGovernorHistory, governorFullName } from "@/lib/governors-data";
 import { getRacesForState } from "@/lib/races-data";
 import { StateTabs } from "@/components/StateTabs";
+import { GlobalFooter } from "@/components/GlobalFooter";
+import { SyncFreshnessNote } from "@/components/SyncFreshnessNote";
+import { getJobFreshness } from "@/lib/sync-freshness";
 
 export async function generateMetadata(
   props: PageProps<"/state/[abbr]">,
@@ -49,6 +52,7 @@ export default async function StatePage(props: PageProps<"/state/[abbr]">) {
     getGovernorHistory(abbr),
     getRacesForState(abbr),
   ]);
+  const representationSyncedAt = await getJobFreshness(["legislators", "governors", "governor_history"]);
 
   return (
     <div className="mx-auto w-full max-w-3xl flex-1 p-6 sm:p-10">
@@ -62,6 +66,7 @@ export default async function StatePage(props: PageProps<"/state/[abbr]">) {
       <h1 className="mt-2 text-3xl font-semibold">
         {name} <span className="text-zinc-400 dark:text-zinc-600">({abbr})</span>
       </h1>
+      <SyncFreshnessNote label="Representation data" syncedAt={representationSyncedAt} className="mt-1" />
 
       <div className="mt-6">
         <StateTabs
@@ -82,6 +87,8 @@ export default async function StatePage(props: PageProps<"/state/[abbr]">) {
           races={races}
         />
       </div>
+
+      <GlobalFooter />
     </div>
   );
 }

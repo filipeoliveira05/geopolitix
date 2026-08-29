@@ -406,6 +406,7 @@ async function main() {
     source: "Wikipedia MediaWiki API (Infobox election parsing)",
     startedAt,
     error,
+    job: "races",
   });
 
   if (error) throw error;

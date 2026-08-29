@@ -11,6 +11,7 @@ import {
   type GovernorTerm,
 } from "@/lib/governors-data";
 import { PartyBadge } from "@/components/PartyBadge";
+import { GlobalFooter } from "@/components/GlobalFooter";
 
 type Profile = {
   name: string;
@@ -155,6 +156,8 @@ export default async function GovernorPage(props: PageProps<"/governor/[id]">) {
           </p>
         )}
       </div>
+
+      <GlobalFooter />
     </div>
   );
 }
