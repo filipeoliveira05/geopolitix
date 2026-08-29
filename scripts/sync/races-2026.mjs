@@ -97,10 +97,26 @@ async function fetchCategoryMembers(category) {
   return data.query.categorymembers.map((m) => m.title);
 }
 
+// A candidate search query ("<name> <state> 2026 candidate") very often
+// ranks the RACE's own Wikipedia article above the person's own biography
+// — that race article naturally mentions the candidate's name prominently
+// too. Confirmed live at real scale, not a rare edge case: 419/567
+// candidates (74%) landed on an election/race overview page instead of a
+// person page before this filter existed (e.g. Ken Paxton's search top
+// hit was "2026 United States Senate election in Texas", whose thumbnail
+// is the Seal of Texas, not a photo of him). Requesting more than one
+// result and skipping any whose title itself reads as a race/election
+// page fixes the dominant failure mode; a candidate with no non-race hit
+// in the top 5 is left unresolved (bio_summary stays null, retried next
+// run) rather than accepting an obviously-wrong article.
+const ELECTION_PAGE_TITLE_PATTERN = /\belections?\b|\bcongressional district\b/i;
+
 async function searchWikipediaTitle(query) {
-  const url = `${API_BASE}?action=query&list=search&srsearch=${encodeURIComponent(query)}&srlimit=1&format=json`;
+  const url = `${API_BASE}?action=query&list=search&srsearch=${encodeURIComponent(query)}&srlimit=5&format=json`;
   const data = await fetchJson(url);
-  return data.query?.search?.[0]?.title ?? null;
+  const hits = data.query?.search ?? [];
+  const personHit = hits.find((hit) => !ELECTION_PAGE_TITLE_PATTERN.test(hit.title));
+  return personHit?.title ?? null;
 }
 
 async function fetchWikitext(title, { fullPage = false } = {}) {
