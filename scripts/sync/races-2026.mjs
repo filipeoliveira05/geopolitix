@@ -113,42 +113,32 @@ const ELECTION_PAGE_TITLE_PATTERN = /\belections?\b|\bcongressional district\b/i
  * candidate — confirmed live at real scale: auditing the first backfill
  * pass found 243/455 "successful" matches (53%) had zero connection to the
  * candidate's actual name (e.g. "Joseph Chou" -> "Deaths in 2026", "Sam
- * Gallucci" -> "Eagles (band)", "Aaron Gies" -> "Anne Frank") — wrong data
- * shown confidently, which is worse than showing nothing. Requiring the
- * candidate's own SURNAME (not just any word in their name) to appear in
- * the article title rejects nearly all of these — an earlier version of
- * this check accepted a match on ANY shared word, which let "Tommy Hanson"
- * match "Tommy Vietor" on the shared first name alone despite a completely
- * different surname, caught live during verification before this landed.
- * A genuine same-surname different-person match (e.g. an unrelated
- * "Kingston") is a narrower, harder-to-avoid residual risk than "shares a
- * common first name with someone famous", not one this function tries to
- * solve — same tradeoff this codebase's other name-matching (legislator/
- * governor) already accepts.
+ * Gallucci" -> "Eagles (band)", "Aaron Gies" -> "Anne Frank"). Two
+ * successive attempts at a looser heuristic (surname-only, then
+ * surname + first-initial) each fixed the failures found so far but kept
+ * turning up new ones on the next audit — "Tommy Hanson"/"Tommy Vietor" on
+ * shared first name alone, then "Peter Crosby"/"Sidney Crosby" and "Carlos
+ * De La Cruz"/"Monica De La Cruz" on shared surname alone. Requiring an
+ * EXACT name match (case/punctuation/a trailing disambiguator like
+ * "(politician)" aside) instead of chasing further heuristics accepts a
+ * real cost — legitimate nickname variants like "Dave Dawson" matching
+ * "David Dawson" no longer auto-resolve — in exchange for eliminating
+ * this whole class of wrong-person mismatch outright. Candidates left
+ * unresolved this way are exactly the ones worth a human glance rather
+ * than another automated guess.
  */
-// Generational suffixes would otherwise get picked as "the surname" for
-// someone like "Jeffrey Hulum III" — length alone doesn't filter "iii"
-// (3 characters) the way it does "jr"/"sr"/"ii"/"iv" (<=2).
-const NAME_SUFFIX_WORDS = new Set(["jr", "sr", "ii", "iii", "iv", "v"]);
-
-function normalizeNameWords(str) {
+function normalizeExactName(str) {
   return str
     .toLowerCase()
-    .replace(/[^a-z\s]/g, " ")
-    .split(/\s+/)
-    .filter((word) => word.length > 2 && !NAME_SUFFIX_WORDS.has(word));
-}
-
-function candidateSurname(candidateName) {
-  const words = normalizeNameWords(candidateName);
-  return words[words.length - 1];
+    .replace(/\s*\([^)]*\)\s*$/, "") // strip a trailing disambiguator, e.g. "(politician)"
+    .replace(/[^a-z\s]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function titleMatchesCandidateName(candidateName, title) {
   if (ELECTION_PAGE_TITLE_PATTERN.test(title)) return false;
-  const surname = candidateSurname(candidateName);
-  if (!surname) return false;
-  return normalizeNameWords(title).includes(surname);
+  return normalizeExactName(candidateName) === normalizeExactName(title);
 }
 
 async function searchWikipediaTitle(query, candidateName) {
@@ -355,12 +345,25 @@ function normalizeParty(rawParty) {
   return cleaned;
 }
 
+// A replacement nominee's infobox entry is conventionally annotated
+// parenthetically — confirmed live in the raw wikitext: `[[Troy Jackson]]
+// <!--comment-->(replacing [[Graham Platner]])<!--comment-->` — which
+// cleanWikiText correctly reduces to plain text but has no reason to know
+// is anything other than part of the name. Left unstripped, this doesn't
+// just look wrong when displayed — it broke Wikipedia-search name matching
+// downstream too (backfillCandidateBios saw "Graham Platner" as this
+// candidate's own surname and confidently attached Platner's bio/photo to
+// Troy Jackson's page, caught live before this fix).
+function stripReplacementAnnotation(name) {
+  return name.replace(/\s*\(replacing\s+[^)]*\)\s*$/i, "").trim();
+}
+
 function extractCandidates(fields) {
   const candidates = [];
   for (let i = 1; i <= 8; i++) {
     const rawName = fields[`nominee${i}`] ?? fields[`candidate${i}`];
     if (rawName === undefined && fields[`party${i}`] === undefined) continue;
-    const name = cleanWikiText(rawName ?? "");
+    const name = stripReplacementAnnotation(cleanWikiText(rawName ?? ""));
     if (!name) continue;
     candidates.push({ name, party: normalizeParty(fields[`party${i}`]) });
   }
