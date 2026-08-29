@@ -258,19 +258,26 @@ tab.
 
 **Actual frequency, verified against the live workflow files** (not aspirational — this table
 previously listed several jobs at a frequency that was never implemented, and omitted two jobs
-entirely; corrected below):
+entirely; corrected below). As of 2026-08-29, `legislators`/`governor_terms` also split into a
+**current/recent-scoped weekly pass** vs. a **full-historical manual pass** — rewriting a
+150-year-old term or backfilling a bio for someone who left office decades ago on the same
+weekly cadence as this year's officeholders was pure waste, not safety (full rationale in
+CLAUDE.md's data-conventions section):
 
 | Job | Source | Actual frequency | Populates |
 |---|---|---|---|
 | Sync states (minimal seed) | `us-atlas` + `fips-to-abbr.json` | Weekly (`sync.yml`, rides along with the jobs below) | `states` (id/name only — see the geography row below for the rest) |
-| Sync legislators | unitedstates/congress-legislators | Weekly (`sync.yml`, Monday 06:00 UTC) | `legislators`, `terms` |
-| Sync legislator bio/photo backfill | Wikipedia REST API | **Hourly** — its own separate workflow (`legislator-bio-backfill.yml`), not the weekly one; the ~12,700-person population needs this much tighter cadence just to converge (§3) | `legislators.bio_summary`/`photo_url` |
+| Sync legislators (current + recent) | unitedstates/congress-legislators | Weekly (`sync.yml`, Monday 06:00 UTC), `LEGISLATORS_SCOPE=current` — only `legislators-current.yaml`, skips the ~9MB historical file entirely | `legislators`, `terms` (current officeholders only) |
+| Sync legislators (full historical) | unitedstates/congress-legislators | **Manual only** (`npm run sync:legislators-historical`) — congress-legislators is crowdsourced and does get rare corrections to old records, so this stays available on demand, just off the weekly cadence | `legislators`, `terms` (full ~1789-present history) |
+| Sync legislator bio/photo backfill (recent) | Wikipedia REST API | Weekly, folded into `sync.yml`'s current-scope legislators step (`BACKFILL_SCOPE=recent`) — current officeholders + anyone who left within ~4 years | `legislators.bio_summary`/`photo_url` (recent pool only) |
+| Sync legislator bio/photo backfill (full population) | Wikipedia REST API | **Hourly** — its own separate workflow (`legislator-bio-backfill.yml`), unscoped, catching up the full ~12,700-person historical backlog; **meant to be retired once that backlog converges close to 100%**, at which point the weekly recent-scoped pass above is sufficient for ongoing maintenance | `legislators.bio_summary`/`photo_url` (full population) |
 | Sync governors | OpenStates API | Weekly (`sync.yml`) | `governors` |
-| Sync governor history | Wikidata | Weekly (`sync.yml`, rides along with governors in the same run) | `governor_terms` |
+| Sync governor history (current term) | Wikidata | Weekly (`sync.yml`, rides along with governors in the same run), `GOVERNOR_HISTORY_SCOPE=current` — only that state's current term row + its bio backfill (`BACKFILL_SCOPE=recent`) get written | `governor_terms` (current term per state) |
+| Sync governor history (full statehood-to-now) | Wikidata | **Manual only** (`npm run sync:governor-history` with `GOVERNOR_HISTORY_SCOPE` unset) — same crowdsourced-correction rationale as legislators | `governor_terms` (full history) |
 | Sync districts/geometry | Census cartographic boundary files | Manual only (~static, redistricting is ~once/decade) | `districts` |
 | Sync geography (population/capital/cities) | Census Bureau API, Wikidata | **Not built yet** (Phase 2) — suggested monthly once it exists | `states` (population/capital columns), `cities` |
 | Sync sports | TheSportsDB API | Not built yet (Phase 2) — manual only once built (~static) | `sports_teams` |
-| Sync 2026 races (Senate + Governor + House) | Wikipedia infobox parsing | Weekly (`sync.yml`) — **the "daily near election day" escalation was never actually implemented**; would need a manual cadence bump if ever needed, same as `sync.yml`'s own header comment already says | `races_2026`, `race_candidates` |
+| Sync 2026 races (Senate + Governor + House) | Wikipedia infobox parsing | Weekly, **its own separate workflow** (`races-sync.yml`, decoupled from `sync.yml` since 2026-08-29 specifically so this cadence can move independently — e.g. paused after the last 2026 primaries (Sep 15) and resumed near the Nov 3 general — without touching legislators/governors' schedule) | `races_2026`, `race_candidates` |
 
 Each job writes a `sync_logs` row for diagnostics and UI freshness indicators ("data last updated X days ago").
 

@@ -261,17 +261,23 @@ one-time claim; re-check the actual counts before trusting old numbers here:**
 | | Name | Photo | Bio | Term history |
 |---|---|---|---|---|
 | **Governor, current** | ✅ | ✅ 50/50 (100%) | ✅ 50/50 (100%) | ✅ full non-consecutive history |
-| **Governor, past** | ✅ | ✅ 2,313/2,376 (97.4%) | ✅ 2,375/2,376 (99.96%) | ✅ full history |
-| **Senator/Rep, current** | ✅ | ⚠️ 519/532 resolve directly (97.6%, checked live one-by-one across every current senator+rep); the other 13 are almost all very recently-seated members not yet in `unitedstates/images`, and 12/13 already have a Wikipedia photo ready once the backfill reaches them | 🟡 in progress, shared pool below | ✅ full, all chambers |
-| **Senator/Rep, past** | ✅ | ⚠️ same guessed-URL/Wikipedia-fallback mechanism, not separately measured (12,712-person pool is overwhelmingly historical) | 🟡 in progress, shared pool below | ✅ full |
+| **Governor, past** | ✅ | ✅ 2,229/2,288 (97.4%) | ✅ 2,287/2,288 (99.96%) | ✅ full history |
+| **Senator/Rep, current + past (shared pool)** | ✅ (100%, `photo_url` always set to at least a guessed URL) | ⚠️ same guessed-URL/Wikipedia-fallback mechanism as before, not separately measured per current/past | 🟢 3,552/12,712 (27.9%) as of 2026-08-29 | ✅ full, all chambers |
 
 Governors went from "current bio is a permanent, never-wired-up gap" to fully solved (see the
-`governors.mjs`/`governor-history.mjs` gotchas above) — nothing left to do there. Legislator
-bio backfill (current + past, Senate + House all share one pool/one job) is **778/12,712
-(6.1%)** as of this writing, running unattended via `legislator-bio-backfill.yml` (see the
-GitHub Actions note below) — 110 of those 778 needed the Wikipedia photo fallback (their
-`unitedstates/images` guess was broken), the rest resolved directly. No ETA: throughput is
-bottlenecked by Wikipedia's own rate limiting, not by anything actionable on our end.
+`governors.mjs`/`governor-history.mjs` gotchas above) — nothing left to do there. Legislator bio
+backfill (current + past, Senate + House all share one pool/one job) is **3,552/12,712 (27.9%)**
+as of 2026-08-29 (up from 6.1% at last check), running unattended via
+`legislator-bio-backfill.yml` (see the GitHub Actions note below) — still the primary driver of
+this number, now supplemented by the weekly `BACKFILL_SCOPE=recent` pass in `sync.yml`. No ETA
+for full convergence: throughput is bottlenecked by Wikipedia's own rate limiting, not by
+anything actionable on our end (see the sync-scoping note above for the actual per-run math —
+roughly 2 concurrent requests, several seconds of backoff per rate-limited person). One known
+permanent gap, not a bug: a legislator whose `congress-legislators` entry has no `wikipedia`
+field at all (confirmed live for bioguide `G000607`, James Gallagher — a real Wikipedia article
+exists, `congress-legislators` just never linked it) can't be resolved by the backfill and stays
+`bio_summary IS NULL` forever unless fixed by hand or upstream — same class of gap as OpenStates'
+missing Governor entries and Wikidata's bare-QID labels elsewhere in this doc.
 
 Base Next.js + Tailwind + TypeScript scaffold in place. Infra checklist (plan §7) mostly done:
 GitHub repo pushed and tracked; Supabase project linked via CLI (credentials in gitignored
