@@ -39,58 +39,52 @@ Build order: **Phase 1 politics → Phase 2 geography → Phase 3 quiz.** Don't 
   `RealtimeClient` needs a WebSocket constructor Node < 22 lacks natively, and this app has no
   realtime/auth needs. Sync scripts (Node-only, write access) use `@supabase/supabase-js` + the
   `ws` package via `scripts/sync/_supabase-admin.mjs`.
-- **`governors.mjs` — full source research/gotchas are in plan §3, don't re-derive them.** The
-  ones that bite hardest if forgotten: party strings need `normalizeParty()` (OpenStates'
-  `"Democratic"` → our `"Democrat"`) or Democrat governors silently render `(?)` badges;
-  OpenStates' rate limit is much stricter in practice than its docs suggest (sustained 429s
-  taking minutes to clear, not seconds — expect this if re-running repeatedly in one session,
-  and treat 502/503/504 as retryable too, not just 429 — a real run crashed on a single PA 502
-  otherwise, losing all 50 states' already-fetched progress since nothing writes to Supabase
-  until the whole loop finishes); and OpenStates genuinely has no Governor entry for a handful
-  of states despite one existing (confirmed live: CA, NJ, VA, and others) — logged as a gap,
-  not hand-patched here (an earlier version hand-maintained a `GOVERNOR_OVERRIDES` map of
-  hardcoded name/party literals, removed once it went stale the moment one of those governors
-  left office — confirmed live for NJ/VA in Jan 2026; `getGovernor()` in governors-data.ts falls
-  back to `governor_terms` instead, see below). Syncs via `upsert`, not delete-then-reinsert —
-  `governor_terms.governor_id`'s FK onto `governors.id` (added by the `governor_terms`
-  migration, after this script's original design) makes a full-table delete throw once any
-  state has a linked `governor_id`, which is always true after the first `governor-history.mjs`
-  run. A truly departed/gap-state governor's row still needs an explicit delete, which the FK
-  (now `on delete set null`, not the Postgres-default `restrict` — see the
-  `governor_terms_governor_id_set_null` migration) lets succeed cleanly.
-- **`governor-history.mjs` — full source research (a real Wikidata SPARQL spike, not guessed)
-  is written up in the script's own header comment, don't re-derive it.** Shaped like
-  `race_candidates` (plain `name`/`party`, no required FK to a person table) rather than
-  `terms` — historical governors predate OpenStates entirely and have no `legislators.id`-style
-  natural key to hang a required FK off of; `governor_id` is nullable and only set on a state's
-  current term row. The two gotchas that bite hardest: a person's party (P102) statements
-  aren't date-scoped to the specific term being synced, so a party-switcher shows up against
-  every term they ever held unless resolved by matching the statement's own P580/P582 dates
-  client-side (`resolveParty()`); and Wikidata occasionally has a genuine duplicate P39
-  statement for the same person/term (confirmed: NJ's A. Harry Moore), which crashes a
-  same-batch upsert with "ON CONFLICT DO UPDATE command cannot affect row a second time" unless
-  de-duped by `(state_id, wikidata_person_id, start_date)` first.
-  **Second pass (`backfillBios()`) fills `photo_url`/`bio_summary`** for every distinct person
-  from the Wikipedia REST API (`/api/rest_v1/page/summary/<title>`), not Wikidata's own
-  P18/description — confirmed live to read noticeably better, e.g. a real sentence vs.
-  Wikidata's "American politician (1812-1883)". Coverage confirmed live across the *entire*
-  synced set, not sampled: 2,287/2,288 people (99.96%) — the one exception has no Wikipedia
-  article on Wikidata at all, a genuine permanent gap, not a bug. Filters on `bio_summary is
-  null` (not `photo_url`) to decide who still needs work — ~30 people legitimately have no
-  Wikipedia thumbnail but do have a real extract, and filtering on `photo_url` would re-fetch
-  them forever. Powers `/governor/[id]` for historical governors too (see below) — this is the
-  only place their photo/bio come from, since OpenStates only ever has current people.
-  **Real gotchas hit running this at full scale, not just the 3-state research spike:**
-  Wikipedia's REST API rate-limits under sustained concurrent load (429s survived 8 states at
-  concurrency 8, then more at concurrency 3 — settled on 2); a `fetch()` can hang with no
-  timeout and sit frozen indefinitely with zero progress/error (added `AbortSignal.timeout()`
-  after a real 40+-minute stall); and Wikidata's own SPARQL label service falls back to
-  emitting the bare entity id (e.g. `"Q651820"`) as the "label" when a person genuinely has no
-  English label at all — confirmed via Wikidata's raw entity JSON showing `labels.en: null` for
-  Bill Owens (CO governor 1999-2007) despite a full Wikipedia article existing. `backfillBios()`
-  detects and repairs this (`BARE_QID_PATTERN`) using the already-resolved Wikipedia article
-  title, and self-heals any future occurrence via a `name ~ '^Q[0-9]+$'` filter, not just a
-  one-off fix for the 3 people found this way so far.
+- **`governors.mjs`** — full source research in plan §3, don't re-derive. Party strings need
+  `normalizeParty()` (OpenStates' `"Democratic"` → our `"Democrat"`) or Democrat governors render
+  `(?)` badges. OpenStates' rate limit is stricter than documented — sustained 429s can take
+  minutes to clear, and 502/503/504 need the same retry treatment as 429 (a real run once lost
+  all 50 states' progress to a single unretried PA 502, since nothing writes to Supabase until
+  the whole loop finishes). OpenStates genuinely lacks a Governor entry for several states
+  despite one existing (CA, NJ, VA, others) — logged as a gap, not hand-patched (a hardcoded
+  `GOVERNOR_OVERRIDES` map was tried and removed once it went stale on a real officeholder
+  change); `getGovernor()` falls back to `governor_terms` instead. Syncs via `upsert`, not
+  delete-then-reinsert — `governor_terms.governor_id`'s FK onto `governors.id` makes a
+  full-table delete throw once any state has a linked governor (true after the first
+  `governor-history.mjs` run); the FK is `on delete set null` so a single departed/gap-state
+  governor's row can still be deleted explicitly.
+- **`governor-history.mjs`** — full source research (a real Wikidata SPARQL spike) is in the
+  script's own header comment, don't re-derive it. Shaped like `race_candidates` (plain
+  `name`/`party`, no required FK) since historical governors predate OpenStates and have no
+  natural key; `governor_id` is nullable, set only on a state's current term. Two gotchas: a
+  person's party (P102) statements aren't date-scoped to the term being synced, so a
+  party-switcher shows up against every term unless resolved client-side by matching P580/P582
+  dates (`resolveParty()`); and Wikidata occasionally has a genuine duplicate P39 statement for
+  the same person/term, which crashes a same-batch upsert unless de-duped by
+  `(state_id, wikidata_person_id, start_date)` first. `backfillBios()` fills
+  `photo_url`/`bio_summary` from the Wikipedia REST API, not Wikidata's own terser
+  description — 99.96% coverage (2,287/2,288; the one exception has no Wikipedia article at
+  all). Filters on `bio_summary IS NULL` (not `photo_url`) since ~30 people legitimately have no
+  thumbnail but do have a real extract. Powers `/governor/[id]` for historical governors — the
+  only source for their photo/bio. Wikipedia's REST API rate-limits under sustained load
+  (settled on concurrency 2); a `fetch()` can hang indefinitely with no timeout (fixed via
+  `AbortSignal.timeout()`); and Wikidata's SPARQL label service can emit a bare entity id (e.g.
+  `"Q651820"`) as the label when a person has no English label at all — `backfillBios()`
+  detects and repairs this (`BARE_QID_PATTERN`), self-healing any future occurrence via a
+  `name ~ '^Q[0-9]+$'` filter.
+- **`legislators.mjs`/`governor-history.mjs` run current/recent-scoped in the weekly
+  `sync.yml`** (`LEGISLATORS_SCOPE=current`, `GOVERNOR_HISTORY_SCOPE=current`,
+  `BACKFILL_SCOPE=recent` — current officeholders plus anyone whose term ended within ~4 years)
+  rather than full-historical, since a 150-year-old term never changes — same reasoning as
+  `RACES_SCOPE=pending` above. Full historical resyncs (`npm run sync:legislators-historical`,
+  or `sync:governor-history` with the scope env unset) stay manual-only — these sources are
+  crowdsourced and do get rare corrections, so this is "off the weekly cadence," not "frozen
+  forever." The `terms` cleanup delete is scoped to only the ids a given run actually touched,
+  so a `current`-scoped run can't sweep up and delete historical rows from an earlier
+  `historical` run (`governor_terms` needed no equivalent fix — it's pure upsert, no
+  delete-based cleanup at all). `legislators.wikipedia_title` is a persisted column, not
+  re-derived per run, specifically so `BACKFILL_SCOPE=recent`'s population (which includes
+  recently-departed people only present in the historical YAML) can still resolve a title even
+  though a `current`-scoped run never fetches that file.
 - **`districts` migrated, but geometry lives outside Postgres.** `sync:districts` writes two
   things: lightweight metadata rows (`id` = Census GEOID, `state_id`, `district_number`, no
   geometry) into the `districts` table, and the combined TopoJSON topology (~2.5MB, one blob
@@ -100,85 +94,70 @@ Build order: **Phase 1 politics → Phase 2 geography → Phase 3 quiz.** Don't 
   nothing populates them yet — House terms still join by the separate `district_number` column
   (`getCurrentRepsByDistrictKey()`). `src/lib/districts-geo.ts` fetches the Storage blob
   directly (public URL, no auth) rather than querying Postgres for it.
-- **`races_2026.mjs` — full source research/gotchas are in plan §3, don't re-derive them.** The
-  ones that bite hardest: a "called" race needs `after_election` to actually *name a parsed
-  candidate*, not just be non-empty (some pages use a `"TBD"` placeholder pre-results); and
-  `cleanWikiText()` strips wiki markup but not raw HTML (`<br />` has leaked into candidate
-  names before) — if a candidate name ever looks malformed, check for un-stripped HTML first.
-  **House races are structured differently on Wikipedia and need their own fetch path** — one
-  page per STATE (e.g. "2026 United States House of Representatives elections in Texas"), not
-  one page per race like Senate/Governor; each district lives in its own `==District N==`
-  section within that page (verified live sampling Texas's all 38, Colorado's 8, Wyoming's
-  single at-large), each still using the identical `{{Infobox election}}` field names, so
-  `collectHouseRaces()` reuses every candidate-parsing helper unchanged and only differs in
-  page-fetching (`fetchWikitext(title, { fullPage: true })`, not the lead-section-only fetch
-  Senate/Governor use, since district infoboxes live past the lead section) and splitting
-  (`splitIntoDistrictSections()`). A single-district state's page has no `==District N==`
-  heading at all — treated as one race, district number 0 (at-large), matching the
-  `terms`/`legislators` convention. `parseHouseTitle()`'s title regex naturally excludes both
-  the category's 2 overview pages and its 9 standalone special-election pages (e.g. "2026
-  California's 1st congressional district special election") — none of those titles match the
-  "...elections? in `<State>`" shape, so no separate exclusion list was needed; confirmed live,
-  506 races synced (35 Senate, 36 Governor, 435 House) with only territory-page skips as
-  warnings. **Syncs insert-then-cleanup, not delete-then-insert** — same reorder as
-  `governors.mjs` (§3, above) and for the same class of bug: the original delete-all-then-
-  insert-one-race-at-a-time order left `races_2026`/`race_candidates` genuinely incomplete
-  (not just stale) if any single race's insert failed partway through. Now every fresh race
-  is inserted first (stamped with this run's `last_synced_at`); only once the whole set
-  succeeds does a cleanup step remove rows stamped before this run — and if something fails
-  partway instead, only this run's own partial rows (all stamped at/after this run's start)
-  get rolled back, leaving the previous run's complete data untouched. Verified live against
-  the real table (not just reasoned through): inserted dummy rows with an old timestamp, a
-  null timestamp (covers any pre-existing row from before this column existed), and a
-  future timestamp, confirmed each filter path caught exactly the right one.
+- **`races_2026.mjs`** — full source research in plan §3, don't re-derive. A "called" race needs
+  `after_election` to name an actual parsed candidate, not just be non-empty (some pages use a
+  `"TBD"` placeholder pre-results). `cleanWikiText()` strips wiki markup but not raw HTML — check
+  for un-stripped HTML first if a candidate name looks malformed. **House races need their own
+  fetch path** — one Wikipedia page per STATE (not per race), each district in its own
+  `==District N==` section, same `{{Infobox election}}` fields as Senate/Governor so the
+  candidate-parsing helpers are shared; only page-fetching (`fetchWikitext(..., { fullPage: true
+  })`) and splitting (`splitIntoDistrictSections()`) differ. A single-district state's page has
+  no district heading — treated as one race, district 0 (at-large), matching the
+  `terms`/`legislators` convention. `parseHouseTitle()`'s regex naturally excludes the
+  category's overview and special-election pages, no separate exclusion list needed (506 races
+  synced live: 35 Senate, 36 Governor, 435 House). **Syncs insert-then-cleanup, not
+  delete-then-insert** — same reorder and reasoning as `governors.mjs`: a fresh race is inserted
+  first (stamped with this run's `last_synced_at`); only once the whole set succeeds does
+  cleanup remove rows stamped before this run, so a partial failure never leaves the table
+  incomplete.
 - **Candidate profile pages (`candidates` table, added 2026-08-29)** — every race candidate on
-  `/midterms-2026`/`/state/[abbr]` now links somewhere: to their existing `/legislator/[id]` or
-  `/governor/[id]` page if they're a *current* officeholder (matched fresh every sync, directly
-  on the disposable `race_candidates` row — see `loadCurrentOfficeholders()`/
-  `matchOfficeholder()` in `races-2026.mjs`, exact-name match first, surname-suffix fallback only
-  when it resolves to exactly one person), or to a new `/candidate/[id]` page otherwise. Matching
-  checks *any* current officeholder, not just the ones flagged `is_incumbent` in that specific
-  race — a sitting House rep running for Senate isn't "the incumbent" there but already has a
-  real profile worth linking to. **Deliberately excludes historical (non-current) officeholders**
-  — a former Rep/Governor running again falls through to the Wikipedia-search path like everyone
-  else, a known simplification (extending the match pool from ~585 current officeholders to the
-  full historical set would meaningfully raise false-positive-match risk for a plain
-  name/surname comparison) — see
-  `docs/superpowers/specs/2026-08-29-candidate-profiles-design.md`'s "Explicitly out of scope"
-  for the full reasoning, not re-derived here. The `candidates` table only holds people with *no*
-  match — a real challenger — since `race_candidates`/`races_2026` are fully deleted and
-  re-inserted every sync (no stable id to hang a permanent URL or backfilled bio off), the same
-  problem `legislators`/`terms` and `governors`/`governor_terms` already solved by splitting
-  person from per-cycle record. `id` is a slug (`${state_id}-${normalized-name}`), not a uuid.
-  Every bio in this table is an **unconditional** best-effort guess — a name + state + office
-  Wikipedia search (`backfillCandidateBios()`), no ID like `bioguide_id`/a Wikidata QID exists for
-  a scraped candidate name, top hit taken with no further verification — so `/candidate/[id]`
-  always shows a fixed disclaimer whenever a bio is present, not a conditional `bio_source` flag.
-  **PostgREST gotcha hit building this — twice, in both directions:** `candidates-data.ts`'s
-  nested embed (`candidates -> race_candidates -> races_2026`) and `races-2026.mjs`'s own
-  `getPendingStateSets()` (`races_2026 -> race_candidates`, see below) both need the same FK
-  disambiguation `races-data.ts`'s `RACE_WITH_CANDIDATES_SELECT` already needed
-  (`races_2026!race_candidates_race_id_fkey(...)` / `race_candidates!race_candidates_race_id_fkey(...)`,
-  never the bare table name) — `race_candidates` has two FKs touching `races_2026` (`race_id` and
-  the reverse via `winner_candidate_id`), and missing this produced a real 500 on
-  `/candidate/[id]` and a real thrown error in `races-2026.mjs`, both caught live, not assumed
-  from the code alone.
-- **`RACES_SCOPE=pending` (added 2026-08-29)** — the vast majority of 2026 primaries are already
-  resolved and locked in for the general; re-fetching every state's Wikipedia page every week was
-  mostly re-confirming answers that hadn't changed (confirmed live: a `pending`-scoped run only
-  needed to actually fetch 28 of 506 races — 4 Senate, 4 Governor, 20 House — everything else
-  correctly recognized as already resolved and skipped with zero network calls). `races-2026.mjs`'s
-  `getPendingStateSets()` derives "still pending" from **our own already-synced data** (a
+  `/midterms-2026`/`/state/[abbr]` links somewhere: to their existing `/legislator/[id]`/
+  `/governor/[id]` page if they're a *current* officeholder (matched fresh every sync directly on
+  the disposable `race_candidates` row via `matchOfficeholder()` — **exact full-name match only**,
+  no fuzzy fallback, after two looser heuristics each produced a new class of wrong-person match,
+  see below), or to a new `/candidate/[id]` page otherwise. Matching checks *any* current
+  officeholder, not just ones flagged `is_incumbent` in that race. Deliberately excludes
+  historical (non-current) officeholders — a former Rep/Governor running again falls through to
+  the Wikipedia-search path like anyone else (full reasoning in
+  `docs/superpowers/specs/2026-08-29-candidate-profiles-design.md`). The `candidates` table only
+  holds unmatched challengers, since `race_candidates`/`races_2026` are fully rebuilt every
+  sync with no stable id to hang a URL or bio off — same problem `legislators`/`terms` already
+  solved by splitting person from per-cycle record. `id` is a slug
+  (`${state_id}-${normalized-name}`), not a uuid.
+  **Bio matching took three iterations to land on exact-match-only, each a real failure, not
+  theoretical:** a name+state+office search often ranks the race's own election-overview page
+  above the person's biography (fixed by excluding titles matching `/elections?\b/`); even so,
+  full-text search still surfaces a totally unrelated article often enough to matter (a real
+  audit found 53% of backfilled bios had zero connection to the candidate); a follow-up
+  surname+first-initial heuristic fixed those but produced new same-surname collisions on the
+  next audit (e.g. "Sidney Crosby" matched to candidate "Peter Crosby"). The final rule requires
+  an exact name match (case/punctuation/a trailing disambiguator aside) — legitimate nickname
+  variants ("Dave"/"David") no longer auto-resolve, a real cost, in exchange for eliminating
+  wrong-person mismatches outright; unresolved candidates need manual lookup, not another
+  automated guess. Every accepted bio is still an unconditional best-effort guess — no reliable
+  ID like `bioguide_id`/a Wikidata QID exists for a scraped candidate name — so `/candidate/[id]`
+  always shows a fixed disclaimer whenever a bio is present. Separately, `extractCandidates()`
+  strips a trailing `(replacing X)` annotation from a scraped name — Wikipedia conventionally
+  marks a replacement nominee this way in the infobox (e.g. "Troy Jackson (replacing Graham
+  Platner)"), which `cleanWikiText()` reduces to plain text but doesn't know isn't part of the
+  name; left in, it broke matching by making the replaced person's name look like a surname.
+  **PostgREST gotcha, hit twice, in both directions:** any embed between `race_candidates` and
+  `races_2026` needs explicit FK disambiguation
+  (`race_candidates!race_candidates_race_id_fkey(...)` /
+  `races_2026!race_candidates_race_id_fkey(...)`, never the bare table name) — `race_candidates`
+  has two FKs touching `races_2026` (`race_id` and the reverse via `winner_candidate_id`), and
+  missing this produces a real 500/thrown error, not a silently-wrong result.
+- **`RACES_SCOPE=pending` (added 2026-08-29)** — most 2026 primaries are already resolved and
+  locked in for the general, so re-fetching every state's Wikipedia page weekly was mostly
+  re-confirming unchanged answers (a real `pending`-scoped run only needed to fetch 28/506
+  races). `getPendingStateSets()` derives "still pending" from our own already-synced data (a
   placeholder candidate, zero candidates, or no synced race yet) rather than a hand-maintained
-  primary-date calendar that would go stale the moment a date changed. The cleanup-delete step is
-  scoped per office to exactly the states a `pending` run actually touched
-  (`touchedByOffice` in `main()`) — the same class of fix `legislators.mjs`'s
-  `LEGISLATORS_SCOPE=current` needed for its own cleanup delete, and for the identical reason: a
-  blanket "delete anything stale" would otherwise also remove every state this run deliberately
-  skipped, since none of them got a fresh `last_synced_at` stamp. `races-sync.yml`'s weekly
-  cadence sets `RACES_SCOPE=pending`; a manual run (env unset, default `"full"`) re-fetches
-  everything — use that for the Nov 3 general, when every state needs re-checking regardless of
-  primary status.
+  primary-date calendar that would go stale. The cleanup-delete step is scoped per office to
+  exactly the states a `pending` run touched (`touchedByOffice`) — same class of fix
+  `LEGISLATORS_SCOPE=current` needed for the identical reason: a blanket delete would otherwise
+  remove every state this run deliberately skipped. `races-sync.yml`'s weekly cadence sets
+  `RACES_SCOPE=pending`; a manual run (env unset, default `"full"`) re-fetches everything — use
+  that for the Nov 3 general, when every state needs re-checking regardless of primary status.
 - **Candidate bio backfill split the same way legislators' already was** — `BACKFILL_BUDGET_MS`
   (reusing `legislators.mjs`'s exact mechanism) caps `backfillCandidateBios()` so a normal weekly
   `races-sync.yml` run stays short (10 min cap; the backlog took 45+ minutes unbounded on a real
@@ -368,118 +347,40 @@ Base Next.js + Tailwind + TypeScript scaffold in place. Infra checklist (plan §
 GitHub repo pushed and tracked; Supabase project linked via CLI (credentials in gitignored
 `.env.local`); schema applied as versioned migrations (`supabase/migrations/`); Vercel project
 connected with Vercel Authentication as the deployment gate; Supabase env vars wired to both
-Vercel and local `.env.local`. `states`/`legislators`/`governors`/`governor_terms` sync weekly
-via GitHub Actions (`.github/workflows/sync.yml`, Monday 06:00 UTC + manual `workflow_dispatch`)
-— not Vercel Cron as the plan originally sketched; `governors.mjs` deliberately rate-limits
-itself to ~70-100+s, tight against Vercel's 300s function timeout and requiring restructuring
-into HTTP handlers, so a plain scheduled workflow running the existing `npm run sync:*` scripts
-unchanged was the lower-risk choice. **`races_2026` has its own separate workflow**
-(`.github/workflows/races-sync.yml`, same weekly cadence today) — split out so its cadence can
-move independently: weekly through the last 2026 primaries (Sep 15), then paused until closer to
-the Nov 3 general, without touching legislators/governors' schedule. Runs `RACES_SCOPE=pending`
-(see the data-conventions entry above) so a normal week only re-fetches states whose primaries
-are still unresolved. Candidate bio backfill has its own further-split workflow,
-`candidate-bio-backfill.yml` (every 3 hours, `CANDIDATES_BACKFILL_ONLY=true`) — same
-weekly-sync/frequent-backfill split legislators already has, see the data-conventions entry
-above. Needs three repo secrets set
+Vercel and local `.env.local`. Not Vercel Cron as the plan originally sketched — `governors.mjs`
+rate-limits itself to ~70-100+s, tight against Vercel's 300s function timeout, so a plain
+GitHub Actions workflow running the existing `npm run sync:*` scripts unchanged was the
+lower-risk choice. Three workflows: `sync.yml` (`states`/`legislators`/`governors`/
+`governor_terms`, weekly, Monday 06:00 UTC), `races-sync.yml` (`races_2026`, its own cadence so
+it can be paused after the last 2026 primaries (Sep 15) and resumed near the Nov 3 general
+independently of the other syncs — `RACES_SCOPE=pending` on the normal cadence, see Data
+conventions), and `candidate-bio-backfill.yml` (every 3 hours). Needs three repo secrets
 (Settings → Secrets and variables → Actions): `NEXT_PUBLIC_SUPABASE_URL`,
 `SUPABASE_SERVICE_ROLE_KEY`, `OPENSTATES_API_KEY`. Each sync step runs independently
-(`continue-on-error` per step, so one external API having a bad day doesn't skip the others —
-OpenStates rate limits have been hit repeatedly, including once in the real cron run itself),
-but a final step re-checks each step's outcome and fails the overall run if any of them
-genuinely errored — **`continue-on-error` alone silently reports the whole job as
-"success" even when a step fails; caught from a real run** (governors.mjs hit OpenStates'
-rate limit and errored, workflow still showed green) and fixed with that explicit check,
-so the job status is trustworthy without needing to cross-check `sync_logs` for a real
-failure. `districts` stays manual-only (redistricting is ~once/decade, per plan §6).
+(`continue-on-error`, so one external API having a bad day doesn't skip the others), but a
+final step re-checks each step's outcome and fails the overall run if any genuinely
+errored — `continue-on-error` alone silently reports the whole job as "success" even when a
+step fails, caught from a real run where this masked an OpenStates rate-limit failure.
+`districts` stays manual-only (redistricting is ~once/decade, per plan §6).
 
-**`legislators.mjs`/`governor-history.mjs` both run current/recent-scoped in the weekly
-sync.yml, not full-historical** — a term that ended in 1850 (or 1990) never changes, so
-rewriting the entire historical `terms`/`governor_terms` tables on the same cadence as this
-year's officeholders was pure waste, not safety. `sync.yml` sets `LEGISLATORS_SCOPE=current`
-(skips fetching/upserting the ~9MB `legislators-historical.yaml` entirely — only
-`legislators-current.yaml` is touched) and `GOVERNOR_HISTORY_SCOPE=current` (each state's SPARQL
-history query still runs, since a second narrower query shape wasn't worth the added risk, but
-only that state's current term row gets upserted/party-resolved). Both also set
-`BACKFILL_SCOPE=recent`, restricting the bio/photo backfill pass to current officeholders plus
-anyone whose most recent term ended within ~4 years (`RECENT_YEARS`/`fetchRecentLegislatorIds`
-/`fetchRecentPersonIds`), rather than sweeping the full historical pool every week. Full
-historical resyncs (`npm run sync:legislators-historical`, or `npm run sync:governor-history`
-with `GOVERNOR_HISTORY_SCOPE` unset) stay manual-only, not automated on any cadence —
-congress-legislators/Wikidata are crowdsourced and do get rare corrections to old records, so
-this is "off the weekly cadence", not "frozen forever". The `terms` table's stale-row cleanup
-delete is scoped to only the bioguide ids a given run actually touched (chunked `.in()` filter,
-not one query with thousands of ids) specifically so a `current`-scoped run can never sweep up
-and delete historical rows stamped by an earlier `historical` run, or vice versa —
-`governor_terms` needed no equivalent fix since it's pure upsert, no delete-based cleanup at all.
-**`legislators.wikipedia_title` is a persisted column, not re-derived per run** — a real bug on
-the first `LEGISLATORS_SCOPE=current` live run: `BACKFILL_SCOPE=recent`'s population includes
-recently-departed people who now live in `legislators-historical.yaml`, which a `current`-scoped
-run never fetches, so their Wikipedia title was nowhere and all 152/152 backfills that run failed
-with "no Wikipedia title". Fixed by persisting the title onto the row (`buildLegislator`) instead
-of an in-memory map rebuilt from that run's own YAML fetch, so `backfillLegislatorBios` reads it
-straight off the row regardless of which scope last touched them. One consequence: since this
-column is brand new, historical/recently-departed rows have no title yet until the next
-`sync:legislators-historical` run seeds it — run that once after this ships, or the recent-scope
-backfill will keep warning "no Wikipedia title" for anyone not already in `legislators-current.yaml`.
-**`legislators.bio_summary`/`photo_url` backfill runs on its own separate, much more frequent
-schedule** (`.github/workflows/legislator-bio-backfill.yml`, every hour + manual
-`workflow_dispatch`) rather than riding along on the weekly sync — the population here (~12,700
-legislators, current + full House/Senate history) makes one full pass take a while even at the
-deliberately low concurrency Wikipedia's REST API needs (see `legislators.mjs`/
-`_wikipedia.mjs` comments — going higher reliably produces more 429s, not fewer, same lesson
-`governor-history.mjs` already learned; cadence and per-run budget are the levers tuned instead,
-not concurrency). Each run sets `LEGISLATORS_BACKFILL_ONLY=true` (skips resyncing
-`legislators`/`terms` from congress-legislators entirely — that stays on the weekly cadence —
-since the Wikipedia article title needed for the backfill comes from the same YAML fetch
-regardless) and `BACKFILL_BUDGET_MS` (25 min, comfortably under the job's 32min
-`timeout-minutes`) so a run stops cleanly and picks up next time rather than trying to process
-the whole backlog in one sitting; self-healing via the same `bio_summary IS NULL` filter as
-everywhere else in this codebase. A `concurrency: legislator-bio-backfill` group queues
-(doesn't cancel) an overlapping run rather than letting two runs process the same
-still-null rows at once — cheap insurance once the cadence got tight enough (hourly, ~25min
-runs) for a slow run to genuinely butt up against the next scheduled one.
-`mapWithConcurrency` (`_wikipedia.mjs`) grew a `shouldStop` hook for this.
-**Retire this workflow once the full-population manual backfill converges close to 100%** — the
-weekly `sync.yml` step now runs its own `BACKFILL_SCOPE=recent`-scoped backfill (see the data
-conventions note above), covering ongoing maintenance for current + recently-departed
-legislators going forward; this hourly full-pool job's only remaining purpose past that point is
-finishing the initial catch-up sweep of everyone else.
-**The `schedule:` trigger itself has been unreliable in practice — confirmed live, not
-assumed**: it didn't fire even once in this workflow's first several hours live (`gh run list`
-showed zero `event: "schedule"` runs, only manual `workflow_dispatch` ones), despite every
-config check passing (workflow registered `state: "active"` via the API, repo not a fork/not in
-an org — both of which disable scheduled workflows — Actions enabled, YAML valid). This is
-genuinely GitHub-side platform flakiness, not a bug here, and not something a YAML change can
-fully fix — the cron was offset to `17 * * * *` (not the exact top of the hour, GitHub's own
-documented advice, since that's the single most congested moment for their scheduler) as a
-real but unguaranteed mitigation. **Treat manual triggers (the "Run workflow" button on the
-Actions tab, or `gh workflow run legislator-bio-backfill.yml`) as the primary mechanism, not a
-fallback** — there's no fixed cadence to hit, just whenever convenient; every run is safe and
-idempotent regardless of how long the gaps between them are. **Triggering back-to-back
-(immediately after the previous run finishes) is fine, not just tolerated** — the
-`concurrency` group above prevents two runs ever actually overlapping regardless of timing, and
-unlike the real rate-limiting this session hit from repeated *local* testing (same machine, same
-IP, in a tight window), each GitHub Actions run gets its own fresh ephemeral runner — there's no
-strong reason for one run's Wikipedia traffic to compound into the next one's. Two consecutive
-real runs support this: 2/257 (0.8%) then 8/300 (2.7%) failures, later in the day with more
-cumulative traffic — a rising trend would show up here if back-to-back runs were compounding,
-and it hasn't. Worth re-checking if that ever changes, not assumed to hold forever.
-**Tuned from one real run's numbers, not guessed**: a manual trigger (used to confirm the
-workflow itself was healthy after its `schedule` trigger mysteriously never fired on its own in
-GitHub Actions for 8+ hours after being added — a known GitHub platform flakiness, not a config
-bug; confirmed by manually dispatching it and watching it run cleanly) processed 255/12,322
-people in 20 minutes with only 2 failures, both transient 429s correctly left for the next run.
-At the original 3-hourly/20min settings that was ~6 days to clear the backlog; hourly + 25min
-cuts that to under 2 days.
-**A real hang was hit and fixed building this**: `withHardTimeout` (`_wikipedia.mjs`) went
-through two broken versions before converging — v1 raced a promise against a timer but never
-cancelled the original work, so abandoned retry chains piled up and progressively stalled later
-items; v2 dropped the race in favor of an AbortSignal for `fn` to observe, but a caller that
-didn't actually thread the signal through (legislators.mjs's Supabase `update()` call site) got
-zero timeout protection at all. The final version does both — a real `Promise.race` guarantees
-the outer `await` settles by `ms` regardless of whether `fn` honors the signal, and `fn` still
-receives the signal so a fetch()-based caller can actively cancel its in-flight request.
+`legislators.mjs`/`governor-history.mjs`'s current/recent scoping and `legislators.wikipedia_title`
+are documented in the Data conventions section above, not repeated here.
+
+**`legislators.bio_summary`/`photo_url` also gets a separate hourly full-population backfill**
+(`.github/workflows/legislator-bio-backfill.yml`, `LEGISLATORS_BACKFILL_ONLY=true` +
+`BACKFILL_BUDGET_MS`), draining the ~12,700-person historical backlog the weekly
+`BACKFILL_SCOPE=recent` pass doesn't cover. **Retire this workflow once that backlog converges
+close to 100%** — the weekly recent-scoped pass is sufficient for ongoing maintenance after
+that. GitHub's `schedule:` trigger has proven unreliable for this workflow specifically (didn't
+fire at all for its first several hours live — genuine platform-side flakiness, not a config
+bug) — treat manual triggers as the primary mechanism, not a fallback. Triggering back-to-back
+is safe: a `concurrency` group queues rather than overlaps runs, and each GitHub Actions run
+gets a fresh ephemeral runner, so the rate-limit compounding seen from repeated *local* testing
+doesn't apply here. `withHardTimeout` (`_wikipedia.mjs`) combines a real `Promise.race` with an
+`AbortSignal` so a timeout is enforced whether or not the wrapped callback actually honors the
+signal — both matter; an earlier version had only one or the other and let stuck retries pile
+up silently.
+
 Remaining: geography/sports sync (Phase 2).
 
 **Home page** (`src/app/page.tsx` + `UsMap.tsx`): interactive MapLibre map, two modes (see UI
