@@ -131,6 +131,63 @@ Build order: **Phase 1 politics → Phase 2 geography → Phase 3 quiz.** Don't 
   the real table (not just reasoned through): inserted dummy rows with an old timestamp, a
   null timestamp (covers any pre-existing row from before this column existed), and a
   future timestamp, confirmed each filter path caught exactly the right one.
+- **Candidate profile pages (`candidates` table, added 2026-08-29)** — every race candidate on
+  `/midterms-2026`/`/state/[abbr]` now links somewhere: to their existing `/legislator/[id]` or
+  `/governor/[id]` page if they're a *current* officeholder (matched fresh every sync, directly
+  on the disposable `race_candidates` row — see `loadCurrentOfficeholders()`/
+  `matchOfficeholder()` in `races-2026.mjs`, exact-name match first, surname-suffix fallback only
+  when it resolves to exactly one person), or to a new `/candidate/[id]` page otherwise. Matching
+  checks *any* current officeholder, not just the ones flagged `is_incumbent` in that specific
+  race — a sitting House rep running for Senate isn't "the incumbent" there but already has a
+  real profile worth linking to. **Deliberately excludes historical (non-current) officeholders**
+  — a former Rep/Governor running again falls through to the Wikipedia-search path like everyone
+  else, a known simplification (extending the match pool from ~585 current officeholders to the
+  full historical set would meaningfully raise false-positive-match risk for a plain
+  name/surname comparison) — see
+  `docs/superpowers/specs/2026-08-29-candidate-profiles-design.md`'s "Explicitly out of scope"
+  for the full reasoning, not re-derived here. The `candidates` table only holds people with *no*
+  match — a real challenger — since `race_candidates`/`races_2026` are fully deleted and
+  re-inserted every sync (no stable id to hang a permanent URL or backfilled bio off), the same
+  problem `legislators`/`terms` and `governors`/`governor_terms` already solved by splitting
+  person from per-cycle record. `id` is a slug (`${state_id}-${normalized-name}`), not a uuid.
+  Every bio in this table is an **unconditional** best-effort guess — a name + state + office
+  Wikipedia search (`backfillCandidateBios()`), no ID like `bioguide_id`/a Wikidata QID exists for
+  a scraped candidate name, top hit taken with no further verification — so `/candidate/[id]`
+  always shows a fixed disclaimer whenever a bio is present, not a conditional `bio_source` flag.
+  **PostgREST gotcha hit building this — twice, in both directions:** `candidates-data.ts`'s
+  nested embed (`candidates -> race_candidates -> races_2026`) and `races-2026.mjs`'s own
+  `getPendingStateSets()` (`races_2026 -> race_candidates`, see below) both need the same FK
+  disambiguation `races-data.ts`'s `RACE_WITH_CANDIDATES_SELECT` already needed
+  (`races_2026!race_candidates_race_id_fkey(...)` / `race_candidates!race_candidates_race_id_fkey(...)`,
+  never the bare table name) — `race_candidates` has two FKs touching `races_2026` (`race_id` and
+  the reverse via `winner_candidate_id`), and missing this produced a real 500 on
+  `/candidate/[id]` and a real thrown error in `races-2026.mjs`, both caught live, not assumed
+  from the code alone.
+- **`RACES_SCOPE=pending` (added 2026-08-29)** — the vast majority of 2026 primaries are already
+  resolved and locked in for the general; re-fetching every state's Wikipedia page every week was
+  mostly re-confirming answers that hadn't changed (confirmed live: a `pending`-scoped run only
+  needed to actually fetch 28 of 506 races — 4 Senate, 4 Governor, 20 House — everything else
+  correctly recognized as already resolved and skipped with zero network calls). `races-2026.mjs`'s
+  `getPendingStateSets()` derives "still pending" from **our own already-synced data** (a
+  placeholder candidate, zero candidates, or no synced race yet) rather than a hand-maintained
+  primary-date calendar that would go stale the moment a date changed. The cleanup-delete step is
+  scoped per office to exactly the states a `pending` run actually touched
+  (`touchedByOffice` in `main()`) — the same class of fix `legislators.mjs`'s
+  `LEGISLATORS_SCOPE=current` needed for its own cleanup delete, and for the identical reason: a
+  blanket "delete anything stale" would otherwise also remove every state this run deliberately
+  skipped, since none of them got a fresh `last_synced_at` stamp. `races-sync.yml`'s weekly
+  cadence sets `RACES_SCOPE=pending`; a manual run (env unset, default `"full"`) re-fetches
+  everything — use that for the Nov 3 general, when every state needs re-checking regardless of
+  primary status.
+- **Candidate bio backfill split the same way legislators' already was** — `BACKFILL_BUDGET_MS`
+  (reusing `legislators.mjs`'s exact mechanism) caps `backfillCandidateBios()` so a normal weekly
+  `races-sync.yml` run stays short (10 min cap; the backlog took 45+ minutes unbounded on a real
+  run), and a new `CANDIDATES_BACKFILL_ONLY` mode (mirrors `LEGISLATORS_BACKFILL_ONLY`) powers a
+  dedicated `candidate-bio-backfill.yml` workflow — every 3 hours, not hourly, since the
+  population here (~568 unmatched candidates) is far smaller than legislators' ~12,700. Tagged
+  with its own `job: "races_candidate_backfill"` slug (not `"races"`) so it stays out of
+  `src/lib/sync-freshness.ts`'s core-jobs freshness figure, same reasoning
+  `legislators_bio_backfill` is already excluded for.
 - **`legislators.mjs`'s `terms` sync got the identical insert-then-cleanup reorder**, for the
   identical reason — chunked delete-then-insert (45k+ rows) left `terms` incomplete on a
   chunk failure partway through. Needed a new `terms.last_synced_at` column first (`terms`,
@@ -319,7 +376,12 @@ into HTTP handlers, so a plain scheduled workflow running the existing `npm run 
 unchanged was the lower-risk choice. **`races_2026` has its own separate workflow**
 (`.github/workflows/races-sync.yml`, same weekly cadence today) — split out so its cadence can
 move independently: weekly through the last 2026 primaries (Sep 15), then paused until closer to
-the Nov 3 general, without touching legislators/governors' schedule. Needs three repo secrets set
+the Nov 3 general, without touching legislators/governors' schedule. Runs `RACES_SCOPE=pending`
+(see the data-conventions entry above) so a normal week only re-fetches states whose primaries
+are still unresolved. Candidate bio backfill has its own further-split workflow,
+`candidate-bio-backfill.yml` (every 3 hours, `CANDIDATES_BACKFILL_ONLY=true`) — same
+weekly-sync/frequent-backfill split legislators already has, see the data-conventions entry
+above. Needs three repo secrets set
 (Settings → Secrets and variables → Actions): `NEXT_PUBLIC_SUPABASE_URL`,
 `SUPABASE_SERVICE_ROLE_KEY`, `OPENSTATES_API_KEY`. Each sync step runs independently
 (`continue-on-error` per step, so one external API having a bad day doesn't skip the others —
@@ -500,6 +562,14 @@ at sync time — the raw id contains a `/`, which broke the route; caught via a 
 browser verification, not assumed). Linked from senator/rep/governor names across
 `StatePanel.tsx`/`StateTabs.tsx`/`RepresentativesList.tsx`.
 
+**`/candidate/[id]`** (added 2026-08-29, see the `candidates` table entry in Data conventions
+above): photo, party, office/state, incumbent flag, and a best-effort Wikipedia bio (with a fixed
+disclaimer) for a 2026 race candidate with no existing `/legislator`/`/governor` profile. `id`
+is a stable slug computed at sync time, not a uuid — survives `race_candidates`' weekly
+delete-and-reinsert churn. `RaceRow.tsx`'s `candidateHref()` decides per candidate: a matched
+current officeholder's name links straight to their existing profile (no duplicate content);
+everyone else links here.
+
 **Synced data**, via `npm run sync:<name>`:
 - `states` — minimal id/name seed (`us-atlas` + `fips-to-abbr.json`), 50 states + DC.
 - `legislators`/`terms` — current + full historical House and Senate terms, from
@@ -518,6 +588,9 @@ browser verification, not assumed). Linked from senator/rep/governor names acros
   races: 35 Senate, 36 Governor, 435 House — confirmed live, 435 exactly matches the real total
   House seat count, no key). See the Data conventions gotchas above before re-running or
   modifying this one — House in particular needs its own gotcha entry, see there.
+- `candidates` — challenger candidates with no existing legislator/governor profile, matched and
+  upserted as part of the same `races_2026` sync, bio/photo backfilled via best-effort Wikipedia
+  search. See the Data conventions entry above.
 - `districts` (metadata table) + `district-geometry/topology.json` (Storage blob) — current
   (119th Congress) House boundaries from the Census Bureau, 436 districts. See the Data
   conventions note above on why geometry isn't a table column.

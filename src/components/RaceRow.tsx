@@ -1,5 +1,20 @@
-import { isPrimaryPending, type Race } from "@/lib/races-data";
+import Link from "next/link";
+import { isPrimaryPending, type Race, type RaceCandidate } from "@/lib/races-data";
 import { PartyBadge } from "@/components/PartyBadge";
+
+/**
+ * A matched officeholder's existing profile always wins over the new
+ * candidate page — no duplicate content for someone who already has a
+ * richer page with full term history. candidateId is guaranteed present
+ * on the unmatched branch (races-2026.mjs always creates a `candidates`
+ * row for an unmatched, non-placeholder candidate).
+ */
+function candidateHref(candidate: RaceCandidate): string | null {
+  if (candidate.matchedLegislatorId) return `/legislator/${candidate.matchedLegislatorId}`;
+  if (candidate.matchedGovernorId) return `/governor/${candidate.matchedGovernorId}`;
+  if (candidate.candidateId) return `/candidate/${candidate.candidateId}`;
+  return null; // a placeholder ("TBD"/"(presumptive)") — isPrimaryPending already hides these
+}
 
 /**
  * One race's row — state/district label + status dot + candidate faceoff.
@@ -24,11 +39,21 @@ export function RaceRow({ race, label }: { race: Race; label: React.ReactNode })
           <span className="text-zinc-500 dark:text-zinc-400">Primary not yet held.</span>
         ) : (
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-            {race.candidates.map((candidate) => (
-              <span key={candidate.id} className="whitespace-nowrap">
-                {candidate.name} <PartyBadge party={candidate.party} />
-              </span>
-            ))}
+            {race.candidates.map((candidate) => {
+              const href = candidateHref(candidate);
+              return (
+                <span key={candidate.id} className="whitespace-nowrap">
+                  {href ? (
+                    <Link href={href} className="hover:underline">
+                      {candidate.name}
+                    </Link>
+                  ) : (
+                    candidate.name
+                  )}{" "}
+                  <PartyBadge party={candidate.party} />
+                </span>
+              );
+            })}
           </div>
         )}
       </td>

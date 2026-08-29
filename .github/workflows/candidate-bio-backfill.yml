@@ -1,0 +1,48 @@
+name: Candidate bio/photo backfill
+
+# Backfills candidates.bio_summary/photo_url from Wikipedia — a separate,
+# more frequent schedule from races-sync.yml's weekly full sync, same
+# reasoning as legislator-bio-backfill.yml: the weekly races sync now
+# budget-caps its own backfill pass (RACES_SCOPE=pending's own comment) so
+# a normal week stays short, and this dedicated job drains whatever's left
+# on its own cadence instead. Population here (~500-600 unmatched
+# candidates, not ~12,700 legislators) is far smaller, so this doesn't need
+# legislator-bio-backfill.yml's hourly cadence — every 3 hours is plenty.
+# CANDIDATES_BACKFILL_ONLY skips the whole race/candidate sync entirely
+# (that stays on races-sync.yml's weekly cadence), same
+# LEGISLATORS_BACKFILL_ONLY-style split legislators.mjs already has.
+# Self-healing/idempotent by design, so a missed or overlapping run is
+# harmless.
+on:
+  # Offset from the top of the hour — same GitHub-scheduler congestion
+  # mitigation legislator-bio-backfill.yml already uses (see that
+  # workflow's own comment on why its schedule trigger didn't fire
+  # reliably at the exact top of the hour).
+  schedule:
+    - cron: "23 */3 * * *" # every 3 hours, offset from the top of the hour
+  workflow_dispatch: {} # allow an on-demand run from the Actions tab
+
+# Queues instead of overlapping, same as legislator-bio-backfill.yml — cheap
+# insurance in case a run ever takes longer than the 3-hour gap to the next.
+concurrency:
+  group: candidate-bio-backfill
+  cancel-in-progress: false
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25 # safety margin above BACKFILL_BUDGET_MS below
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      SYNC_TRIGGERED_BY: cron
+      CANDIDATES_BACKFILL_ONLY: "true"
+      BACKFILL_BUDGET_MS: "1200000" # 20 minutes
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: node scripts/sync/races-2026.mjs

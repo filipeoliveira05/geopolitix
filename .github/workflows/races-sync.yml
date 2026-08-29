@@ -8,6 +8,20 @@ name: 2026 races sync
 # entry below rather than the whole workflow, so `workflow_dispatch` still
 # allows an on-demand run in between. Re-add a weekly (or tighter,
 # election-week) cadence once the general approaches.
+#
+# RACES_SCOPE=pending (added 2026-08-29) — the vast majority of 2026
+# primaries are already resolved and locked in for the general, so
+# re-fetching every state's Wikipedia page every week was mostly
+# re-confirming answers that hadn't changed. This skips any state/office
+# races-2026.mjs's own data already shows as resolved (see
+# getPendingStateSets in the script) — self-limiting, no hand-maintained
+# primary-date calendar to go stale. Manually trigger with RACES_SCOPE
+# unset (or "full") for an occasional full sweep, and definitely for the
+# Nov 3 general itself, when every state needs re-checking regardless of
+# primary status. BACKFILL_BUDGET_MS caps the candidate bio-backfill pass
+# so a normal week's run stays short — the dedicated
+# candidate-bio-backfill.yml workflow (its own, more frequent cadence)
+# handles draining that backlog further.
 on:
   schedule:
     - cron: "0 6 * * 1" # Monday 06:00 UTC
@@ -20,6 +34,8 @@ jobs:
       NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
       SYNC_TRIGGERED_BY: cron
+      RACES_SCOPE: pending
+      BACKFILL_BUDGET_MS: "600000" # 10 minutes
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

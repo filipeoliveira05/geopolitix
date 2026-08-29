@@ -12,6 +12,9 @@ export type RaceCandidate = {
   name: string;
   party: string | null;
   isIncumbent: boolean;
+  matchedLegislatorId: string | null;
+  matchedGovernorId: string | null;
+  candidateId: string | null;
 };
 
 export type Race = {
@@ -39,6 +42,9 @@ type RaceRow = {
     name: string;
     party: string | null;
     is_incumbent: boolean;
+    matched_legislator_id: string | null;
+    matched_governor_id: string | null;
+    candidate_id: string | null;
   }[];
 };
 
@@ -55,6 +61,9 @@ function fromRow(row: RaceRow): Race {
       name: c.name,
       party: c.party,
       isIncumbent: c.is_incumbent,
+      matchedLegislatorId: c.matched_legislator_id,
+      matchedGovernorId: c.matched_governor_id,
+      candidateId: c.candidate_id,
     })),
   };
 }

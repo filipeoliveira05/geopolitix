@@ -40,6 +40,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { supabaseAdmin, logSync } from "./_supabase-admin.mjs";
+import { fetchWikipediaSummary, mapWithConcurrency, withHardTimeout } from "./_wikipedia.mjs";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
@@ -69,6 +70,13 @@ function buildStateNameToAbbr() {
   return map;
 }
 
+/** Reverse of buildStateNameToAbbr() — needed to give the Wikipedia search
+ * query a full state name ("California") as disambiguating context,
+ * since candidates.state_id only stores the abbreviation. */
+function invertMap(map) {
+  return new Map([...map].map(([key, value]) => [value, key]));
+}
+
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -87,6 +95,12 @@ async function fetchCategoryMembers(category) {
   const url = `${API_BASE}?action=query&list=categorymembers&cmtitle=${encodeURIComponent(category)}&cmlimit=500&format=json`;
   const data = await fetchJson(url);
   return data.query.categorymembers.map((m) => m.title);
+}
+
+async function searchWikipediaTitle(query) {
+  const url = `${API_BASE}?action=query&list=search&srsearch=${encodeURIComponent(query)}&srlimit=1&format=json`;
+  const data = await fetchJson(url);
+  return data.query?.search?.[0]?.title ?? null;
 }
 
 async function fetchWikitext(title, { fullPage = false } = {}) {
@@ -148,6 +162,134 @@ function cleanWikiText(value) {
     .trim();
 }
 
+// Loaded once per run, not per candidate — current legislators (via their
+// current term) and every governor, grouped by state, so matching a
+// candidate's scraped name is a plain in-memory lookup. Deliberately only
+// CURRENT officeholders (not historical `terms`/`governor_terms` rows) —
+// see the design spec's "Explicitly out of scope" section for why: a
+// former officeholder now running again falls through to the
+// Wikipedia-search path like any other candidate, a reasonable
+// simplification given the much larger historical population would
+// meaningfully increase false-positive match risk for a plain
+// name/surname comparison.
+async function loadCurrentOfficeholders(supabase) {
+  const { data: termRows, error: termError } = await supabase
+    .from("terms")
+    .select("legislator_id, state_id, legislators(first_name, last_name)")
+    .eq("is_current", true);
+  if (termError) throw termError;
+
+  const { data: governorRows, error: governorError } = await supabase
+    .from("governors")
+    .select("id, first_name, last_name, state_id");
+  if (governorError) throw governorError;
+
+  const byState = new Map();
+  function addEntry(stateId, entry) {
+    const list = byState.get(stateId) ?? [];
+    list.push(entry);
+    byState.set(stateId, list);
+  }
+
+  for (const row of termRows) {
+    const person = row.legislators;
+    if (!person) continue;
+    const fullName = `${person.first_name ?? ""} ${person.last_name ?? ""}`.trim().toLowerCase();
+    addEntry(row.state_id, {
+      type: "legislator",
+      id: row.legislator_id,
+      fullName,
+      lastName: (person.last_name ?? "").trim().toLowerCase(),
+    });
+  }
+  for (const gov of governorRows) {
+    const fullName = `${gov.first_name ?? ""} ${gov.last_name ?? ""}`.trim().toLowerCase();
+    addEntry(gov.state_id, {
+      type: "governor",
+      id: gov.id,
+      fullName,
+      lastName: (gov.last_name ?? "").trim().toLowerCase(),
+    });
+  }
+  return byState;
+}
+
+/**
+ * Exact full-name match first; falls back to a surname-suffix match (same
+ * style as governor-history.mjs's namesMatch) only when it resolves to
+ * exactly one person — an ambiguous surname match (two current
+ * officeholders sharing a surname in the same state) is left unmatched
+ * rather than guessed, same "don't guess when ambiguous" discipline as
+ * governor-history.mjs's resolveParty().
+ */
+function matchOfficeholder(candidateName, stateId, officeholdersByState) {
+  const officials = officeholdersByState.get(stateId);
+  if (!officials || officials.length === 0) return null;
+  const nameLower = candidateName.trim().toLowerCase();
+
+  const exact = officials.find((o) => o.fullName === nameLower);
+  if (exact) return exact;
+
+  const bySurname = officials.filter((o) => o.lastName && nameLower.endsWith(o.lastName));
+  return bySurname.length === 1 ? bySurname[0] : null;
+}
+
+/** "John Q. Smith" + "CA" -> "ca-john-q-smith". See the design spec's normalization rule. */
+function candidateSlug(stateId, name) {
+  const normalized = name
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, "")
+    .trim()
+    .replace(/\s+/g, "-");
+  return `${stateId.toLowerCase()}-${normalized}`;
+}
+
+/** Same placeholder detection as races-data.ts's isPrimaryPending() — never worth
+ * matching or creating a candidates row for a "TBD"/"(presumptive)" placeholder. */
+function isPlaceholderCandidateName(name) {
+  return name.trim().toUpperCase() === "TBD" || /\(presumptive\)/i.test(name);
+}
+
+/**
+ * RACES_SCOPE=pending support — the vast majority of 2026 primaries are
+ * already resolved and locked in for the general, so re-fetching every
+ * state's Wikipedia page every week is mostly re-confirming "still the same
+ * answer." Rather than a hand-maintained primary-date calendar (which would
+ * go stale the moment a date changes), pending-ness is derived from our OWN
+ * already-synced data: a state/office is "pending" if it has a placeholder
+ * candidate, no candidates at all, or no synced race yet. Once a state's
+ * real primary result lands here, the very next run stops re-fetching it.
+ */
+async function getPendingStateSets(supabase) {
+  // races_2026 has two FKs touching race_candidates (race_id, and the
+  // reverse via winner_candidate_id) — same disambiguation
+  // races-data.ts's RACE_WITH_CANDIDATES_SELECT and candidates-data.ts's
+  // embed both already needed.
+  const { data: raceRows, error } = await supabase
+    .from("races_2026")
+    .select("office, state_id, race_candidates!race_candidates_race_id_fkey(name)");
+  if (error) throw error;
+
+  const seenByOffice = { senate: new Set(), governor: new Set(), house: new Set() };
+  const pendingByOffice = { senate: new Set(), governor: new Set(), house: new Set() };
+
+  for (const row of raceRows) {
+    seenByOffice[row.office].add(row.state_id);
+    const names = row.race_candidates.map((c) => c.name);
+    const isPending = names.length === 0 || names.some(isPlaceholderCandidateName);
+    if (isPending) pendingByOffice[row.office].add(row.state_id);
+  }
+
+  return { seenByOffice, pendingByOffice };
+}
+
+/** A state/office never synced before is treated as pending too — first-ever
+ * sync, or a race that's newly appeared in the Wikipedia category. */
+function isStatePending(office, stateAbbr, { seenByOffice, pendingByOffice }) {
+  if (!seenByOffice[office].has(stateAbbr)) return true;
+  return pendingByOffice[office].has(stateAbbr);
+}
+
 function normalizeParty(rawParty) {
   const cleaned = cleanWikiText(rawParty);
   if (!cleaned) return null;
@@ -182,7 +324,7 @@ function determineStatus(fields, candidates) {
   return { status: "called", winnerIndex };
 }
 
-async function collectRaces(office, category, parseStateFromTitle, stateNameToAbbr) {
+async function collectRaces(office, category, parseStateFromTitle, stateNameToAbbr, pendingInfo) {
   const titles = await fetchCategoryMembers(category);
   console.log(`${office}: ${titles.length} candidate pages in "${category}"`);
   const races = [];
@@ -192,6 +334,11 @@ async function collectRaces(office, category, parseStateFromTitle, stateNameToAb
     const stateAbbr = stateNameToAbbr.get(stateName);
     if (!stateAbbr) {
       console.warn(`Skipping "${title}" — no matching state (territory, or name mismatch)`);
+      continue;
+    }
+
+    if (pendingInfo && !isStatePending(office, stateAbbr, pendingInfo)) {
+      console.log(`[${office} ${i + 1}/${titles.length}] ${stateAbbr}: already resolved, skipping`);
       continue;
     }
 
@@ -259,7 +406,7 @@ function splitIntoDistrictSections(wikitext) {
   });
 }
 
-async function collectHouseRaces(stateNameToAbbr) {
+async function collectHouseRaces(stateNameToAbbr, pendingInfo) {
   const titles = await fetchCategoryMembers(HOUSE_CATEGORY);
   console.log(`house: ${titles.length} candidate pages in "${HOUSE_CATEGORY}"`);
   const races = [];
@@ -270,6 +417,14 @@ async function collectHouseRaces(stateNameToAbbr) {
     const stateAbbr = stateNameToAbbr.get(stateName);
     if (!stateAbbr) {
       console.warn(`Skipping "${title}" — no matching state (territory, or name mismatch)`);
+      continue;
+    }
+
+    // House is one page per STATE (all its districts) — pending-ness is
+    // checked at the state level too, since a single unresolved district
+    // means the whole page still needs re-parsing anyway.
+    if (pendingInfo && !isStatePending("house", stateAbbr, pendingInfo)) {
+      console.log(`[house ${i + 1}/${titles.length}] ${stateAbbr}: already resolved, skipping`);
       continue;
     }
 
@@ -299,9 +454,142 @@ async function collectHouseRaces(stateNameToAbbr) {
   return races;
 }
 
+/**
+ * Best-effort bio/photo backfill for candidates with no existing app
+ * profile — a name-based Wikipedia search (no reliable ID like bioguide_id
+ * or a Wikidata QID exists for a scraped candidate name), taking only the
+ * top hit with no further verification. This is an accepted, unconditional
+ * risk for every row in this table — see the design spec — not something
+ * this function tries to score or verify further. Self-healing via the
+ * same bio_summary IS NULL filter as every other backfill in this
+ * codebase: a candidate with no search hit, or no summary, is simply
+ * retried next run.
+ */
+async function backfillCandidateBios(supabase, abbrToStateName, warnings, { budgetMs } = {}) {
+  const { data: candidates, error } = await supabase
+    .from("candidates")
+    .select("id, name, state_id")
+    .is("bio_summary", null);
+  if (error) throw error;
+  if (candidates.length === 0) return 0;
+
+  console.log(`Backfilling ${candidates.length} candidate bios...`);
+  let updated = 0;
+  let processed = 0;
+  // Bounds how long this pass keeps picking up new work — the weekly
+  // races-sync.yml run sets a modest budget so a normal week never balloons
+  // (this backlog took 45+ minutes unbounded on a real run); the dedicated
+  // candidate-bio-backfill.yml workflow sets a larger one to drain it
+  // faster on its own more-frequent cadence. Same mechanism as
+  // legislators.mjs's own BACKFILL_BUDGET_MS.
+  const deadline = budgetMs ? Date.now() + budgetMs : undefined;
+  const shouldStop = deadline ? () => Date.now() > deadline : undefined;
+
+  await mapWithConcurrency(candidates, 2, async (candidate) => {
+    const stateName = abbrToStateName.get(candidate.state_id) ?? candidate.state_id;
+    const query = `${candidate.name} ${stateName} 2026 candidate`;
+
+    let title;
+    try {
+      title = await withHardTimeout(() => searchWikipediaTitle(query), 30_000, `candidate search (${candidate.id})`);
+    } catch (err) {
+      warnings.push(`candidate bio backfill: search failed for ${candidate.name} — ${err.message}`);
+      processed++;
+      return;
+    }
+    if (!title) {
+      processed++;
+      return; // no hit — stays bio_summary null, retried next run
+    }
+
+    let bioSummary;
+    let photoUrl;
+    try {
+      ({ bioSummary, photoUrl } = await withHardTimeout(
+        (signal) => fetchWikipediaSummary(title, signal),
+        90_000,
+        `candidate bio (${candidate.id})`,
+      ));
+    } catch (err) {
+      warnings.push(`candidate bio backfill: summary fetch failed for ${candidate.name} — ${err.message}`);
+      processed++;
+      return;
+    }
+
+    const { error: updateError } = await supabase
+      .from("candidates")
+      .update({ wikipedia_title: title, bio_summary: bioSummary, photo_url: photoUrl })
+      .eq("id", candidate.id);
+    if (updateError) {
+      warnings.push(`candidate bio backfill: update failed for ${candidate.name} — ${updateError.message}`);
+      processed++;
+      return;
+    }
+    updated++;
+    processed++;
+    if (processed % 10 === 0) console.log(`  ${processed}/${candidates.length} processed`);
+  }, { shouldStop });
+
+  if (shouldStop?.()) {
+    console.log(
+      `  time budget reached — ${processed}/${candidates.length} attempted this run, remainder resumes next run.`,
+    );
+  }
+
+  return updated;
+}
+
+// RACES_SCOPE=pending skips re-fetching any state/office already resolved
+// (see getPendingStateSets) — the weekly races-sync.yml cadence. Unset
+// (default "full") re-fetches everything, for a manual run or the Nov 3
+// general-election sweep where every state needs re-checking regardless of
+// primary status. CANDIDATES_BACKFILL_ONLY/BACKFILL_BUDGET_MS mirror
+// legislators.mjs's own env vars exactly, for the same reason: a dedicated,
+// more-frequent workflow (candidate-bio-backfill.yml) can drain the bio
+// backlog without re-running the whole race sync every time.
+const RACES_SCOPE = process.env.RACES_SCOPE === "pending" ? "pending" : "full";
+const CANDIDATES_BACKFILL_ONLY = process.env.CANDIDATES_BACKFILL_ONLY === "true";
+const BACKFILL_BUDGET_MS = process.env.BACKFILL_BUDGET_MS
+  ? Number(process.env.BACKFILL_BUDGET_MS)
+  : undefined;
+
 async function main() {
   const stateNameToAbbr = buildStateNameToAbbr();
+  const abbrToStateName = invertMap(stateNameToAbbr);
   const startedAt = new Date().toISOString();
+  const supabase = supabaseAdmin();
+
+  if (CANDIDATES_BACKFILL_ONLY) {
+    const warnings = [];
+    let backfillError = null;
+    let bioCount = 0;
+    try {
+      bioCount = await backfillCandidateBios(supabase, abbrToStateName, warnings, {
+        budgetMs: BACKFILL_BUDGET_MS,
+      });
+    } catch (err) {
+      backfillError = err;
+    }
+    if (warnings.length > 0) {
+      console.warn(`${warnings.length} candidate bio backfill warning(s):\n${warnings.join("\n")}`);
+    }
+    // Separate job slug from "races" — this runs far more often than the
+    // weekly race sync (same reasoning legislators_bio_backfill is kept out
+    // of the "core jobs" freshness figure in src/lib/sync-freshness.ts, see
+    // CLAUDE.md), so it should never claim to speak for race-data freshness.
+    await logSync(supabase, {
+      source: "candidates (bio backfill only, no race sync)",
+      startedAt,
+      error: backfillError,
+      warnings,
+      job: "races_candidate_backfill",
+    });
+    if (backfillError) throw backfillError;
+    console.log(`Backfilled ${bioCount} candidate bio(s) (backfill-only mode).`);
+    return;
+  }
+
+  const pendingInfo = RACES_SCOPE === "pending" ? await getPendingStateSets(supabase) : null;
 
   // Sequential, not Promise.all — running both chambers concurrently
   // doubles the effective request rate and triggers Wikipedia's rate
@@ -311,17 +599,19 @@ async function main() {
     SENATE_CATEGORY,
     parseSenateTitle,
     stateNameToAbbr,
+    pendingInfo,
   );
   const governorRaces = await collectRaces(
     "governor",
     GOVERNOR_CATEGORY,
     parseGovernorTitle,
     stateNameToAbbr,
+    pendingInfo,
   );
-  const houseRaces = await collectHouseRaces(stateNameToAbbr);
+  const houseRaces = await collectHouseRaces(stateNameToAbbr, pendingInfo);
   const races = [...senateRaces, ...governorRaces, ...houseRaces];
 
-  const supabase = supabaseAdmin();
+  const officeholdersByState = await loadCurrentOfficeholders(supabase);
 
   // races_2026.id has no natural key (unlike legislators/governors) to
   // upsert against, so this still fully replaces the table's contents each
@@ -337,6 +627,11 @@ async function main() {
   // >= startedAt) that get rolled back instead, leaving the previous
   // run's complete data untouched.
   let error = null;
+  // Which (office, state) combos actually got a fresh insert this run —
+  // scopes the cleanup delete below so a RACES_SCOPE=pending run only ever
+  // considers deleting stale rows for states it actually re-checked, never
+  // the ones it deliberately skipped (see getPendingStateSets above).
+  const touchedByOffice = { senate: new Set(), governor: new Set(), house: new Set() };
 
   for (const race of races) {
     if (error) break;
@@ -357,19 +652,54 @@ async function main() {
       error = raceError;
       break;
     }
+    touchedByOffice[race.office].add(race.state_id);
 
     if (race.candidates.length === 0) continue;
 
+    const candidateRowsToInsert = [];
+    for (const c of race.candidates) {
+      let matchedLegislatorId = null;
+      let matchedGovernorId = null;
+      let candidateId = null;
+
+      if (!isPlaceholderCandidateName(c.name)) {
+        const match = matchOfficeholder(c.name, race.state_id, officeholdersByState);
+        if (match?.type === "legislator") {
+          matchedLegislatorId = match.id;
+        } else if (match?.type === "governor") {
+          matchedGovernorId = match.id;
+        } else {
+          candidateId = candidateSlug(race.state_id, c.name);
+          // Only touches name/state_id/last_synced_at — never bio_summary/
+          // photo_url/wikipedia_title, so an already-backfilled bio (see
+          // backfillCandidateBios below) survives every week's resync
+          // instead of being wiped and re-fetched.
+          const { error: candidateUpsertError } = await supabase.from("candidates").upsert(
+            { id: candidateId, name: c.name, state_id: race.state_id, last_synced_at: new Date().toISOString() },
+            { onConflict: "id" },
+          );
+          if (candidateUpsertError) {
+            error = candidateUpsertError;
+            break;
+          }
+        }
+      }
+
+      candidateRowsToInsert.push({
+        race_id: raceRow.id,
+        name: c.name,
+        party: c.party,
+        is_incumbent: c.is_incumbent,
+        candidate_id: candidateId,
+        matched_legislator_id: matchedLegislatorId,
+        matched_governor_id: matchedGovernorId,
+      });
+    }
+    if (error) break;
+
     const { data: candidateRows, error: candidatesError } = await supabase
       .from("race_candidates")
-      .insert(
-        race.candidates.map((c) => ({
-          race_id: raceRow.id,
-          name: c.name,
-          party: c.party,
-          is_incumbent: c.is_incumbent,
-        })),
-      )
+      .insert(candidateRowsToInsert)
       .select("id");
     if (candidatesError) {
       error = candidatesError;
@@ -390,10 +720,28 @@ async function main() {
     // (race_candidates cascade-deletes via its FK, so clearing races_2026
     // is enough). `.is.null` covers any pre-existing row from before this
     // column existed.
-    ({ error } = await supabase
-      .from("races_2026")
-      .delete()
-      .or(`last_synced_at.lt.${startedAt},last_synced_at.is.null`));
+    if (RACES_SCOPE === "pending") {
+      // Scoped per office to exactly the states this run touched — a
+      // blanket "anything stale" delete would otherwise also remove every
+      // state this run deliberately skipped as already-resolved, since
+      // none of them got a fresh last_synced_at stamp this run.
+      for (const office of ["senate", "governor", "house"]) {
+        if (error) break;
+        const touchedStates = [...touchedByOffice[office]];
+        if (touchedStates.length === 0) continue;
+        ({ error } = await supabase
+          .from("races_2026")
+          .delete()
+          .eq("office", office)
+          .in("state_id", touchedStates)
+          .or(`last_synced_at.lt.${startedAt},last_synced_at.is.null`));
+      }
+    } else {
+      ({ error } = await supabase
+        .from("races_2026")
+        .delete()
+        .or(`last_synced_at.lt.${startedAt},last_synced_at.is.null`));
+    }
   } else {
     // Something failed partway through — roll back only the partial rows
     // this run inserted (all stamped >= startedAt), so the previous run's
@@ -402,10 +750,26 @@ async function main() {
     await supabase.from("races_2026").delete().gte("last_synced_at", startedAt);
   }
 
+  const warnings = [];
+  let bioCount = 0;
+  if (!error) {
+    try {
+      bioCount = await backfillCandidateBios(supabase, abbrToStateName, warnings, {
+        budgetMs: BACKFILL_BUDGET_MS,
+      });
+    } catch (err) {
+      error = err;
+    }
+  }
+  if (warnings.length > 0) {
+    console.warn(`${warnings.length} candidate bio backfill warning(s):\n${warnings.join("\n")}`);
+  }
+
   await logSync(supabase, {
     source: "Wikipedia MediaWiki API (Infobox election parsing)",
     startedAt,
     error,
+    warnings,
     job: "races",
   });
 
@@ -413,7 +777,7 @@ async function main() {
 
   const called = races.filter((r) => r.status === "called").length;
   console.log(
-    `Synced ${races.length} races (${senateRaces.length} Senate, ${governorRaces.length} Governor, ${houseRaces.length} House), ${called} called.`,
+    `Synced ${races.length} races (${senateRaces.length} Senate, ${governorRaces.length} Governor, ${houseRaces.length} House), ${called} called, backfilled ${bioCount} candidate bio(s) (scope: ${RACES_SCOPE}).`,
   );
 }
 
