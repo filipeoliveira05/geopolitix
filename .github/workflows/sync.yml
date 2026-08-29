@@ -1,12 +1,28 @@
 name: Weekly data sync
 
 # Weekly cadence covers every currently-automated job (plan §6: legislators/
-# governors "weekly or biweekly", races "weekly normally, daily near election
-# day" — not set up here, bump the schedule manually if that's ever needed).
-# governor-history rides along at the same cadence — cheap insurance against
-# a new governor's term not showing up in governor_terms until the next
-# manual run. districts is deliberately excluded — redistricting happens
-# ~once a decade, manual-only per plan §6's own table.
+# governors "weekly or biweekly" — not set up here, bump the schedule
+# manually if that's ever needed). races_2026 has its own workflow
+# (races-sync.yml), decoupled so its cadence (weekly through primaries,
+# then paused until closer to the Nov 3 general) can change independently
+# of legislators/governors. governor-history rides along at the same
+# weekly cadence as cheap insurance against a new governor's term not
+# showing up in governor_terms until the next manual run. districts is
+# deliberately excluded — redistricting happens ~once a decade, manual-only
+# per plan §6's own table.
+#
+# legislators/governor-history both run scoped to "current" here — see
+# each script's own header comment for why a 150-year-old term/person
+# doesn't need the same weekly cadence as this year's officeholders.
+# LEGISLATORS_SCOPE=current skips the ~9MB legislators-historical.yaml
+# entirely; GOVERNOR_HISTORY_SCOPE=current only touches each state's
+# current term row. BACKFILL_SCOPE=recent limits the bio/photo backfill on
+# both to current officeholders + anyone who left within ~4 years, rather
+# than sweeping the full historical pool every week. Full/historical
+# resyncs stay manual-only (`npm run sync:legislators-historical`,
+# `npm run sync:governor-history` with GOVERNOR_HISTORY_SCOPE unset) —
+# these upstream sources are crowdsourced and do get rare corrections to
+# old records, so this isn't "never resync", just off this cadence.
 on:
   schedule:
     - cron: "0 6 * * 1" # Monday 06:00 UTC
@@ -27,11 +43,11 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
-      # Order matters: legislators/governors/races all FK into states. Each
-      # sync step is independent (continue-on-error) so one external API
-      # having a bad day (OpenStates/Wikipedia rate limits have both been
-      # hit repeatedly during development) doesn't skip the others. The
-      # final step below turns any real failure back into a failed run —
+      # Order matters: legislators/governors all FK into states. Each sync
+      # step is independent (continue-on-error) so one external API having
+      # a bad day (OpenStates/Wikipedia rate limits have both been hit
+      # repeatedly during development) doesn't skip the others. The final
+      # step below turns any real failure back into a failed run —
       # continue-on-error alone would make the job report "success" even
       # when a step genuinely failed (caught from a real run: governors.mjs
       # hit OpenStates' rate limit and errored out, but the job still
@@ -40,25 +56,27 @@ jobs:
       - id: sync_legislators
         run: node scripts/sync/legislators.mjs
         continue-on-error: true
+        env:
+          LEGISLATORS_SCOPE: current
+          BACKFILL_SCOPE: recent
       - id: sync_governors
         run: node scripts/sync/governors.mjs
         continue-on-error: true
       # Reads the governors table (just-synced above) to link the current
       # term's governor_id — order matters, same reasoning as states running
-      # first for legislators/governors/races' own FK dependency.
+      # first for legislators/governors' own FK dependency.
       - id: sync_governor_history
         run: node scripts/sync/governor-history.mjs
         continue-on-error: true
-      - id: sync_races
-        run: node scripts/sync/races-2026.mjs
-        continue-on-error: true
+        env:
+          GOVERNOR_HISTORY_SCOPE: current
+          BACKFILL_SCOPE: recent
       - name: Fail the run if any sync step failed
         if: always()
         run: |
           if [ "${{ steps.sync_legislators.outcome }}" = "failure" ] ||
              [ "${{ steps.sync_governors.outcome }}" = "failure" ] ||
-             [ "${{ steps.sync_governor_history.outcome }}" = "failure" ] ||
-             [ "${{ steps.sync_races.outcome }}" = "failure" ]; then
+             [ "${{ steps.sync_governor_history.outcome }}" = "failure" ]; then
             echo "One or more sync steps failed — see the failing step's log above, and sync_logs in Supabase for details."
             exit 1
           fi

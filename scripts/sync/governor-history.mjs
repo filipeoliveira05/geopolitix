@@ -23,6 +23,23 @@
 // - The query service returned one empty/failed response during the spike
 //   under repeated querying — fetchJson below retries like the other sync
 //   scripts' external-API calls do.
+//
+// GOVERNOR_HISTORY_SCOPE="current" (weekly, in sync.yml) narrows each
+// state's sync down to just its current term row (plus that one person's
+// party history) instead of the full statehood-to-now set — a term that
+// ended in 1850 never changes, so rewriting all ~2,400 governor_terms rows
+// every week for the sake of possibly one new officeholder is dead weight.
+// The `fetchTerms` SPARQL query itself is still the full-history one (a
+// second, current-only query shape wasn't worth the added risk for a
+// query that isn't the expensive part) — only which rows get upserted and
+// how many people party-history is fetched for narrows. Unset/"full"
+// (default, manual `npm run sync:governor-history`) keeps today's
+// behavior for an occasional full resync — Wikidata is crowdsourced and
+// does get rare corrections to old records, so this is meant to stay
+// available on demand, just off the weekly cadence.
+// BACKFILL_SCOPE="recent" (bio backfill only) similarly limits itself to
+// people with a current or ~4-year-recent term, the same cutoff and
+// rationale as legislators.mjs's own BACKFILL_SCOPE.
 import { supabaseAdmin, TRIGGERED_BY } from "./_supabase-admin.mjs";
 import {
   USER_AGENT,
@@ -208,7 +225,7 @@ function resolveParty(partyStatements, termStart) {
   return { party: null, ambiguous: true };
 }
 
-async function syncState(supabase, state, currentGovernorsByState, warnings) {
+async function syncState(supabase, state, currentGovernorsByState, warnings, scope) {
   const positionQid = await findGovernorPositionQid(state.name);
   if (!positionQid) {
     warnings.push(`${state.id}: no "Governor of ${state.name}" position found on Wikidata`);
@@ -216,12 +233,20 @@ async function syncState(supabase, state, currentGovernorsByState, warnings) {
   }
 
   const terms = await fetchTerms(positionQid);
-  const partyByPerson = await fetchPartyHistory([...new Set(terms.map((t) => t.personQid))]);
 
   // The most recent term with no end date is the current officeholder —
   // matches how `terms.is_current`/`getSenateHistory()` treat an ongoing
   // Senate term.
   const currentTerm = terms.find((t) => !t.end && t.start) ?? null;
+
+  // scope="current" only writes/party-resolves the one current term row —
+  // the rest of `terms` (this state's full history) was still fetched
+  // above (see the header comment on why that query itself isn't narrowed)
+  // but is otherwise unused this run.
+  const termsToProcess = scope === "current" ? (currentTerm ? [currentTerm] : []) : terms;
+  const partyByPerson = await fetchPartyHistory([
+    ...new Set(termsToProcess.map((t) => t.personQid)),
+  ]);
   const currentGovernor = currentGovernorsByState.get(state.id);
   // A last-token-only comparison (e.g. "Grisham") false-negatives on a
   // multi-word surname — confirmed live: New Mexico's OpenStates
@@ -247,7 +272,7 @@ async function syncState(supabase, state, currentGovernorsByState, warnings) {
   // key before upserting rather than let one bad statement fail the state.
   const seenKeys = new Set();
   const rows = [];
-  for (const term of terms) {
+  for (const term of termsToProcess) {
     // No start AND no end carries no orderable information — skip rather
     // than clutter the History tab with an undateable row.
     if (!term.start && !term.end) continue;
@@ -376,7 +401,40 @@ function cleanNameFromTitle(title) {
   return title.replace(/_/g, " ").replace(/\s*\([^)]*\)\s*$/, "").trim();
 }
 
-async function backfillBios(supabase, warnings) {
+// PostgREST caps a single select() at 1000 rows by default — governor_terms
+// has ~2,400, so this needs the same pagination legislators.mjs's
+// selectAllPages uses.
+async function selectAllPages(buildQuery) {
+  const PAGE_SIZE = 1000;
+  const rows = [];
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data: page, error } = await buildQuery().range(from, from + PAGE_SIZE - 1);
+    if (error) throw error;
+    rows.push(...page);
+    if (page.length < PAGE_SIZE) break;
+  }
+  return rows;
+}
+
+// How far back BACKFILL_SCOPE=recent reaches — same window and rationale
+// as legislators.mjs's RECENT_YEARS.
+const RECENT_YEARS = 4;
+
+/** wikidata_person_id set for anyone with a current or ~recent term. */
+async function fetchRecentPersonIds(supabase) {
+  const cutoff = new Date();
+  cutoff.setFullYear(cutoff.getFullYear() - RECENT_YEARS);
+  const cutoffDate = cutoff.toISOString().slice(0, 10);
+  const rows = await selectAllPages(() =>
+    supabase
+      .from("governor_terms")
+      .select("wikidata_person_id")
+      .or(`end_date.is.null,end_date.gte.${cutoffDate}`),
+  );
+  return new Set(rows.map((r) => r.wikidata_person_id));
+}
+
+async function backfillBios(supabase, warnings, { scope = "full" } = {}) {
   // Two separate criteria for "still needs work", merged: missing a bio
   // (filters on bio_summary, not photo_url — confirmed live that ~32
   // people legitimately have no Wikipedia thumbnail but do have a real
@@ -396,7 +454,11 @@ async function backfillBios(supabase, warnings) {
     .filter("name", "match", "^Q[0-9]+$");
   if (badNameError) throw badNameError;
 
-  const people = [...new Map([...missingBio, ...badName].map((r) => [r.wikidata_person_id, r.name])).entries()];
+  let people = [...new Map([...missingBio, ...badName].map((r) => [r.wikidata_person_id, r.name])).entries()];
+  if (scope === "recent") {
+    const recentIds = await fetchRecentPersonIds(supabase);
+    people = people.filter(([qid]) => recentIds.has(qid));
+  }
   if (people.length === 0) return 0;
   console.log(`Backfilling ${people.length} people — resolving Wikipedia article titles...`);
 
@@ -456,6 +518,9 @@ async function backfillBios(supabase, warnings) {
   return updated;
 }
 
+const SCOPE = process.env.GOVERNOR_HISTORY_SCOPE === "current" ? "current" : "full";
+const BACKFILL_SCOPE = process.env.BACKFILL_SCOPE === "recent" ? "recent" : "full";
+
 async function main() {
   const supabase = supabaseAdmin();
   const startedAt = new Date().toISOString();
@@ -485,7 +550,7 @@ async function main() {
       // was otherwise silent for its entire duration with no way to tell
       // which state or phase it was on.
       const startedState = Date.now();
-      const count = await syncState(supabase, state, currentGovernorsByState, warnings);
+      const count = await syncState(supabase, state, currentGovernorsByState, warnings, SCOPE);
       totalRows += count;
       console.log(`[${i + 1}/${states.length}] ${state.id}: ${count} terms (${Date.now() - startedState}ms)`);
       // Courtesy pacing between states — no documented Wikidata rate limit,
@@ -493,7 +558,7 @@ async function main() {
       await sleep(500);
     }
     console.log("States done — backfilling photo/bio for every distinct person...");
-    bioCount = await backfillBios(supabase, warnings);
+    bioCount = await backfillBios(supabase, warnings, { scope: BACKFILL_SCOPE });
     console.log("Copying current-term bio/photo onto governors...");
     currentCopyCount = await copyCurrentBiosToGovernors(supabase, warnings);
   } catch (err) {
@@ -520,7 +585,7 @@ async function main() {
   if (error) throw error;
 
   console.log(
-    `Synced ${totalRows} governor terms across ${states.length} states, backfilled bio/photo for ${bioCount} people, copied current bio/photo onto ${currentCopyCount} governors (${warnings.length} warning(s)).`,
+    `Synced ${totalRows} governor terms across ${states.length} states (scope: ${SCOPE}), backfilled bio/photo for ${bioCount} people (backfill scope: ${BACKFILL_SCOPE}), copied current bio/photo onto ${currentCopyCount} governors (${warnings.length} warning(s)).`,
   );
 }
 

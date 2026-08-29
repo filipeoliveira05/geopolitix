@@ -11,6 +11,33 @@
 // - legislators-historical.yaml: former members (huge — ~9MB, every House member
 //   back to 1789). Kept in full (all chambers) to power both the Senate and House
 //   "history over time" tabs.
+//
+// LEGISLATORS_SCOPE controls which of the two files this run actually
+// resyncs into `legislators`/`terms` — a 200-year-old term is never going
+// to change, so rewriting all ~45k historical rows on the same weekly
+// cadence as current members is dead weight, not safety. Values:
+// - "current": fetches/upserts only legislators-current.yaml. The (small)
+//   current file is still always fetched even in "historical" scope below,
+//   purely to know which bioguide ids are current so a historical run
+//   doesn't reprocess someone who's actually still serving ("current takes
+//   precedence", unchanged from before this split).
+// - "historical": fetches/upserts only legislators-historical.yaml. Meant
+//   to be run rarely/manually (`npm run sync:legislators-historical`) —
+//   congress-legislators is crowdsourced and does get occasional
+//   corrections to old records, so this isn't wired to never run again,
+//   just off the frequent cadence.
+// - unset (default): both, unchanged from this script's original
+//   behavior — used for an occasional one-off full resync.
+// The `terms` cleanup delete (see main() below) is scoped to only the
+// bioguide ids this run actually touched, so a "current"-scoped run can
+// never sweep up (and delete) historical rows stamped by an earlier
+// "historical" run, or vice versa.
+//
+// BACKFILL_SCOPE similarly limits which legislators the bio/photo backfill
+// considers: "recent" restricts to current officeholders plus anyone whose
+// most recent term ended within RECENT_YEARS years; unset (default. "all")
+// considers every legislator with a null bio_summary, matching the
+// pre-split behavior.
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -49,6 +76,12 @@ function chamberFor(termType) {
   if (termType === "rep") return "house";
   throw new Error(`Unknown term type: ${termType}`);
 }
+
+// How far back "recent" reaches for BACKFILL_SCOPE=recent — roughly one
+// full Senate term / two House terms / one gubernatorial term, wide enough
+// to catch stragglers from the last full election cycle without dragging
+// in genuine history.
+const RECENT_YEARS = 4;
 
 // PostgREST caps a single select() at 1000 rows by default — with ~12,700
 // legislators, an unpaginated select silently returns only the first
@@ -125,6 +158,23 @@ async function checkPhotoExists(url, signal) {
 }
 
 /**
+ * Bioguide ids of anyone currently serving or whose most recent term ended
+ * within RECENT_YEARS years — the population BACKFILL_SCOPE=recent limits
+ * itself to. A separate query against `terms` rather than a join, since
+ * postgrest-js has no cross-table filter for "this legislator's terms
+ * include one matching X".
+ */
+async function fetchRecentLegislatorIds(supabase) {
+  const cutoff = new Date();
+  cutoff.setFullYear(cutoff.getFullYear() - RECENT_YEARS);
+  const cutoffDate = cutoff.toISOString().slice(0, 10);
+  const rows = await selectAllPages(() =>
+    supabase.from("terms").select("legislator_id").or(`end_date.is.null,end_date.gte.${cutoffDate}`),
+  );
+  return new Set(rows.map((r) => r.legislator_id));
+}
+
+/**
  * Backfills bio_summary (always) and photo_url (only when the existing
  * unitedstates/images photo 404s) for every legislator still missing a
  * bio — a second pass after the main upsert, run in the same process so
@@ -134,10 +184,19 @@ async function checkPhotoExists(url, signal) {
  * working unitedstates/images photo either — isn't re-fetched forever;
  * same accepted tradeoff as governor-history.mjs's backfillBios().
  */
-async function backfillLegislatorBios(supabase, wikipediaTitleByBioguideId, warnings, { budgetMs } = {}) {
-  const people = await selectAllPages(() =>
+async function backfillLegislatorBios(
+  supabase,
+  wikipediaTitleByBioguideId,
+  warnings,
+  { budgetMs, scope = "all" } = {},
+) {
+  let people = await selectAllPages(() =>
     supabase.from("legislators").select("id, photo_url").is("bio_summary", null),
   );
+  if (scope === "recent") {
+    const recentIds = await fetchRecentLegislatorIds(supabase);
+    people = people.filter((p) => recentIds.has(p.id));
+  }
   if (people.length === 0) return 0;
 
   console.log(`Backfilling ${people.length} legislators' bios/photos...`);
@@ -254,15 +313,26 @@ const BACKFILL_ONLY = process.env.LEGISLATORS_BACKFILL_ONLY === "true";
 const BACKFILL_BUDGET_MS = process.env.BACKFILL_BUDGET_MS
   ? Number(process.env.BACKFILL_BUDGET_MS)
   : undefined;
+const SCOPE = process.env.LEGISLATORS_SCOPE; // "current" | "historical" | undefined (both)
+const BACKFILL_SCOPE = process.env.BACKFILL_SCOPE === "recent" ? "recent" : "all";
+const processCurrent = SCOPE !== "historical";
+const processHistorical = SCOPE !== "current";
 
 async function main() {
   const supabase = supabaseAdmin();
   const startedAt = new Date().toISOString();
 
+  // legislators-current.yaml is always fetched, even in "historical" scope
+  // — it's small, and its bioguide ids are needed there purely for the
+  // "current takes precedence" dedup below. legislators-historical.yaml
+  // (~9MB) is skipped entirely in "current" scope.
   const [current, historical] = await Promise.all([
     fetchYaml(CURRENT_URL),
-    fetchYaml(HISTORICAL_URL),
+    processHistorical ? fetchYaml(HISTORICAL_URL) : Promise.resolve([]),
   ]);
+  const currentBioguideIds = new Set(
+    current.map((p) => p.id?.bioguide).filter(Boolean),
+  );
 
   // backfillLegislatorBios (below) may have already replaced a legislator's
   // photo_url with a Wikipedia thumbnail on a prior run, once the
@@ -295,36 +365,43 @@ async function main() {
     legislator.photo_url = existing && existing !== guessed ? existing : guessed;
   }
 
-  for (const person of current) {
-    const legislator = buildLegislator(person);
-    if (!legislator || seenIds.has(legislator.id)) continue;
-    seenIds.add(legislator.id);
-    if (!BACKFILL_ONLY) {
-      keepExistingOrGuessedPhoto(legislator);
-      legislators.push(legislator);
-      terms.push(
-        ...buildTerms(legislator.id, person.terms ?? [], today, startedAt, { onlySenate: false }),
-      );
+  if (processCurrent) {
+    for (const person of current) {
+      const legislator = buildLegislator(person);
+      if (!legislator || seenIds.has(legislator.id)) continue;
+      seenIds.add(legislator.id);
+      if (!BACKFILL_ONLY) {
+        keepExistingOrGuessedPhoto(legislator);
+        legislators.push(legislator);
+        terms.push(
+          ...buildTerms(legislator.id, person.terms ?? [], today, startedAt, { onlySenate: false }),
+        );
+      }
+      if (person.id?.wikipedia) wikipediaTitleByBioguideId.set(legislator.id, person.id.wikipedia);
     }
-    if (person.id?.wikipedia) wikipediaTitleByBioguideId.set(legislator.id, person.id.wikipedia);
   }
 
-  for (const person of historical) {
-    const legislator = buildLegislator(person);
-    if (!legislator || seenIds.has(legislator.id)) continue; // current takes precedence
-    const historicalTerms = buildTerms(legislator.id, person.terms ?? [], today, startedAt, {
-      onlySenate: false,
-    });
-    if (!BACKFILL_ONLY) {
-      if (historicalTerms.length === 0) continue;
-      seenIds.add(legislator.id);
-      keepExistingOrGuessedPhoto(legislator);
-      legislators.push(legislator);
-      terms.push(...historicalTerms);
-    } else {
-      seenIds.add(legislator.id);
+  if (processHistorical) {
+    for (const person of historical) {
+      const legislator = buildLegislator(person);
+      // current takes precedence — currentBioguideIds catches this even
+      // when processCurrent is false (LEGISLATORS_SCOPE=historical), since
+      // seenIds isn't populated by a current-file loop in that case.
+      if (!legislator || currentBioguideIds.has(legislator.id) || seenIds.has(legislator.id)) continue;
+      const historicalTerms = buildTerms(legislator.id, person.terms ?? [], today, startedAt, {
+        onlySenate: false,
+      });
+      if (!BACKFILL_ONLY) {
+        if (historicalTerms.length === 0) continue;
+        seenIds.add(legislator.id);
+        keepExistingOrGuessedPhoto(legislator);
+        legislators.push(legislator);
+        terms.push(...historicalTerms);
+      } else {
+        seenIds.add(legislator.id);
+      }
+      if (person.id?.wikipedia) wikipediaTitleByBioguideId.set(legislator.id, person.id.wikipedia);
     }
-    if (person.id?.wikipedia) wikipediaTitleByBioguideId.set(legislator.id, person.id.wikipedia);
   }
 
   let error = null;
@@ -352,13 +429,27 @@ async function main() {
       console.log(`Inserted terms ${Math.min(i + CHUNK_SIZE, terms.length)}/${terms.length}`);
     }
     if (!error) {
-      // Every fresh chunk above succeeded — remove the previous run's rows.
-      // `.is.null` covers any pre-existing row from before this column
-      // existed.
-      ({ error } = await supabase
-        .from("terms")
-        .delete()
-        .or(`last_synced_at.lt.${startedAt},last_synced_at.is.null`));
+      // Every fresh chunk above succeeded — remove the previous run's stale
+      // rows, but ONLY for the legislator ids this run actually touched
+      // (seenIds). A scoped run (LEGISLATORS_SCOPE=current/historical)
+      // only ever inserts terms for its own population above — without
+      // this id scoping, the blanket "any stale row" delete below would
+      // also sweep up the OTHER scope's rows (e.g. a current-scoped run
+      // deleting every historical term, since none of them got a fresh
+      // last_synced_at stamp this run). `.is.null` still covers any
+      // pre-existing row from before this column existed, for whichever
+      // ids are in scope. Chunked (not one `.in()` with all ~12,700 ids)
+      // since PostgREST's URL-encoded filter has a practical length limit.
+      const idsToClean = [...seenIds];
+      const CLEAN_CHUNK_SIZE = 500;
+      for (let i = 0; !error && i < idsToClean.length; i += CLEAN_CHUNK_SIZE) {
+        const idChunk = idsToClean.slice(i, i + CLEAN_CHUNK_SIZE);
+        ({ error } = await supabase
+          .from("terms")
+          .delete()
+          .in("legislator_id", idChunk)
+          .or(`last_synced_at.lt.${startedAt},last_synced_at.is.null`));
+      }
     } else {
       // Something failed partway through — roll back only the partial
       // chunks this run inserted (all stamped >= startedAt), so the
@@ -375,6 +466,7 @@ async function main() {
     try {
       bioCount = await backfillLegislatorBios(supabase, wikipediaTitleByBioguideId, warnings, {
         budgetMs: BACKFILL_BUDGET_MS,
+        scope: BACKFILL_SCOPE,
       });
     } catch (err) {
       error = err;
@@ -386,7 +478,7 @@ async function main() {
   }
 
   await logSync(supabase, {
-    source: `${CURRENT_URL}, ${HISTORICAL_URL}`,
+    source: processHistorical ? `${CURRENT_URL}, ${HISTORICAL_URL}` : CURRENT_URL,
     startedAt,
     error,
     warnings,
@@ -396,7 +488,7 @@ async function main() {
 
   const syncedMessage = BACKFILL_ONLY
     ? "legislators/terms sync skipped (backfill-only mode)"
-    : `Synced ${legislators.length} legislators / ${terms.length} terms`;
+    : `Synced ${legislators.length} legislators / ${terms.length} terms (scope: ${SCOPE ?? "all"})`;
   console.log(
     `${syncedMessage}, backfilled bio/photo for ${bioCount} people (${warnings.length} warning(s)).`,
   );

@@ -1,0 +1,30 @@
+name: 2026 races sync
+
+# Split out from sync.yml so races_2026's cadence can move independently
+# of legislators/governors/governor-history — weekly through the last 2026
+# primaries (Sep 15), then pause until closer to the Nov 3 general, per
+# races-2026.mjs's own header comment on why every race is still "open" as
+# of this writing. When pausing: comment out (or delete) the `schedule:`
+# entry below rather than the whole workflow, so `workflow_dispatch` still
+# allows an on-demand run in between. Re-add a weekly (or tighter,
+# election-week) cadence once the general approaches.
+on:
+  schedule:
+    - cron: "0 6 * * 1" # Monday 06:00 UTC
+  workflow_dispatch: {} # allow an on-demand run from the Actions tab
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      SYNC_TRIGGERED_BY: cron
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: node scripts/sync/races-2026.mjs

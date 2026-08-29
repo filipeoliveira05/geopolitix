@@ -277,12 +277,15 @@ Base Next.js + Tailwind + TypeScript scaffold in place. Infra checklist (plan §
 GitHub repo pushed and tracked; Supabase project linked via CLI (credentials in gitignored
 `.env.local`); schema applied as versioned migrations (`supabase/migrations/`); Vercel project
 connected with Vercel Authentication as the deployment gate; Supabase env vars wired to both
-Vercel and local `.env.local`. `states`/`legislators`/`governors`/`races_2026` sync weekly via
-GitHub Actions (`.github/workflows/sync.yml`, Monday 06:00 UTC + manual `workflow_dispatch`) —
-not Vercel Cron as the plan originally sketched; `governors.mjs`/`races-2026.mjs` deliberately
-rate-limit themselves to ~70-100+s each, tight against Vercel's 300s function timeout and
-requiring restructuring into HTTP handlers, so a plain scheduled workflow running the existing
-`npm run sync:*` scripts unchanged was the lower-risk choice. Needs three repo secrets set
+Vercel and local `.env.local`. `states`/`legislators`/`governors`/`governor_terms` sync weekly
+via GitHub Actions (`.github/workflows/sync.yml`, Monday 06:00 UTC + manual `workflow_dispatch`)
+— not Vercel Cron as the plan originally sketched; `governors.mjs` deliberately rate-limits
+itself to ~70-100+s, tight against Vercel's 300s function timeout and requiring restructuring
+into HTTP handlers, so a plain scheduled workflow running the existing `npm run sync:*` scripts
+unchanged was the lower-risk choice. **`races_2026` has its own separate workflow**
+(`.github/workflows/races-sync.yml`, same weekly cadence today) — split out so its cadence can
+move independently: weekly through the last 2026 primaries (Sep 15), then paused until closer to
+the Nov 3 general, without touching legislators/governors' schedule. Needs three repo secrets set
 (Settings → Secrets and variables → Actions): `NEXT_PUBLIC_SUPABASE_URL`,
 `SUPABASE_SERVICE_ROLE_KEY`, `OPENSTATES_API_KEY`. Each sync step runs independently
 (`continue-on-error` per step, so one external API having a bad day doesn't skip the others —
@@ -293,6 +296,26 @@ genuinely errored — **`continue-on-error` alone silently reports the whole job
 rate limit and errored, workflow still showed green) and fixed with that explicit check,
 so the job status is trustworthy without needing to cross-check `sync_logs` for a real
 failure. `districts` stays manual-only (redistricting is ~once/decade, per plan §6).
+
+**`legislators.mjs`/`governor-history.mjs` both run current/recent-scoped in the weekly
+sync.yml, not full-historical** — a term that ended in 1850 (or 1990) never changes, so
+rewriting the entire historical `terms`/`governor_terms` tables on the same cadence as this
+year's officeholders was pure waste, not safety. `sync.yml` sets `LEGISLATORS_SCOPE=current`
+(skips fetching/upserting the ~9MB `legislators-historical.yaml` entirely — only
+`legislators-current.yaml` is touched) and `GOVERNOR_HISTORY_SCOPE=current` (each state's SPARQL
+history query still runs, since a second narrower query shape wasn't worth the added risk, but
+only that state's current term row gets upserted/party-resolved). Both also set
+`BACKFILL_SCOPE=recent`, restricting the bio/photo backfill pass to current officeholders plus
+anyone whose most recent term ended within ~4 years (`RECENT_YEARS`/`fetchRecentLegislatorIds`
+/`fetchRecentPersonIds`), rather than sweeping the full historical pool every week. Full
+historical resyncs (`npm run sync:legislators-historical`, or `npm run sync:governor-history`
+with `GOVERNOR_HISTORY_SCOPE` unset) stay manual-only, not automated on any cadence —
+congress-legislators/Wikidata are crowdsourced and do get rare corrections to old records, so
+this is "off the weekly cadence", not "frozen forever". The `terms` table's stale-row cleanup
+delete is scoped to only the bioguide ids a given run actually touched (chunked `.in()` filter,
+not one query with thousands of ids) specifically so a `current`-scoped run can never sweep up
+and delete historical rows stamped by an earlier `historical` run, or vice versa —
+`governor_terms` needed no equivalent fix since it's pure upsert, no delete-based cleanup at all.
 **`legislators.bio_summary`/`photo_url` backfill runs on its own separate, much more frequent
 schedule** (`.github/workflows/legislator-bio-backfill.yml`, every hour + manual
 `workflow_dispatch`) rather than riding along on the weekly sync — the population here (~12,700
@@ -311,6 +334,11 @@ everywhere else in this codebase. A `concurrency: legislator-bio-backfill` group
 still-null rows at once — cheap insurance once the cadence got tight enough (hourly, ~25min
 runs) for a slow run to genuinely butt up against the next scheduled one.
 `mapWithConcurrency` (`_wikipedia.mjs`) grew a `shouldStop` hook for this.
+**Retire this workflow once the full-population manual backfill converges close to 100%** — the
+weekly `sync.yml` step now runs its own `BACKFILL_SCOPE=recent`-scoped backfill (see the data
+conventions note above), covering ongoing maintenance for current + recently-departed
+legislators going forward; this hourly full-pool job's only remaining purpose past that point is
+finishing the initial catch-up sweep of everyone else.
 **The `schedule:` trigger itself has been unreliable in practice — confirmed live, not
 assumed**: it didn't fire even once in this workflow's first several hours live (`gh run list`
 showed zero `event: "schedule"` runs, only manual `workflow_dispatch` ones), despite every
