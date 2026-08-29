@@ -44,5 +44,6 @@ next-env.d.ts
 /public/maplibre-gl-worker.mjs
 /public/maplibre-gl-shared.mjs
 
-# brainstorming/planning specs — working notes, not project docs
-/docs/superpowers/specs/
+# brainstorming/planning working notes (specs + implementation plans) —
+# not project docs, kept local-only
+/docs/superpowers/
