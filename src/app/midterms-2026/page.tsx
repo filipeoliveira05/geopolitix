@@ -10,7 +10,6 @@ import {
 } from "@/lib/races-data";
 import { RaceRow } from "@/components/RaceRow";
 import { HouseRacesByState } from "@/components/HouseRacesByState";
-import { GlobalFooter } from "@/components/GlobalFooter";
 import { SyncFreshnessNote } from "@/components/SyncFreshnessNote";
 import { getJobFreshness } from "@/lib/sync-freshness";
 
@@ -189,8 +188,6 @@ export default async function Midterms2026Page() {
           <HouseRacesByState summaries={houseCounts} electionHasPassed={electionHasPassed} />
         </div>
       </div>
-
-      <GlobalFooter />
     </div>
   );
 }

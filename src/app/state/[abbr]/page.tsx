@@ -12,7 +12,6 @@ import {
 import { getGovernor, getGovernorHistory, governorFullName } from "@/lib/governors-data";
 import { getRacesForState } from "@/lib/races-data";
 import { StateTabs } from "@/components/StateTabs";
-import { GlobalFooter } from "@/components/GlobalFooter";
 import { SyncFreshnessNote } from "@/components/SyncFreshnessNote";
 import { getJobFreshness } from "@/lib/sync-freshness";
 
@@ -87,8 +86,6 @@ export default async function StatePage(props: PageProps<"/state/[abbr]">) {
           races={races}
         />
       </div>
-
-      <GlobalFooter />
     </div>
   );
 }
