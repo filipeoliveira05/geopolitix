@@ -55,15 +55,25 @@ Build order: **Phase 1 politics → Phase 2 geography → Phase 3 quiz.** Don't 
 - **`governor-history.mjs`** — full source research (a real Wikidata SPARQL spike) is in the
   script's own header comment, don't re-derive it. Shaped like `race_candidates` (plain
   `name`/`party`, no required FK) since historical governors predate OpenStates and have no
-  natural key; `governor_id` is nullable, set only on a state's current term. Two gotchas: a
+  natural key; `governor_id` is nullable, set only on a state's current term. Three gotchas: a
   person's party (P102) statements aren't date-scoped to the term being synced, so a
   party-switcher shows up against every term unless resolved client-side by matching P580/P582
-  dates (`resolveParty()`); and Wikidata occasionally has a genuine duplicate P39 statement for
+  dates (`resolveParty()`); Wikidata occasionally has a genuine duplicate P39 statement for
   the same person/term, which crashes a same-batch upsert unless de-duped by
-  `(state_id, wikidata_person_id, start_date)` first. `backfillBios()` fills
+  `(state_id, wikidata_person_id, start_date)` first; and `fetchTerms()`'s SPARQL query had no
+  instance-of filter, so it returned any entity Wikidata tagged with a "Governor of X" P39
+  statement, fictional or not — caught live 2026-08-30 via West Virginia's real governor history
+  including "Ray Sullivan," a fictional *West Wing* character whose Wikidata entry lists an
+  in-show "Governor of West Virginia (2002–2006)" position (no Wikipedia sitelink either, since
+  the character was never a real person to backfill a bio for). Fixed with `?person wdt:P31
+  wd:Q5` (instance of: human) — verified live against the real endpoint: still returns all 37
+  real WV governors, excludes Ray Sullivan; the one bad row already synced was deleted by hand
+  (governor_terms needed no equivalent cleanup mechanism — a one-off, not a recurring problem
+  after the query fix). `backfillBios()` fills
   `photo_url`/`bio_summary` from the Wikipedia REST API, not Wikidata's own terser
-  description — 99.96% coverage (2,287/2,288; the one exception has no Wikipedia article at
-  all). Filters on `bio_summary IS NULL` (not `photo_url`) since ~30 people legitimately have no
+  description — 100% coverage (2,287/2,287, confirmed live 2026-08-30 after the Ray Sullivan
+  fictional-entity fix above removed the one person who was never real to begin with). Filters
+  on `bio_summary IS NULL` (not `photo_url`) since ~30 people legitimately have no
   thumbnail but do have a real extract. Powers `/governor/[id]` for historical governors — the
   only source for their photo/bio. Wikipedia's REST API rate-limits under sustained load
   (settled on concurrency 2); a `fetch()` can hang indefinitely with no timeout (fixed via
@@ -206,20 +216,34 @@ Build order: **Phase 1 politics → Phase 2 geography → Phase 3 quiz.** Don't 
   ID-based way, never a search; **confirmed live at 100% three-bucket coverage** as of
   2026-08-30: legislators 12,712/12,712 sourced, current governors 38/38 sourced (the other 12
   states have no `governors` row at all — the documented OpenStates gap, fully covered via
-  `governor_terms` instead, not a miss here), historical governors 2,425/2,426 sourced (the one
-  remaining row is a genuine Wikidata gap — no sitelink exists for that person at all — not yet
-  flagged `wikipedia_checked_no`). **Candidates are the one table still short of this**, and by
-  more than the export CSV alone suggests: an unverified `bio_summary` here came from a name
-  search (real wrong-person risk, see Steve Cohen above), so it can't be safely folded into the
-  "sourced" tier the way legislators/governors can — it needs the same human confirmation as a
-  from-scratch match. `scripts/sync/export-unreviewed-candidates.mjs` exports both groups needing
-  that confirmation: no bio yet, and has a bio but never confirmed (pre-filled with the current
-  guessed URL so review is a quick confirm-or-correct) — 177 rows combined as of 2026-08-30 (28 +
-  149). `scripts/sync/ingest-candidate-csv.mjs` ingests a filled CSV, setting the flags
-  accordingly (fetches by title directly, no search, so no rate-limit risk). No manual audit has
-  been run against legislators/historical governors themselves (as opposed to their current
-  ID-sourced bios) — not needed, since the ID-based match already closes those tables to 100%
-  three-bucket coverage without one.
+  `governor_terms` instead, not a miss here), historical governors 2,425/2,425 sourced (the one
+  gap — a person with no Wikidata sitelink at all — turned out to be the Ray Sullivan fictional
+  entity above, not a real gap; closed once that row was deleted). **Candidates are the one table
+  not fully closed**, and an unverified `bio_summary` here can't be safely folded into the
+  "sourced" tier the way legislators/governors can — it came from a name search (real
+  wrong-person risk, see Steve Cohen above), not an ID lookup, so it needs the same human
+  confirmation as a from-scratch match. A full manual review round closed most of this: **as of
+  2026-08-30, 237 verified + 396 confirmed-no = 633/643 (98.4%)**, up from 77/389 before. The
+  remaining 10 are a deliberate hold, not a gap — every one is a candidate in a state whose 2026
+  primary hasn't happened yet (MA/NH/RI), where the field could still change; see
+  `pending-primary-states.ts`'s note below. `scripts/sync/export-unreviewed-candidates.mjs`
+  exports every candidate still needing review (no bio yet, or has a bio but never confirmed,
+  pre-filled with the current guessed URL so review is a quick confirm-or-correct) — and now
+  excludes any candidate from a state with a known-pending primary, so these 10 won't resurface
+  for review until they're actually reviewable, self-expiring the same way
+  `pending-primary-states.ts` does (small hardcoded date map duplicated into this plain-Node
+  script, since it can't import the Next app's TS module — keep both in sync if the dates
+  change). `scripts/sync/ingest-candidate-csv.mjs` ingests a filled CSV: a real URL sets
+  `wikipedia_verified`, the literal `"no"` sets `wikipedia_checked_no`, and anything else (e.g.
+  "primaries not yet held") is left untouched rather than crashing as an unparseable URL. Reuses
+  `_wikipedia.mjs`'s retry/backoff/concurrency-2 helper — an earlier version fetched all 160 URLs
+  in one unthrottled sequential loop and got hard rate-limited partway through a real run (66
+  succeeded, 94 failed) before this fix. No manual audit has been run against legislators/
+  historical governors themselves (as opposed to their current ID-sourced bios) — not needed,
+  since the ID-based match already closes those tables to 100% three-bucket coverage without one.
+  Review CSVs live in `manual-review/` (gitignored — a human's working notes and in-progress
+  review state, not a project doc, but kept on disk as a local backup trail), one dated file per
+  review round rather than overwriting the same file each time.
 - **`legislators.mjs`'s `terms` sync got the identical insert-then-cleanup reorder**, for the
   identical reason — chunked delete-then-insert (45k+ rows) left `terms` incomplete on a
   chunk failure partway through. Needed a new `terms.last_synced_at` column first (`terms`,
@@ -246,7 +270,24 @@ Build order: **Phase 1 politics → Phase 2 geography → Phase 3 quiz.** Don't 
 - **`isPrimaryPending()` in `races-data.ts`** detects Wikipedia's own placeholder text
   ("TBD"/"`<name> (presumptive)`") already flowing through the unchanged `races_2026` sync —
   used to show a clean disclaimer instead of that raw text. No new data source or sync change;
-  self-updates once a state's real primary results land in the next weekly sync.
+  self-updates once a state's real primary results land in the next weekly sync. **Can't catch
+  every case, though** — caught live 2026-08-30: MA's Jim McGovern/Ayanna Pressley House races
+  each had exactly one real name and nothing else (no TBD, no second candidate), so both text
+  patterns missed it and the races displayed as fully decided despite MA not having voted.
+  Candidate count/wording alone can't distinguish "genuinely uncontested, already final" (the
+  Maxwell Frost pattern, common and legitimate) from "this state just hasn't voted yet" — the
+  only reliable signal is knowing which states haven't voted, which is exactly the calendar the
+  sync deliberately avoids hardcoding (see `RACES_SCOPE=pending` above). `primaryPendingMessage()`
+  (same file) resolves this with a small, explicitly temporary exception instead of a real
+  calendar: `src/lib/pending-primary-states.ts` hardcodes just the 4 states with a genuinely
+  known-pending 2026 primary (MA Sep 1, NH Sep 8, RI Sep 9, DE Sep 15) and their real dates,
+  cross-checked ahead of the text-pattern fallback. Self-expiring by design — each entry's
+  cutoff is the day after that state's primary, so the flag disappears on its own once voting
+  happens, no follow-up change needed to remove it; delete the file (or a state's entry)
+  once all four have passed. Used by both `RaceRow.tsx` (`/midterms-2026`'s Senate/Governor/
+  House rows) and `StateTabs.tsx` (`/state/[abbr]`'s Midterms tab), so an affected race shows
+  "Primary not yet held (Sep 1, 2026)." instead of a presumed candidate name, on every page that
+  renders it.
 
 ## UI conventions
 
@@ -378,7 +419,7 @@ one-time claim; re-check the actual counts before trusting old numbers here:**
 | | Name | Photo | Bio | Term history |
 |---|---|---|---|---|
 | **Governor, current** | ✅ | ✅ 50/50 (100%) | ✅ 50/50 (100%) | ✅ full non-consecutive history |
-| **Governor, past** | ✅ | ✅ 2,229/2,288 (97.4%) | ✅ 2,287/2,288 (99.96%) | ✅ full history |
+| **Governor, past** | ✅ | ✅ 2,229/2,287 (97.5%) | ✅ 2,287/2,287 (100%) | ✅ full history |
 | **Senator/Rep, current + past (shared pool)** | ✅ (100%, `photo_url` always set to at least a guessed URL) | ⚠️ same guessed-URL/Wikipedia-fallback mechanism as before, not separately measured per current/past | ✅ 12,712/12,712 (100%) as of 2026-08-30 | ✅ full, all chambers |
 
 Governors went from "current bio is a permanent, never-wired-up gap" to fully solved (see the
@@ -406,7 +447,9 @@ lower-risk choice. Three workflows: `sync.yml` (`states`/`legislators`/`governor
 `governor_terms`, weekly, Monday 06:00 UTC), `races-sync.yml` (`races_2026`, its own cadence so
 it can be paused after the last 2026 primaries (Sep 15) and resumed near the Nov 3 general
 independently of the other syncs — `RACES_SCOPE=pending` on the normal cadence, see Data
-conventions), and `candidate-bio-backfill.yml` (every 3 hours). Needs three repo secrets
+conventions; offset an hour to Monday 07:00 UTC as of 2026-08-30 so it doesn't start at the
+exact same moment as `sync.yml`, both of which can hit Wikipedia's REST API), and
+`candidate-bio-backfill.yml` (every 3 hours). Needs three repo secrets
 (Settings → Secrets and variables → Actions): `NEXT_PUBLIC_SUPABASE_URL`,
 `SUPABASE_SERVICE_ROLE_KEY`, `OPENSTATES_API_KEY`. Each sync step runs independently
 (`continue-on-error`, so one external API having a bad day doesn't skip the others), but a
@@ -534,8 +577,8 @@ everyone else links here.
   regardless of backfill progress).
 - `governors` — current governor per state, from OpenStates v3 (`OPENSTATES_API_KEY` required).
   See the Data conventions gotchas above before re-running or modifying this one.
-- `governor_terms` — full governor history back to statehood, from Wikidata (2,426 rows across
-  50 states, no key), plus photo/bio for 2,287/2,288 distinct people (99.96%) from the
+- `governor_terms` — full governor history back to statehood, from Wikidata (2,425 rows across
+  50 states, no key), plus photo/bio for 2,287/2,287 distinct people (100%) from the
   Wikipedia REST API. See the Data conventions gotchas above before re-running or modifying
   this one.
 - `races_2026`/`race_candidates` — Senate, Governor, AND House races, from Wikipedia (506

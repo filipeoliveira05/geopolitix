@@ -196,13 +196,15 @@ governors predate OpenStates entirely and have no `legislators.id`-style natural
   `is_current` · `photo_url`, `bio_summary` (both nullable, from the Wikipedia REST API, not
   Wikidata's own P18/description — added after the initial history sync, once photo/bio
   feasibility for historical governors' own `/governor/[id]` profile pages was confirmed live
-  at 97-100% coverage across three sampled states, then built at full scale: 2,287/2,288
-  people, 99.96%) · `wikipedia_title` (the enwiki article title, read directly from Wikidata's
+  at 97-100% coverage across three sampled states, then built at full scale: 2,287/2,287
+  people, 100% — the one apparent gap here turned out to be "Ray Sullivan," a fictional West
+  Wing character Wikidata's SPARQL query returned alongside real West Virginia governors before
+  `fetchTerms()` added an instance-of-human filter; deleted once identified, not a real data
+  gap) · `wikipedia_title` (the enwiki article title, read directly from Wikidata's
   own structured sitelink property for that person's QID — never guessed or searched) ·
   `wikipedia_verified`/`wikipedia_checked_no` (both booleans, default `false` — same shape as
   `legislators`'; every historical governor bio today is ID-sourced via that sitelink, not yet
-  human-verified, except the one person with no Wikipedia sitelink at all, a genuine Wikidata
-  gap not yet flagged `wikipedia_checked_no`).
+  human-verified).
 
 ### `races_2026`
 Senate + Governor + House (§3) — House added after the MVP once its different Wikipedia page
@@ -328,7 +330,7 @@ CLAUDE.md's data-conventions section):
 | Sync districts/geometry | Census cartographic boundary files | Manual only (~static, redistricting is ~once/decade) | `districts` |
 | Sync geography (population/capital/cities) | Census Bureau API, Wikidata | **Not built yet** (Phase 2) — suggested monthly once it exists | `states` (population/capital columns), `cities` |
 | Sync sports | TheSportsDB API | Not built yet (Phase 2) — manual only once built (~static) | `sports_teams` |
-| Sync 2026 races (Senate + Governor + House, pending states only) | Wikipedia infobox parsing | Weekly, **its own separate workflow** (`races-sync.yml`, decoupled from `sync.yml` since 2026-08-29 so this cadence can move independently — e.g. paused after the last 2026 primaries (Sep 15) and resumed near the Nov 3 general), `RACES_SCOPE=pending` — only re-fetches states whose primary isn't resolved yet in our own data (confirmed live: 28/506 races needed a real fetch on a real run) | `races_2026`, `race_candidates`, plus matching against current legislators/governors (`matched_legislator_id`/`matched_governor_id`) |
+| Sync 2026 races (Senate + Governor + House, pending states only) | Wikipedia infobox parsing | Weekly, **its own separate workflow** (`races-sync.yml`, decoupled from `sync.yml` since 2026-08-29 so this cadence can move independently — e.g. paused after the last 2026 primaries (Sep 15) and resumed near the Nov 3 general; offset an hour to Monday 07:00 UTC as of 2026-08-30, since `sync.yml`'s own 06:00 UTC run can also hit Wikipedia's REST API and the two shouldn't compound rate-limit pressure by starting at the same moment), `RACES_SCOPE=pending` — only re-fetches states whose primary isn't resolved yet in our own data (confirmed live: 28/506 races needed a real fetch on a real run) | `races_2026`, `race_candidates`, plus matching against current legislators/governors (`matched_legislator_id`/`matched_governor_id`) |
 | Sync 2026 races (full sweep, every state) | Wikipedia infobox parsing | **Manual only** (`RACES_SCOPE` unset/`"full"`) — an occasional full resync, and mandatory for the Nov 3 general itself, when every state needs re-checking regardless of primary status | same as above |
 | Sync challenger candidate bios (recent backlog) | Wikipedia REST API | Folded into the weekly `races-sync.yml` run, budget-capped (`BACKFILL_BUDGET_MS`, 10 min) so a normal week stays short | `candidates.bio_summary`/`photo_url` |
 | Sync challenger candidate bios (full backlog) | Wikipedia REST API | **Every 3 hours** — its own separate workflow (`candidate-bio-backfill.yml`, `CANDIDATES_BACKFILL_ONLY=true`), same weekly-sync/frequent-backfill split legislators already has, tuned to the smaller ~568-candidate population (not legislators' hourly/~12,700) | `candidates.bio_summary`/`photo_url` (full population) |
