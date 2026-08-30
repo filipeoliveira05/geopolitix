@@ -23,8 +23,15 @@ name: 2026 races sync
 # candidate-bio-backfill.yml workflow (its own, more frequent cadence)
 # handles draining that backlog further.
 on:
+  # Offset an hour from sync.yml's own "0 6 * * 1" (added 2026-08-30) —
+  # both workflows can hit Wikipedia's REST API (governor-history.mjs's
+  # recent-scope bio backfill here, races-2026.mjs's candidate bio backfill
+  # there), and Wikipedia's rate limit is already the tight constraint
+  # documented everywhere else in this codebase; starting them an hour
+  # apart avoids compounding that pressure right at the top of both runs,
+  # for free — no reason for them to race each other.
   schedule:
-    - cron: "0 6 * * 1" # Monday 06:00 UTC
+    - cron: "0 7 * * 1" # Monday 07:00 UTC
   workflow_dispatch: {} # allow an on-demand run from the Actions tab
 
 jobs:
