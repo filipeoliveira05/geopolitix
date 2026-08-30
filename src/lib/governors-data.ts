@@ -9,6 +9,7 @@ export type Governor = {
   lastName: string | null;
   photoUrl: string | null;
   bioSummary: string | null;
+  wikipediaTitle: string | null;
   wikipediaVerified: boolean;
   wikipediaCheckedNo: boolean;
   stateId: string;
@@ -23,6 +24,7 @@ type GovernorRow = {
   last_name: string | null;
   photo_url: string | null;
   bio_summary: string | null;
+  wikipedia_title: string | null;
   wikipedia_verified: boolean;
   wikipedia_checked_no: boolean;
   state_id: string;
@@ -38,6 +40,7 @@ function fromRow(row: GovernorRow): Governor {
     lastName: row.last_name,
     photoUrl: row.photo_url,
     bioSummary: row.bio_summary,
+    wikipediaTitle: row.wikipedia_title,
     wikipediaVerified: row.wikipedia_verified,
     wikipediaCheckedNo: row.wikipedia_checked_no,
     stateId: row.state_id,
@@ -115,6 +118,7 @@ export type GovernorTerm = {
   // bioSummary end up with the same values, not a separate OpenStates source.
   photoUrl: string | null;
   bioSummary: string | null;
+  wikipediaTitle: string | null;
   wikipediaVerified: boolean;
   wikipediaCheckedNo: boolean;
 };
@@ -131,6 +135,7 @@ type GovernorTermRow = {
   is_current: boolean;
   photo_url: string | null;
   bio_summary: string | null;
+  wikipedia_title: string | null;
   wikipedia_verified: boolean;
   wikipedia_checked_no: boolean;
 };
@@ -148,6 +153,7 @@ function termFromRow(row: GovernorTermRow): GovernorTerm {
     isCurrent: row.is_current,
     photoUrl: row.photo_url,
     bioSummary: row.bio_summary,
+    wikipediaTitle: row.wikipedia_title,
     wikipediaVerified: row.wikipedia_verified,
     wikipediaCheckedNo: row.wikipedia_checked_no,
   };
@@ -162,6 +168,7 @@ function governorFromTerm(term: GovernorTerm): Governor {
     lastName: rest.join(" "),
     photoUrl: term.photoUrl,
     bioSummary: term.bioSummary,
+    wikipediaTitle: term.wikipediaTitle,
     wikipediaVerified: term.wikipediaVerified,
     wikipediaCheckedNo: term.wikipediaCheckedNo,
     stateId: term.stateId,

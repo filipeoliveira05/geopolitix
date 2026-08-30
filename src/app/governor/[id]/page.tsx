@@ -19,6 +19,7 @@ type Profile = {
   party: string | null;
   photoUrl: string | null;
   bioSummary: string | null;
+  wikipediaTitle: string | null;
   wikipediaVerified: boolean;
   wikipediaCheckedNo: boolean;
   stateId: string;
@@ -42,6 +43,7 @@ async function loadProfile(id: string): Promise<Profile | null> {
       party: governor.party,
       photoUrl: governor.photoUrl,
       bioSummary: governor.bioSummary,
+      wikipediaTitle: governor.wikipediaTitle,
       wikipediaVerified: governor.wikipediaVerified,
       wikipediaCheckedNo: governor.wikipediaCheckedNo,
       stateId: governor.stateId,
@@ -59,6 +61,7 @@ async function loadProfile(id: string): Promise<Profile | null> {
     party: mostRecent.party,
     photoUrl: mostRecent.photoUrl,
     bioSummary: mostRecent.bioSummary,
+    wikipediaTitle: mostRecent.wikipediaTitle,
     wikipediaVerified: mostRecent.wikipediaVerified,
     wikipediaCheckedNo: mostRecent.wikipediaCheckedNo,
     stateId: mostRecent.stateId,
@@ -117,7 +120,9 @@ export default async function GovernorPage(props: PageProps<"/governor/[id]">) {
           <h2 className="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
             Biography
           </h2>
-          {profile.bioSummary && profile.wikipediaVerified && <WikipediaVerifiedBadge />}
+          {profile.bioSummary && profile.wikipediaVerified && (
+            <WikipediaVerifiedBadge title={profile.wikipediaTitle} />
+          )}
           {!profile.bioSummary && profile.wikipediaCheckedNo && <WikipediaNoPageBadge />}
         </div>
         <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">

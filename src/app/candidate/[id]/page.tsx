@@ -67,7 +67,9 @@ export default async function CandidatePage(props: PageProps<"/candidate/[id]">)
           <h2 className="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
             Biography
           </h2>
-          {candidate.bioSummary && candidate.wikipediaVerified && <WikipediaVerifiedBadge />}
+          {candidate.bioSummary && candidate.wikipediaVerified && (
+            <WikipediaVerifiedBadge title={candidate.wikipediaTitle} />
+          )}
           {!candidate.bioSummary && candidate.wikipediaCheckedNo && <WikipediaNoPageBadge />}
         </div>
         {candidate.bioSummary ? (

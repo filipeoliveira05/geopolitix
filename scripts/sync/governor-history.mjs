@@ -362,7 +362,7 @@ async function fetchSitelinkTitles(personQids) {
 async function copyCurrentBiosToGovernors(supabase, warnings) {
   const { data: currentTerms, error: selectError } = await supabase
     .from("governor_terms")
-    .select("governor_id, bio_summary, photo_url, wikipedia_verified, wikipedia_checked_no")
+    .select("governor_id, bio_summary, photo_url, wikipedia_title, wikipedia_verified, wikipedia_checked_no")
     .eq("is_current", true)
     .not("governor_id", "is", null);
   if (selectError) throw selectError;
@@ -374,6 +374,7 @@ async function copyCurrentBiosToGovernors(supabase, warnings) {
       .update({
         bio_summary: term.bio_summary,
         photo_url: term.photo_url,
+        wikipedia_title: term.wikipedia_title,
         wikipedia_verified: term.wikipedia_verified,
         wikipedia_checked_no: term.wikipedia_checked_no,
       })

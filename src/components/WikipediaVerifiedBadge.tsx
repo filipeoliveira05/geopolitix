@@ -1,22 +1,44 @@
+import { wikipediaUrl } from "@/lib/wikipedia";
+
 // A bio only gets this after a human actually checked it against the real
 // Wikipedia page — never set by the automated exact-match search itself
 // (see the wikipedia_verified column on candidates/legislators/governors/
 // governor_terms). Static (not pulsing) since it isn't a "live" state like
 // the app's other small colored dots — it's a one-time confirmation that
-// doesn't change.
-export function WikipediaVerifiedBadge() {
+// doesn't change. Links straight to the confirmed article when a title is
+// available (older verified rows predating the wikipedia_title column on
+// governors/governor_terms may not have one — falls back to plain text).
+export function WikipediaVerifiedBadge({ title }: { title?: string | null }) {
+  const className =
+    "inline-flex items-center gap-1 text-xs font-medium text-emerald-600 dark:text-emerald-400";
+  const icon = (
+    <svg viewBox="0 0 20 20" fill="currentColor" className="h-3.5 w-3.5">
+      <path
+        fillRule="evenodd"
+        d="M16.704 5.29a.75.75 0 0 1 .006 1.06l-7.5 7.75a.75.75 0 0 1-1.08.02l-3.5-3.5a.75.75 0 1 1 1.06-1.06l2.955 2.955 6.977-7.21a.75.75 0 0 1 1.06-.015Z"
+        clipRule="evenodd"
+      />
+    </svg>
+  );
+
+  if (title) {
+    return (
+      <a
+        href={wikipediaUrl(title)}
+        target="_blank"
+        rel="noopener noreferrer"
+        className={`${className} hover:underline`}
+        title="A person manually confirmed this bio against the real Wikipedia page — click to view it"
+      >
+        {icon}
+        Wikipedia verified
+      </a>
+    );
+  }
+
   return (
-    <span
-      className="inline-flex items-center gap-1 text-xs font-medium text-emerald-600 dark:text-emerald-400"
-      title="A person manually confirmed this bio against the real Wikipedia page"
-    >
-      <svg viewBox="0 0 20 20" fill="currentColor" className="h-3.5 w-3.5">
-        <path
-          fillRule="evenodd"
-          d="M16.704 5.29a.75.75 0 0 1 .006 1.06l-7.5 7.75a.75.75 0 0 1-1.08.02l-3.5-3.5a.75.75 0 1 1 1.06-1.06l2.955 2.955 6.977-7.21a.75.75 0 0 1 1.06-.015Z"
-          clipRule="evenodd"
-        />
-      </svg>
+    <span className={className} title="A person manually confirmed this bio against the real Wikipedia page">
+      {icon}
       Wikipedia verified
     </span>
   );

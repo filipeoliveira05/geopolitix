@@ -14,6 +14,7 @@ export type Legislator = {
   photoUrl: string | null;
   birthday: string | null;
   bioSummary: string | null;
+  wikipediaTitle: string | null;
   wikipediaVerified: boolean;
   wikipediaCheckedNo: boolean;
 };
@@ -57,6 +58,7 @@ type LegislatorRow = {
   photo_url: string | null;
   birthday: string | null;
   bio_summary: string | null;
+  wikipedia_title: string | null;
   wikipedia_verified: boolean;
   wikipedia_checked_no: boolean;
 };
@@ -73,6 +75,7 @@ function legislatorFromRow(row: LegislatorRow): Legislator {
     photoUrl: row.photo_url,
     birthday: row.birthday,
     bioSummary: row.bio_summary,
+    wikipediaTitle: row.wikipedia_title,
     wikipediaVerified: row.wikipedia_verified,
     wikipediaCheckedNo: row.wikipedia_checked_no,
   };

@@ -76,7 +76,9 @@ export default async function LegislatorPage(props: PageProps<"/legislator/[id]"
           <h2 className="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
             Biography
           </h2>
-          {legislator.bioSummary && legislator.wikipediaVerified && <WikipediaVerifiedBadge />}
+          {legislator.bioSummary && legislator.wikipediaVerified && (
+            <WikipediaVerifiedBadge title={legislator.wikipediaTitle} />
+          )}
           {!legislator.bioSummary && legislator.wikipediaCheckedNo && <WikipediaNoPageBadge />}
         </div>
         <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
