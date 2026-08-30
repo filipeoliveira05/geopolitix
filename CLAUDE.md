@@ -192,21 +192,34 @@ Build order: **Phase 1 politics → Phase 2 geography → Phase 3 quiz.** Don't 
   (`WikipediaVerifiedBadge`/`WikipediaNoPageBadge`/`WikipediaSourcedBadge` in
   `src/components/WikipediaVerifiedBadge.tsx`) reflecting whichever is true; the verified badge
   links straight to the confirmed article via `wikipediaUrl()` (`src/lib/wikipedia.ts`) using the
-  `wikipedia_title` column every person table now has. **Legislators get a third, distinct
-  badge** (`WikipediaSourcedBadge`, sky blue, "Sourced from congress-legislators") rather than
-  reusing the candidate no-badge/verified split: `legislators.mjs`'s bio backfill never searches
-  by name at all — it reads `wikipedia_title` straight off the row, populated from
-  `congress-legislators`' own curated bioguide→Wikipedia-title YAML mapping, a meaningfully safer
-  source than a name search (no "top hit" guessing step) but still not a human eyeballing the
-  page. No new column needed for this — fully derivable (`bio_summary` set and not
-  `wikipedia_verified`) since every legislator bio is backfilled this same way; confirmed live at
-  100% coverage (12,712/12,712) as of 2026-08-30. Two reusable scripts support the ongoing
-  candidate audit: `scripts/sync/export-unreviewed-candidates.mjs` (fresh CSV of candidates with
-  no bio and not `wikipedia_checked_no`) and `scripts/sync/ingest-candidate-csv.mjs` (ingests a
-  filled CSV, setting the flags accordingly — fetches by title directly, no search, so no
-  rate-limit risk). Governors/historical governors/legislators have the schema+UI ready but no
-  manual audit has been run against them yet — a much larger undertaking (~12,700 legislators,
-  ~2,300 historical governors) than the candidate pass, not started.
+  `wikipedia_title` column every person table now has. **Legislators and governors get a third,
+  distinct badge** (`WikipediaSourcedBadge`, sky blue) rather than reusing the candidate
+  no-badge/verified split, because their automated match is an ID lookup, not a name search — no
+  "top hit" guessing step, so none of the wrong-person risk a candidate's exact-match search
+  still carries, but still not a human eyeballing the page. Takes a `source` prop for its
+  label/tooltip: `"congress-legislators"` (`legislators.mjs`'s bio backfill reads `wikipedia_title`
+  straight off the row, populated from `congress-legislators`' own curated
+  bioguide→Wikipedia-title YAML mapping) or `"wikidata"` (`governor-history.mjs` reads the
+  Wikipedia article straight from Wikidata's own structured sitelink property for that QID,
+  `fetchSitelinkTitles()`). No new column needed for either — fully derivable (`bio_summary` set
+  and not `wikipedia_verified`) since every legislator/governor bio is backfilled this same
+  ID-based way, never a search; **confirmed live at 100% three-bucket coverage** as of
+  2026-08-30: legislators 12,712/12,712 sourced, current governors 38/38 sourced (the other 12
+  states have no `governors` row at all — the documented OpenStates gap, fully covered via
+  `governor_terms` instead, not a miss here), historical governors 2,425/2,426 sourced (the one
+  remaining row is a genuine Wikidata gap — no sitelink exists for that person at all — not yet
+  flagged `wikipedia_checked_no`). **Candidates are the one table still short of this**, and by
+  more than the export CSV alone suggests: an unverified `bio_summary` here came from a name
+  search (real wrong-person risk, see Steve Cohen above), so it can't be safely folded into the
+  "sourced" tier the way legislators/governors can — it needs the same human confirmation as a
+  from-scratch match. `scripts/sync/export-unreviewed-candidates.mjs` exports both groups needing
+  that confirmation: no bio yet, and has a bio but never confirmed (pre-filled with the current
+  guessed URL so review is a quick confirm-or-correct) — 177 rows combined as of 2026-08-30 (28 +
+  149). `scripts/sync/ingest-candidate-csv.mjs` ingests a filled CSV, setting the flags
+  accordingly (fetches by title directly, no search, so no rate-limit risk). No manual audit has
+  been run against legislators/historical governors themselves (as opposed to their current
+  ID-sourced bios) — not needed, since the ID-based match already closes those tables to 100%
+  three-bucket coverage without one.
 - **`legislators.mjs`'s `terms` sync got the identical insert-then-cleanup reorder**, for the
   identical reason — chunked delete-then-insert (45k+ rows) left `terms` incomplete on a
   chunk failure partway through. Needed a new `terms.last_synced_at` column first (`terms`,

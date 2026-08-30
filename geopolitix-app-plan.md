@@ -130,12 +130,17 @@ General reports, SCOTUS volumes, etc.) has no connection to this app's scope.
   `photo_url` (guessed `unitedstates/images` URL at sync time; ~97.6% actually resolves,
   confirmed live by checking all 532 current senators/reps individually — the rest are almost
   always very recently-seated members not yet in that community-maintained image set) ·
-  `birthday` · `bio_summary` (was permanently null — no source ever wired up. Now backfilled
-  from Wikipedia via a dedicated GitHub Actions schedule, `legislator-bio-backfill.yml`, every 3
-  hours — the ~12,700-person population makes one full pass take multiple days even at the low
-  concurrency Wikipedia's REST API tolerates, so each run is time-boxed and resumes where it
-  left off; still converging as of this writing, not yet 100%. Same job also fixes a broken
-  `photo_url` by falling back to a Wikipedia thumbnail, once that person's bio backfill runs).
+  `birthday` · `bio_summary` (was permanently null — no source ever wired up. Backfilled from
+  Wikipedia; reached 100% coverage (12,712/12,712) as of 2026-08-30, converging via a dedicated
+  GitHub Actions schedule that has since been retired — see §6. Same mechanism also fixes a
+  broken `photo_url` by falling back to a Wikipedia thumbnail, once that person's bio backfill
+  runs) · `wikipedia_title` (the article title itself, read directly from
+  `congress-legislators`' own curated bioguide→Wikipedia mapping — never guessed or searched;
+  persisted so a `BACKFILL_SCOPE=recent` run can still resolve a title for someone only present
+  in the historical YAML) · `wikipedia_verified`/`wikipedia_checked_no` (both booleans, default
+  `false` — reserved for a future manual audit like the one already run against `candidates`
+  (§4's `candidates` entry below); every legislator bio today is ID-sourced, not yet
+  human-verified, see CLAUDE.md's verification-badge note).
 
 ### `terms`
 A legislator's term — full historical record without duplicating `legislators`.
@@ -165,7 +170,10 @@ A legislator's term — full historical record without duplicating `legislators`
   but populated anyway — copied from `governor_terms` by `governor-history.mjs`, see §3) ·
   `state_id` (FK) · `party` (from OpenStates, normalized to `"Democrat"`/`"Republican"` — §3) ·
   `start_date`, `end_date` (not available from OpenStates — stay null forever; not a user-facing
-  gap, since the UI never reads dates from here — see §3). No history — one row per state,
+  gap, since the UI never reads dates from here — see §3) · `wikipedia_title`/
+  `wikipedia_verified`/`wikipedia_checked_no` (same shape/meaning as `legislators`' own columns
+  above — copied from the matching `governor_terms` current-term row alongside `bio_summary`/
+  `photo_url`, not sourced independently). No history — one row per state,
   current officeholder only, and only for the states OpenStates actually covers (§3's 12-state
   gap has no row here at all, `getGovernor()` falls back to `governor_terms` instead); **upserted**
   each sync, not full-replaced — `governor_terms.governor_id`'s FK onto this table's `id` (added
@@ -189,7 +197,12 @@ governors predate OpenStates entirely and have no `legislators.id`-style natural
   Wikidata's own P18/description — added after the initial history sync, once photo/bio
   feasibility for historical governors' own `/governor/[id]` profile pages was confirmed live
   at 97-100% coverage across three sampled states, then built at full scale: 2,287/2,288
-  people, 99.96%).
+  people, 99.96%) · `wikipedia_title` (the enwiki article title, read directly from Wikidata's
+  own structured sitelink property for that person's QID — never guessed or searched) ·
+  `wikipedia_verified`/`wikipedia_checked_no` (both booleans, default `false` — same shape as
+  `legislators`'; every historical governor bio today is ID-sourced via that sitelink, not yet
+  human-verified, except the one person with no Wikipedia sitelink at all, a genuine Wikidata
+  gap not yet flagged `wikipedia_checked_no`).
 
 ### `races_2026`
 Senate + Governor + House (§3) — House added after the MVP once its different Wikipedia page
@@ -197,10 +210,44 @@ structure (one page per state, not per race) was scoped.
 - `id` (PK) · `office` (`house`|`senate`|`governor`) · `state_id` (FK) · `district_id` (FK,
   nullable — unused by anything, same as `terms.district_id`) · `district_number` (plain int,
   nullable — House-only, same convention as `terms.district_number`) · `candidates` — a related
-  table `race_candidates` (`race_id` FK, `name`, `party`, `is_incumbent`), not a JSON array, so
-  a winner can reference a real row · `status` (`open`|`called`) · `winner_candidate_id`
+  table `race_candidates` (`race_id` FK, `name`, `party`, `is_incumbent`, plus `candidate_id`/
+  `matched_legislator_id`/`matched_governor_id` — see below), not a JSON array, so a winner can
+  reference a real row · `status` (`open`|`called`) · `winner_candidate_id`
   (FK → `race_candidates`, nullable) · `last_synced_at` (also the cutover marker
   `races-2026.mjs` cleans up against — see `terms.last_synced_at`'s note above for why)
+
+`race_candidates` is fully deleted and re-inserted every sync (no natural key to upsert
+against), so it can only ever describe *this cycle's* candidate — `candidate_id`/
+`matched_legislator_id`/`matched_governor_id` (added 2026-08-29, one always null) point at
+whichever of `candidates`/`legislators`/`governors` actually owns this person's stable profile
+page, recomputed fresh every sync directly on the disposable row (`matchOfficeholder()` in
+`races-2026.mjs` — exact full-name match only against current officeholders, no fuzzy
+fallback, after two looser heuristics each produced a real wrong-person match in production;
+full failure history in CLAUDE.md's candidate-profiles note).
+
+### `candidates`
+A 2026 race candidate with no existing `legislators`/`governors` profile (a challenger, not a
+current officeholder) — added 2026-08-29, split from `race_candidates` for the identical reason
+`legislators`/`terms` and `governors`/`governor_terms` already split person from per-cycle
+record: `race_candidates` has no stable id to hang a URL or bio off, since it's fully rebuilt
+every sync.
+- `id` (PK, text — slug `${state_id}-${normalized-name}`, e.g. `"ca-john-smith"`, not a uuid, so
+  it survives the weekly delete-and-reinsert of `race_candidates`) · `name` · `state_id` (FK) ·
+  `bio_summary`, `photo_url` (both nullable, best-effort from a Wikipedia name search — no
+  reliable ID like `bioguide_id`/a Wikidata QID exists for a scraped candidate name, so
+  `/candidate/[id]` always shows a disclaimer unless `wikipedia_verified`) · `wikipedia_title`
+  (the matched article title, used to reconstruct a link) · `wikipedia_verified`/
+  `wikipedia_checked_no` (both booleans, default `false` — the ground truth from a full manual
+  audit: a human either confirmed the exact bio against the real page, or confirmed no
+  Wikipedia article exists for this person at all; only a human sets either flag, never the
+  automated search backfill) · `last_synced_at`.
+
+This table has **no delete/cleanup step** — unlike `race_candidates`/`races_2026`, a correction
+to the scraper (e.g. a name-extraction fix) produces a new, differently-keyed row rather than
+updating an old one in place, which can leave a handful of orphaned rows behind (harmless,
+unreferenced, and the `/candidate/[id]` page 404s gracefully if one is ever visited directly —
+seen live a few times, cleaned up by hand each time, not worth automating for the volume
+involved).
 
 ### `cities`
 - `id` (PK) · `name` · `state_id` (FK) · `population` · `is_capital` (bool) · `latitude`, `longitude`
@@ -209,8 +256,12 @@ structure (one page per state, not per race) was scoped.
 - `id` (PK) · `name` · `league` (enum) · `city_id` (FK)
 
 ### `sync_logs`
-- `id` (PK) · `source` · `triggered_by` (`cron`|`manual`) · `started_at`, `finished_at` ·
-  `status` (`success`|`error`) · `error_message` (nullable)
+- `id` (PK) · `source` (free-text, varies by scope/mode within the same script — not stable
+  enough to query on) · `job` (added 2026-08-29 — a stable slug per script/purpose, e.g.
+  `"legislators"`/`"legislators_bio_backfill"`/`"races"`/`"races_candidate_backfill"`, what the
+  app's own freshness indicators actually key off, see §6/CLAUDE.md) · `triggered_by`
+  (`cron`|`manual`) · `started_at`, `finished_at` · `status` (`success`|`error`) ·
+  `error_message` (nullable)
 
 ---
 
@@ -270,7 +321,7 @@ CLAUDE.md's data-conventions section):
 | Sync legislators (current + recent) | unitedstates/congress-legislators | Weekly (`sync.yml`, Monday 06:00 UTC), `LEGISLATORS_SCOPE=current` — only `legislators-current.yaml`, skips the ~9MB historical file entirely | `legislators`, `terms` (current officeholders only) |
 | Sync legislators (full historical) | unitedstates/congress-legislators | **Manual only** (`npm run sync:legislators-historical`) — congress-legislators is crowdsourced and does get rare corrections to old records, so this stays available on demand, just off the weekly cadence | `legislators`, `terms` (full ~1789-present history) |
 | Sync legislator bio/photo backfill (recent) | Wikipedia REST API | Weekly, folded into `sync.yml`'s current-scope legislators step (`BACKFILL_SCOPE=recent`) — current officeholders + anyone who left within ~4 years | `legislators.bio_summary`/`photo_url` (recent pool only) |
-| Sync legislator bio/photo backfill (full population) | Wikipedia REST API | **Hourly** — its own separate workflow (`legislator-bio-backfill.yml`), unscoped, catching up the full ~12,700-person historical backlog; **meant to be retired once that backlog converges close to 100%**, at which point the weekly recent-scoped pass above is sufficient for ongoing maintenance | `legislators.bio_summary`/`photo_url` (full population) |
+| Sync legislator bio/photo backfill (full population) | Wikipedia REST API | **Retired 2026-08-30** — its own separate workflow (`legislator-bio-backfill.yml`) ran hourly, unscoped, until the full ~12,700-person historical backlog converged to 100%; schedule now paused (`workflow_dispatch` kept as a manual fallback), the weekly recent-scoped pass above is sufficient for ongoing maintenance | `legislators.bio_summary`/`photo_url` (full population) |
 | Sync governors | OpenStates API | Weekly (`sync.yml`) | `governors` |
 | Sync governor history (current term) | Wikidata | Weekly (`sync.yml`, rides along with governors in the same run), `GOVERNOR_HISTORY_SCOPE=current` — only that state's current term row + its bio backfill (`BACKFILL_SCOPE=recent`) get written | `governor_terms` (current term per state) |
 | Sync governor history (full statehood-to-now) | Wikidata | **Manual only** (`npm run sync:governor-history` with `GOVERNOR_HISTORY_SCOPE` unset) — same crowdsourced-correction rationale as legislators | `governor_terms` (full history) |
