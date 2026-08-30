@@ -6,7 +6,7 @@ import { getStateName } from "@/lib/states";
 import { getCandidateById } from "@/lib/candidates-data";
 import { PartyBadge } from "@/components/PartyBadge";
 import { GlobalFooter } from "@/components/GlobalFooter";
-import { WikipediaVerifiedBadge } from "@/components/WikipediaVerifiedBadge";
+import { WikipediaVerifiedBadge, WikipediaNoPageBadge } from "@/components/WikipediaVerifiedBadge";
 
 const OFFICE_LABELS = {
   senate: "U.S. Senate",
@@ -68,6 +68,7 @@ export default async function CandidatePage(props: PageProps<"/candidate/[id]">)
             Biography
           </h2>
           {candidate.bioSummary && candidate.wikipediaVerified && <WikipediaVerifiedBadge />}
+          {!candidate.bioSummary && candidate.wikipediaCheckedNo && <WikipediaNoPageBadge />}
         </div>
         {candidate.bioSummary ? (
           <>

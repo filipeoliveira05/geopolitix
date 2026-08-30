@@ -10,7 +10,7 @@ import {
 } from "@/lib/legislators-data";
 import { PartyBadge } from "@/components/PartyBadge";
 import { GlobalFooter } from "@/components/GlobalFooter";
-import { WikipediaVerifiedBadge } from "@/components/WikipediaVerifiedBadge";
+import { WikipediaVerifiedBadge, WikipediaNoPageBadge } from "@/components/WikipediaVerifiedBadge";
 
 const CHAMBER_LABELS = { senate: "U.S. Senate", house: "U.S. House" } as const;
 
@@ -77,6 +77,7 @@ export default async function LegislatorPage(props: PageProps<"/legislator/[id]"
             Biography
           </h2>
           {legislator.bioSummary && legislator.wikipediaVerified && <WikipediaVerifiedBadge />}
+          {!legislator.bioSummary && legislator.wikipediaCheckedNo && <WikipediaNoPageBadge />}
         </div>
         <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
           {legislator.bioSummary ?? "Not synced yet."}

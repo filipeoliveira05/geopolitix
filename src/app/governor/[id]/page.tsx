@@ -12,12 +12,15 @@ import {
 } from "@/lib/governors-data";
 import { PartyBadge } from "@/components/PartyBadge";
 import { GlobalFooter } from "@/components/GlobalFooter";
+import { WikipediaVerifiedBadge, WikipediaNoPageBadge } from "@/components/WikipediaVerifiedBadge";
 
 type Profile = {
   name: string;
   party: string | null;
   photoUrl: string | null;
   bioSummary: string | null;
+  wikipediaVerified: boolean;
+  wikipediaCheckedNo: boolean;
   stateId: string;
   terms: GovernorTerm[];
 };
@@ -39,6 +42,8 @@ async function loadProfile(id: string): Promise<Profile | null> {
       party: governor.party,
       photoUrl: governor.photoUrl,
       bioSummary: governor.bioSummary,
+      wikipediaVerified: governor.wikipediaVerified,
+      wikipediaCheckedNo: governor.wikipediaCheckedNo,
       stateId: governor.stateId,
       terms,
     };
@@ -54,6 +59,8 @@ async function loadProfile(id: string): Promise<Profile | null> {
     party: mostRecent.party,
     photoUrl: mostRecent.photoUrl,
     bioSummary: mostRecent.bioSummary,
+    wikipediaVerified: mostRecent.wikipediaVerified,
+    wikipediaCheckedNo: mostRecent.wikipediaCheckedNo,
     stateId: mostRecent.stateId,
     terms,
   };
@@ -106,9 +113,13 @@ export default async function GovernorPage(props: PageProps<"/governor/[id]">) {
       </div>
 
       <div className="mt-6">
-        <h2 className="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
-          Biography
-        </h2>
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+            Biography
+          </h2>
+          {profile.bioSummary && profile.wikipediaVerified && <WikipediaVerifiedBadge />}
+          {!profile.bioSummary && profile.wikipediaCheckedNo && <WikipediaNoPageBadge />}
+        </div>
         <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
           {profile.bioSummary ?? "Not synced yet."}
         </p>
