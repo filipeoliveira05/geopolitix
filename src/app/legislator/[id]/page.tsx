@@ -10,7 +10,11 @@ import {
 } from "@/lib/legislators-data";
 import { PartyBadge } from "@/components/PartyBadge";
 import { GlobalFooter } from "@/components/GlobalFooter";
-import { WikipediaVerifiedBadge, WikipediaNoPageBadge } from "@/components/WikipediaVerifiedBadge";
+import {
+  WikipediaVerifiedBadge,
+  WikipediaSourcedBadge,
+  WikipediaNoPageBadge,
+} from "@/components/WikipediaVerifiedBadge";
 
 const CHAMBER_LABELS = { senate: "U.S. Senate", house: "U.S. House" } as const;
 
@@ -76,9 +80,12 @@ export default async function LegislatorPage(props: PageProps<"/legislator/[id]"
           <h2 className="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
             Biography
           </h2>
-          {legislator.bioSummary && legislator.wikipediaVerified && (
-            <WikipediaVerifiedBadge title={legislator.wikipediaTitle} />
-          )}
+          {legislator.bioSummary &&
+            (legislator.wikipediaVerified ? (
+              <WikipediaVerifiedBadge title={legislator.wikipediaTitle} />
+            ) : (
+              <WikipediaSourcedBadge title={legislator.wikipediaTitle} />
+            ))}
           {!legislator.bioSummary && legislator.wikipediaCheckedNo && <WikipediaNoPageBadge />}
         </div>
         <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
