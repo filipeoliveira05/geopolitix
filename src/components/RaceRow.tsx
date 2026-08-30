@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { isPrimaryPending, type Race, type RaceCandidate } from "@/lib/races-data";
+import { primaryPendingMessage, type Race, type RaceCandidate } from "@/lib/races-data";
 import { PartyBadge } from "@/components/PartyBadge";
 
 /**
@@ -23,6 +23,7 @@ function candidateHref(candidate: RaceCandidate): string | null {
  * on demand) — same row shape either way, just a different label.
  */
 export function RaceRow({ race, label }: { race: Race; label: React.ReactNode }) {
+  const pendingMessage = primaryPendingMessage(race);
   return (
     <tr className="border-b border-zinc-100 last:border-0 dark:border-zinc-800">
       <td className="w-px py-2 pr-1.5 align-middle">
@@ -35,8 +36,8 @@ export function RaceRow({ race, label }: { race: Race; label: React.ReactNode })
       </td>
       <td className="py-2 pr-3 align-middle whitespace-nowrap">{label}</td>
       <td className="w-full py-2 pr-3 align-middle">
-        {isPrimaryPending(race) ? (
-          <span className="text-zinc-500 dark:text-zinc-400">Primary not yet held.</span>
+        {pendingMessage ? (
+          <span className="text-zinc-500 dark:text-zinc-400">{pendingMessage}</span>
         ) : (
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
             {race.candidates.map((candidate) => {

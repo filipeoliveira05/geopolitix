@@ -1,4 +1,5 @@
 import { supabase } from "./supabase";
+import { knownPendingPrimaryLabel } from "./pending-primary-states";
 
 // Reads the Supabase `races_2026`/`race_candidates` tables (plan §4), synced
 // via `npm run sync:races` (see scripts/sync/races-2026.mjs) — Senate,
@@ -85,6 +86,23 @@ export function isPrimaryPending(race: Race): boolean {
       (c) => c.name.trim().toUpperCase() === "TBD" || /\(presumptive\)/i.test(c.name),
     )
   );
+}
+
+/**
+ * Like isPrimaryPending(), but also cross-checks the 4 states with a known
+ * still-pending 2026 primary (see pending-primary-states.ts) — catches a
+ * case isPrimaryPending() can't: Wikipedia listing a confident-looking name
+ * for an unresolved primary with no "TBD"/"(presumptive)" hedge at all
+ * (confirmed live: MA's Jim McGovern/Ayanna Pressley House races). Returns
+ * a message to show in place of candidates, or null when there's nothing to
+ * flag — the known-date check takes priority so its dated message wins over
+ * the generic one when both would otherwise apply.
+ */
+export function primaryPendingMessage(race: Race): string | null {
+  const knownDate = knownPendingPrimaryLabel(race.stateId);
+  if (knownDate) return `Primary not yet held (${knownDate}).`;
+  if (isPrimaryPending(race)) return "Primary not yet held.";
+  return null;
 }
 
 export async function getRacesForState(stateAbbr: string): Promise<Race[]> {
