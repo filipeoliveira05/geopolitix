@@ -130,9 +130,17 @@ async function findGovernorPositionQid(stateName) {
 }
 
 async function fetchTerms(positionQid) {
+  // wdt:P31 wd:Q5 (instance of: human) — without it, Wikidata happily
+  // returns any entity tagged with this P39 position, fictional or not.
+  // Caught live: West Virginia's real governor history included "Ray
+  // Sullivan," a fictional West Wing character whose Wikidata entry lists
+  // an in-show "Governor of West Virginia (2002-2006)" position — no
+  // Wikipedia sitelink either, since the character was never a real person
+  // to backfill a bio for.
   const query = `SELECT ?person ?personLabel ?start ?end WHERE {
   ?person p:P39 ?statement .
   ?statement ps:P39 wd:${positionQid} .
+  ?person wdt:P31 wd:Q5 .
   OPTIONAL { ?statement pq:P580 ?start . }
   OPTIONAL { ?statement pq:P582 ?end . }
   SERVICE wikibase:label { bd:serviceParam wikibase:language "en". }

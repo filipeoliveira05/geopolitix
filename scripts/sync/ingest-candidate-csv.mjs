@@ -1,11 +1,18 @@
 // Ingests a manually-reviewed candidates CSV (id,name,state,office,district,wikipedia_url)
 // — the format exported for the user's manual Wikipedia-matching audit (see
-// CLAUDE.md's candidate-profiles bullet). Each row's wikipedia_url is either
-// a real Wikipedia URL (fetched directly by title, no search — a human
-// already confirmed it's the right person) or the literal string "no"
-// (confirmed no Wikipedia article exists).
+// CLAUDE.md's candidate-profiles bullet). Each row's wikipedia_url is one of:
+// - a real Wikipedia URL (fetched directly by title, no search — a human
+//   already confirmed it's the right person)
+// - the literal string "no" (confirmed no Wikipedia article exists)
+// - anything else non-empty (e.g. "primaries not yet held") — a human
+//   flagging this candidate as not reviewable right now, left untouched.
+//   For a state whose primary genuinely hasn't happened yet, this pairs
+//   with the same exclusion export-unreviewed-candidates.mjs applies (see
+//   PENDING_PRIMARIES there) — the candidate naturally stops being
+//   re-exported until that state's primary passes, so it won't nag for
+//   review again before it's actually reviewable.
 //
-// Every row this touches is a human decision, so:
+// Every row this touches (other than a skip) is a human decision, so:
 // - a real URL sets wikipedia_verified = true (never set by the automated
 //   search backfill in races-2026.mjs)
 // - "no" sets wikipedia_checked_no = true, so backfillCandidateBios stops
@@ -19,6 +26,7 @@ config({ path: new URL("../../.env.local", import.meta.url) });
 import { createClient } from "@supabase/supabase-js";
 import ws from "ws";
 import { readFileSync } from "node:fs";
+import { fetchWikipediaSummary, withHardTimeout, mapWithConcurrency } from "./_wikipedia.mjs";
 
 const csvPath = process.argv[2];
 if (!csvPath) {
@@ -59,17 +67,6 @@ function parseCsv(path) {
   });
 }
 
-async function fetchWikipediaTitleSummary(title) {
-  const url = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title.replace(/ /g, "_"))}`;
-  const res = await fetch(url, { signal: AbortSignal.timeout(30_000) });
-  if (!res.ok) throw new Error(`Wikipedia summary fetch failed (${res.status}) for "${title}"`);
-  const data = await res.json();
-  return {
-    bioSummary: data.extract ?? null,
-    photoUrl: data.thumbnail?.source ?? null,
-  };
-}
-
 function titleFromUrl(url) {
   const match = url.match(/\/wiki\/([^?#]+)/);
   if (!match) throw new Error(`Could not parse a Wikipedia title from URL: ${url}`);
@@ -78,12 +75,21 @@ function titleFromUrl(url) {
 
 const rows = parseCsv(csvPath);
 const noRows = rows.filter((r) => r.wikipedia_url.toLowerCase() === "no");
-const urlRows = rows.filter((r) => r.wikipedia_url && r.wikipedia_url.toLowerCase() !== "no");
-const skippedRows = rows.filter((r) => !r.wikipedia_url);
+const urlRows = rows.filter((r) => /\/wiki\//.test(r.wikipedia_url));
+const blankRows = rows.filter((r) => !r.wikipedia_url);
+const unresolvedRows = rows.filter(
+  (r) => r.wikipedia_url && r.wikipedia_url.toLowerCase() !== "no" && !/\/wiki\//.test(r.wikipedia_url),
+);
 
 console.log(
-  `${rows.length} rows: ${urlRows.length} confirmed URL, ${noRows.length} confirmed no-page, ${skippedRows.length} left blank (skipped).`,
+  `${rows.length} rows: ${urlRows.length} confirmed URL, ${noRows.length} confirmed no-page, ` +
+    `${unresolvedRows.length} not reviewable yet (left as-is), ${blankRows.length} left blank (skipped).`,
 );
+if (unresolvedRows.length > 0) {
+  console.log(
+    `  not reviewable yet: ${unresolvedRows.map((r) => `${r.name} (${r.wikipedia_url})`).join(", ")}`,
+  );
+}
 
 if (noRows.length > 0) {
   const { error } = await supabase
@@ -99,10 +105,19 @@ if (noRows.length > 0) {
 
 let ingested = 0;
 let failed = 0;
-for (const row of urlRows) {
+// Concurrency 2 + fetchWikipediaSummary's own retry/backoff — same
+// mechanism every other Wikipedia-calling sync script uses (see
+// _wikipedia.mjs). A naive unthrottled sequential loop here hit sustained
+// 429s partway through a real 160-URL run (66 succeeded, 94 failed) —
+// this fixes that instead of just re-running to pick up stragglers.
+await mapWithConcurrency(urlRows, 2, async (row) => {
   try {
     const title = titleFromUrl(row.wikipedia_url);
-    const { bioSummary, photoUrl } = await fetchWikipediaTitleSummary(title);
+    const { bioSummary, photoUrl } = await withHardTimeout(
+      (signal) => fetchWikipediaSummary(title, signal),
+      90_000,
+      `candidate summary (${row.id})`,
+    );
     const { error } = await supabase
       .from("candidates")
       .update({
@@ -119,6 +134,6 @@ for (const row of urlRows) {
     failed++;
     console.error(`  failed for ${row.id} (${row.name}): ${err.message}`);
   }
-}
+});
 
 console.log(`Ingested ${ingested}/${urlRows.length} confirmed bios${failed > 0 ? `, ${failed} failed` : ""}.`);

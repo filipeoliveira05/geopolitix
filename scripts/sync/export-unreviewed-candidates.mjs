@@ -12,6 +12,14 @@
 //     search — leave it as-is to confirm, replace it if it's wrong, or set
 //     "no" if the guess is wrong and no real page exists.
 //
+// Excludes any candidate from a state whose 2026 primary hasn't happened
+// yet (see PENDING_PRIMARY_CUTOFFS below) — reviewing a bio before the
+// field is settled is premature, and this state cross-check catches
+// exactly the case CLAUDE.md's isPrimaryPending()/primaryPendingMessage()
+// note describes: a plausible-looking name Wikipedia hasn't hedged with
+// "TBD"/"(presumptive)". These candidates simply reappear in a future
+// export once their state's primary passes.
+//
 // Same CSV shape ingest-candidate-csv.mjs expects
 // (id,name,state,office,district,wikipedia_url) plus an extra `status`
 // column (informational only, ignored by ingestion) so it's obvious at a
@@ -42,6 +50,25 @@ function wikipediaUrl(title) {
   return `https://en.wikipedia.org/wiki/${encodeURIComponent(title.replace(/ /g, "_"))}`;
 }
 
+// Duplicated from src/lib/pending-primary-states.ts — that file is TS,
+// consumed by the Next app; this script runs as plain Node with no
+// bundler, so it can't import it directly. Small and explicitly temporary
+// (see that file's own comment) — keep both in sync if the dates change,
+// or delete both once all 4 states have voted. Reviewing a candidate's
+// bio before their state's primary is premature: the field can still
+// change, so excluding them here keeps them from nagging for review
+// every export until it's actually settled.
+const PENDING_PRIMARY_CUTOFFS = {
+  MA: "2026-09-02",
+  NH: "2026-09-09",
+  RI: "2026-09-10",
+  DE: "2026-09-16",
+};
+function hasPendingPrimary(stateId) {
+  const cutoff = PENDING_PRIMARY_CUTOFFS[stateId];
+  return cutoff ? new Date() < new Date(cutoff) : false;
+}
+
 const { data: noBio, error: noBioError } = await supabase
   .from("candidates")
   .select("id, name, state_id")
@@ -63,7 +90,9 @@ const rows = [
     status: "unverified auto-match",
     prefillUrl: c.wikipedia_title ? wikipediaUrl(c.wikipedia_title) : "",
   })),
-].sort((a, b) => a.state_id.localeCompare(b.state_id) || a.name.localeCompare(b.name));
+]
+  .filter((c) => !hasPendingPrimary(c.state_id))
+  .sort((a, b) => a.state_id.localeCompare(b.state_id) || a.name.localeCompare(b.name));
 
 // race_candidates carries office/district for display context in the CSV
 // — best-effort lookup, not required for ingestion.
