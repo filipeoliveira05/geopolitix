@@ -124,7 +124,7 @@ Build order: **Phase 1 politics → Phase 2 geography → Phase 3 quiz.** Don't 
   sync with no stable id to hang a URL or bio off — same problem `legislators`/`terms` already
   solved by splitting person from per-cycle record. `id` is a slug
   (`${state_id}-${normalized-name}`), not a uuid.
-  **Bio matching took three iterations to land on exact-match-only, each a real failure, not
+  **Bio matching took four iterations to land on exact-match-only, each a real failure, not
   theoretical:** a name+state+office search often ranks the race's own election-overview page
   above the person's biography (fixed by excluding titles matching `/elections?\b/`); even so,
   full-text search still surfaces a totally unrelated article often enough to matter (a real
@@ -134,13 +134,20 @@ Build order: **Phase 1 politics → Phase 2 geography → Phase 3 quiz.** Don't 
   an exact name match (case/punctuation/a trailing disambiguator aside) — legitimate nickname
   variants ("Dave"/"David") no longer auto-resolve, a real cost, in exchange for eliminating
   wrong-person mismatches outright; unresolved candidates need manual lookup, not another
-  automated guess. Every accepted bio is still an unconditional best-effort guess — no reliable
-  ID like `bioguide_id`/a Wikidata QID exists for a scraped candidate name — so `/candidate/[id]`
-  always shows a fixed disclaimer whenever a bio is present. Separately, `extractCandidates()`
-  strips a trailing `(replacing X)` annotation from a scraped name — Wikipedia conventionally
-  marks a replacement nominee this way in the infobox (e.g. "Troy Jackson (replacing Graham
-  Platner)"), which `cleanWikiText()` reduces to plain text but doesn't know isn't part of the
-  name; left in, it broke matching by making the replaced person's name look like a surname.
+  automated guess. `matchOfficeholder()` (the separate function linking a candidate straight to
+  an existing `/legislator`/`/governor` page, see above) had its own surname-fallback copy of the
+  same bug, missed in that pass and caught later via 7 user-reported wrong links (all confirmed
+  same-surname-different-person) — fixed the same way, exact match only, no surname fallback.
+  A `RACES_SCOPE=pending` run can't propagate a matching fix to already-decided races (see
+  below), so any future matching change needs a manual full-scope resync to actually apply.
+  Every accepted bio is still an unconditional best-effort guess — no reliable ID like
+  `bioguide_id`/a Wikidata QID exists for a scraped candidate name — so `/candidate/[id]` shows a
+  disclaimer whenever a bio is present and not `wikipedia_verified` (see below). Separately,
+  `extractCandidates()` strips ANY trailing parenthetical annotation from a scraped name — caught
+  from two real cases, a replacement nominee ("Troy Jackson (replacing Graham Platner)") and an
+  uncontested-race marker ("Maxwell Frost (Uncontested)"), both Wikipedia infobox conventions
+  that `cleanWikiText()` reduces to plain text but doesn't know isn't part of the name; left in,
+  either broke matching by making the annotation look like part of the name.
   **PostgREST gotcha, hit twice, in both directions:** any embed between `race_candidates` and
   `races_2026` needs explicit FK disambiguation
   (`race_candidates!race_candidates_race_id_fkey(...)` /
@@ -167,6 +174,39 @@ Build order: **Phase 1 politics → Phase 2 geography → Phase 3 quiz.** Don't 
   with its own `job: "races_candidate_backfill"` slug (not `"races"`) so it stays out of
   `src/lib/sync-freshness.ts`'s core-jobs freshness figure, same reasoning
   `legislators_bio_backfill` is already excluded for.
+- **Manual Wikipedia-bio verification (`wikipedia_verified`/`wikipedia_checked_no`/
+  `wikipedia_title`, added 2026-08-30)** — even exact-match search can't rule out two different
+  real people sharing one exact name (a real case: CA House candidate "Steve Cohen" auto-matched
+  to the actual TN Congressman Steve Cohen's Wikipedia page). A full manual audit of all 467
+  then-unresolved candidates (user-reviewed CSV, `id,name,state,office,district,wikipedia_url`,
+  `wikipedia_url` either a real URL or the literal `"no"`) is the ground truth for which bios are
+  actually confirmed correct. All four person tables (`candidates`, `legislators`, `governors`,
+  `governor_terms`) carry the same two booleans (default `false`): `wikipedia_verified` (a human
+  confirmed this exact bio) and `wikipedia_checked_no` (a human confirmed no Wikipedia article
+  exists — distinct from "nobody's checked yet", so `backfillCandidateBios()`'s query excludes
+  `wikipedia_checked_no` rows and stops burning search budget re-attempting a search destined to
+  fail every single run). Only a human sets either flag — never the automated search/ID-lookup
+  backfills. `governors`' current-officeholder values are copied from the matching
+  `governor_terms` row by `copyCurrentBiosToGovernors()`, same as `bio_summary`/`photo_url`
+  already were. `/candidate/[id]`, `/legislator/[id]`, `/governor/[id]` show a small badge
+  (`WikipediaVerifiedBadge`/`WikipediaNoPageBadge`/`WikipediaSourcedBadge` in
+  `src/components/WikipediaVerifiedBadge.tsx`) reflecting whichever is true; the verified badge
+  links straight to the confirmed article via `wikipediaUrl()` (`src/lib/wikipedia.ts`) using the
+  `wikipedia_title` column every person table now has. **Legislators get a third, distinct
+  badge** (`WikipediaSourcedBadge`, sky blue, "Sourced from congress-legislators") rather than
+  reusing the candidate no-badge/verified split: `legislators.mjs`'s bio backfill never searches
+  by name at all — it reads `wikipedia_title` straight off the row, populated from
+  `congress-legislators`' own curated bioguide→Wikipedia-title YAML mapping, a meaningfully safer
+  source than a name search (no "top hit" guessing step) but still not a human eyeballing the
+  page. No new column needed for this — fully derivable (`bio_summary` set and not
+  `wikipedia_verified`) since every legislator bio is backfilled this same way; confirmed live at
+  100% coverage (12,712/12,712) as of 2026-08-30. Two reusable scripts support the ongoing
+  candidate audit: `scripts/sync/export-unreviewed-candidates.mjs` (fresh CSV of candidates with
+  no bio and not `wikipedia_checked_no`) and `scripts/sync/ingest-candidate-csv.mjs` (ingests a
+  filled CSV, setting the flags accordingly — fetches by title directly, no search, so no
+  rate-limit risk). Governors/historical governors/legislators have the schema+UI ready but no
+  manual audit has been run against them yet — a much larger undertaking (~12,700 legislators,
+  ~2,300 historical governors) than the candidate pass, not started.
 - **`legislators.mjs`'s `terms` sync got the identical insert-then-cleanup reorder**, for the
   identical reason — chunked delete-then-insert (45k+ rows) left `terms` incomplete on a
   chunk failure partway through. Needed a new `terms.last_synced_at` column first (`terms`,
@@ -326,18 +366,17 @@ one-time claim; re-check the actual counts before trusting old numbers here:**
 |---|---|---|---|---|
 | **Governor, current** | ✅ | ✅ 50/50 (100%) | ✅ 50/50 (100%) | ✅ full non-consecutive history |
 | **Governor, past** | ✅ | ✅ 2,229/2,288 (97.4%) | ✅ 2,287/2,288 (99.96%) | ✅ full history |
-| **Senator/Rep, current + past (shared pool)** | ✅ (100%, `photo_url` always set to at least a guessed URL) | ⚠️ same guessed-URL/Wikipedia-fallback mechanism as before, not separately measured per current/past | 🟢 3,552/12,712 (27.9%) as of 2026-08-29 | ✅ full, all chambers |
+| **Senator/Rep, current + past (shared pool)** | ✅ (100%, `photo_url` always set to at least a guessed URL) | ⚠️ same guessed-URL/Wikipedia-fallback mechanism as before, not separately measured per current/past | ✅ 12,712/12,712 (100%) as of 2026-08-30 | ✅ full, all chambers |
 
 Governors went from "current bio is a permanent, never-wired-up gap" to fully solved (see the
 `governors.mjs`/`governor-history.mjs` gotchas above) — nothing left to do there. Legislator bio
-backfill (current + past, Senate + House all share one pool/one job) is **3,552/12,712 (27.9%)**
-as of 2026-08-29 (up from 6.1% at last check), running unattended via
-`legislator-bio-backfill.yml` (see the GitHub Actions note below) — still the primary driver of
-this number, now supplemented by the weekly `BACKFILL_SCOPE=recent` pass in `sync.yml`. No ETA
-for full convergence: throughput is bottlenecked by Wikipedia's own rate limiting, not by
-anything actionable on our end (see the sync-scoping note above for the actual per-run math —
-roughly 2 concurrent requests, several seconds of backoff per rate-limited person). One known
-permanent gap, not a bug: a legislator whose `congress-legislators` entry has no `wikipedia`
+backfill (current + past, Senate + House all share one pool/one job) reached **100% coverage
+(12,712/12,712) as of 2026-08-30** (up from 27.9% on 2026-08-29 — converged fast via repeated
+manual `legislator-bio-backfill.yml` triggers), so per this doc's own retirement note below, that
+dedicated workflow's schedule is now paused (`workflow_dispatch` kept as a manual fallback, same
+pattern as `races-sync.yml`'s pause) — the weekly `BACKFILL_SCOPE=recent` pass in `sync.yml` is
+sufficient for ongoing maintenance from here. One known permanent gap, not a bug: a legislator
+whose `congress-legislators` entry has no `wikipedia`
 field at all (confirmed live for bioguide `G000607`, James Gallagher — a real Wikipedia article
 exists, `congress-legislators` just never linked it) can't be resolved by the backfill and stays
 `bio_summary IS NULL` forever unless fixed by hand or upstream — same class of gap as OpenStates'
@@ -366,12 +405,13 @@ step fails, caught from a real run where this masked an OpenStates rate-limit fa
 `legislators.mjs`/`governor-history.mjs`'s current/recent scoping and `legislators.wikipedia_title`
 are documented in the Data conventions section above, not repeated here.
 
-**`legislators.bio_summary`/`photo_url` also gets a separate hourly full-population backfill**
+**`legislators.bio_summary`/`photo_url` had a separate hourly full-population backfill**
 (`.github/workflows/legislator-bio-backfill.yml`, `LEGISLATORS_BACKFILL_ONLY=true` +
-`BACKFILL_BUDGET_MS`), draining the ~12,700-person historical backlog the weekly
-`BACKFILL_SCOPE=recent` pass doesn't cover. **Retire this workflow once that backlog converges
-close to 100%** — the weekly recent-scoped pass is sufficient for ongoing maintenance after
-that. GitHub's `schedule:` trigger has proven unreliable for this workflow specifically (didn't
+`BACKFILL_BUDGET_MS`), which drained the ~12,700-person historical backlog the weekly
+`BACKFILL_SCOPE=recent` pass doesn't cover — **retired (schedule paused) 2026-08-30** now that
+the backlog hit 100% (see the coverage table above); `workflow_dispatch` stays available as a
+manual fallback if a future data refresh ever reopens gaps. GitHub's `schedule:` trigger had
+proven unreliable for this workflow specifically while it was active (didn't
 fire at all for its first several hours live — genuine platform-side flakiness, not a config
 bug) — treat manual triggers as the primary mechanism, not a fallback. Triggering back-to-back
 is safe: a `concurrency` group queues rather than overlaps runs, and each GitHub Actions run

@@ -22,20 +22,13 @@ name: Legislator bio/photo backfill
 # scales cadence and budget, NOT concurrency, which is the one lever
 # already proven to make things worse, not better, if pushed further.
 on:
-  # 17 minutes past the hour, not exactly on it — GitHub's own guidance is
-  # that scheduled workflows can be delayed under high platform load, and
-  # the top of every hour is the single most congested moment since huge
-  # numbers of repos worldwide use round-number schedules. This workflow's
-  # schedule trigger never fired even once in its first several hours live
-  # (confirmed via `gh run list` — zero runs with event "schedule", only
-  # manual `workflow_dispatch` ones) — not a config bug (everything else
-  # checked out: workflow registered "active", repo not a fork/in an org,
-  # Actions enabled, YAML valid), genuinely GitHub-side and outside our
-  # control to fully fix; this offset plus re-saving the file (which
-  # sometimes re-registers a stuck schedule) are the two real mitigations
-  # worth trying, not a guaranteed fix.
-  schedule:
-    - cron: "17 * * * *" # every hour, offset from the top of the hour
+  # Schedule retired 2026-08-30 — the ~12,700-person backlog this workflow
+  # existed to drain hit 100% coverage (see CLAUDE.md's coverage table), so
+  # the weekly BACKFILL_SCOPE=recent pass in sync.yml is now sufficient for
+  # ongoing maintenance. workflow_dispatch stays available as a manual
+  # fallback if a future data refresh ever reopens gaps — re-add the
+  # `schedule:` block below (was `cron: "17 * * * *"`, offset from the top
+  # of the hour) if that happens.
   workflow_dispatch: {} # allow an on-demand run from the Actions tab
 
 # Hourly with a ~25min budget leaves less slack than the old 3-hourly/20min
