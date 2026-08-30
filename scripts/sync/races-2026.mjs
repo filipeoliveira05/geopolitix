@@ -349,17 +349,25 @@ function normalizeParty(rawParty) {
   return cleaned;
 }
 
-// A replacement nominee's infobox entry is conventionally annotated
-// parenthetically — confirmed live in the raw wikitext: `[[Troy Jackson]]
-// <!--comment-->(replacing [[Graham Platner]])<!--comment-->` — which
-// cleanWikiText correctly reduces to plain text but has no reason to know
-// is anything other than part of the name. Left unstripped, this doesn't
-// just look wrong when displayed — it broke Wikipedia-search name matching
-// downstream too (backfillCandidateBios saw "Graham Platner" as this
-// candidate's own surname and confidently attached Platner's bio/photo to
-// Troy Jackson's page, caught live before this fix).
-function stripReplacementAnnotation(name) {
-  return name.replace(/\s*\(replacing\s+[^)]*\)\s*$/i, "").trim();
+// Wikipedia's infobox convention marks a nominee with a parenthetical
+// annotation in more than one situation — confirmed live in raw wikitext
+// for two different cases: a replacement nominee (`[[Troy Jackson]]
+// <!--comment-->(replacing [[Graham Platner]])<!--comment-->`) and an
+// uncontested one (`'''[[Maxwell Frost]]'''<br/>''(Uncontested)''`).
+// cleanWikiText correctly reduces either to plain text but has no reason
+// to know the parenthetical isn't part of the name. Left unstripped, this
+// doesn't just look wrong when displayed — it broke exact-name matching
+// downstream too, in both directions: `matchOfficeholder()` couldn't match
+// "Maxwell Frost (Uncontested)" against sitting Rep. Maxwell Frost, and an
+// earlier version of the Wikipedia bio search saw "Graham Platner" as
+// Troy Jackson's own surname and confidently attached Platner's bio/photo
+// to Troy Jackson's page. Rather than special-casing each new annotation
+// phrase as it's found, this strips ANY trailing parenthetical — a
+// legitimate person's raw scraped name has no reason to end in one; that
+// convention (e.g. "(politician)") only applies to Wikipedia ARTICLE
+// TITLES for disambiguation, not to infobox nominee text.
+function stripTrailingAnnotation(name) {
+  return name.replace(/\s*\([^)]*\)\s*$/, "").trim();
 }
 
 function extractCandidates(fields) {
@@ -367,7 +375,7 @@ function extractCandidates(fields) {
   for (let i = 1; i <= 8; i++) {
     const rawName = fields[`nominee${i}`] ?? fields[`candidate${i}`];
     if (rawName === undefined && fields[`party${i}`] === undefined) continue;
-    const name = stripReplacementAnnotation(cleanWikiText(rawName ?? ""));
+    const name = stripTrailingAnnotation(cleanWikiText(rawName ?? ""));
     if (!name) continue;
     candidates.push({ name, party: normalizeParty(fields[`party${i}`]) });
   }
