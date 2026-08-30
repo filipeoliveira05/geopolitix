@@ -61,24 +61,49 @@ export function WikipediaVerifiedBadge({ title }: { title?: string | null }) {
 }
 
 // A weaker guarantee than WikipediaVerifiedBadge, but stronger than a plain
-// automated guess: this bio was matched via unitedstates/congress-legislators'
-// own curated bioguide→Wikipedia-title mapping (legislators.mjs's
-// backfillLegislatorBios reads wikipedia_title directly off the row, never
-// a name search) — a maintained ID lookup, not a "top search hit" guess,
-// but still not a human eyeballing the page. Sky blue to sit visually
-// between the emerald verified badge and the muted no-page badge.
-export function WikipediaSourcedBadge({ title }: { title?: string | null }) {
+// automated guess: this bio was matched via a maintained ID lookup — never
+// a name search — so it doesn't carry the wrong-person risk a candidate's
+// exact-match search does (see CLAUDE.md's Steve Cohen case). Still not a
+// human eyeballing the page, though. Sky blue to sit visually between the
+// emerald verified badge and the muted no-page badge.
+//
+// Two real sources currently qualify, each with its own label/tooltip:
+// - "congress-legislators": legislators.mjs's backfillLegislatorBios reads
+//   wikipedia_title directly off the row, populated from
+//   unitedstates/congress-legislators' own curated bioguide→title mapping.
+// - "wikidata": governor-history.mjs's fetchSitelinkTitles reads the
+//   Wikipedia article straight from Wikidata's own structured sitelink
+//   property for that exact QID — governors/governor_terms only.
+const SOURCE_LABELS = {
+  "congress-legislators": {
+    label: "Sourced from congress-legislators",
+    tooltip: "Matched via congress-legislators' official bioguide-to-Wikipedia mapping, not manually checked",
+  },
+  wikidata: {
+    label: "Sourced from Wikidata",
+    tooltip: "Matched via Wikidata's own structured Wikipedia sitelink for this person, not manually checked",
+  },
+} as const;
+
+export function WikipediaSourcedBadge({
+  title,
+  source,
+}: {
+  title?: string | null;
+  source: keyof typeof SOURCE_LABELS;
+}) {
+  const { label, tooltip } = SOURCE_LABELS[source];
   return (
     <WikipediaBadgeLink
       title={title}
-      tooltip="Matched via congress-legislators' official bioguide-to-Wikipedia mapping, not manually checked"
+      tooltip={tooltip}
       className="inline-flex items-center gap-1 text-xs font-medium text-sky-600 dark:text-sky-400"
     >
       <svg viewBox="0 0 20 20" fill="currentColor" className="h-3.5 w-3.5">
         <path d="M12.232 4.232a2.5 2.5 0 0 1 3.536 3.536l-1.225 1.224a.75.75 0 0 0 1.061 1.06l1.224-1.224a4 4 0 0 0-5.656-5.656l-3 3a4 4 0 0 0 .225 5.865.75.75 0 0 0 .977-1.138 2.5 2.5 0 0 1-.142-3.667l3-3Z" />
         <path d="M11.603 7.963a.75.75 0 0 0-.977 1.138 2.5 2.5 0 0 1 .142 3.667l-3 3a2.5 2.5 0 0 1-3.536-3.536l1.225-1.224a.75.75 0 0 0-1.061-1.06l-1.224 1.224a4 4 0 1 0 5.656 5.656l3-3a4 4 0 0 0-.225-5.865Z" />
       </svg>
-      Sourced from congress-legislators
+      {label}
     </WikipediaBadgeLink>
   );
 }

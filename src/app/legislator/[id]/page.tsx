@@ -84,7 +84,7 @@ export default async function LegislatorPage(props: PageProps<"/legislator/[id]"
             (legislator.wikipediaVerified ? (
               <WikipediaVerifiedBadge title={legislator.wikipediaTitle} />
             ) : (
-              <WikipediaSourcedBadge title={legislator.wikipediaTitle} />
+              <WikipediaSourcedBadge title={legislator.wikipediaTitle} source="congress-legislators" />
             ))}
           {!legislator.bioSummary && legislator.wikipediaCheckedNo && <WikipediaNoPageBadge />}
         </div>

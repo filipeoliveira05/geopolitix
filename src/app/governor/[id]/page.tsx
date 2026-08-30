@@ -12,7 +12,11 @@ import {
 } from "@/lib/governors-data";
 import { PartyBadge } from "@/components/PartyBadge";
 import { GlobalFooter } from "@/components/GlobalFooter";
-import { WikipediaVerifiedBadge, WikipediaNoPageBadge } from "@/components/WikipediaVerifiedBadge";
+import {
+  WikipediaVerifiedBadge,
+  WikipediaSourcedBadge,
+  WikipediaNoPageBadge,
+} from "@/components/WikipediaVerifiedBadge";
 
 type Profile = {
   name: string;
@@ -120,9 +124,12 @@ export default async function GovernorPage(props: PageProps<"/governor/[id]">) {
           <h2 className="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
             Biography
           </h2>
-          {profile.bioSummary && profile.wikipediaVerified && (
-            <WikipediaVerifiedBadge title={profile.wikipediaTitle} />
-          )}
+          {profile.bioSummary &&
+            (profile.wikipediaVerified ? (
+              <WikipediaVerifiedBadge title={profile.wikipediaTitle} />
+            ) : (
+              <WikipediaSourcedBadge title={profile.wikipediaTitle} source="wikidata" />
+            ))}
           {!profile.bioSummary && profile.wikipediaCheckedNo && <WikipediaNoPageBadge />}
         </div>
         <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
