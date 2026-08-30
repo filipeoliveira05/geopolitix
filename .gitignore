@@ -47,3 +47,9 @@ next-env.d.ts
 # brainstorming/planning working notes (specs + implementation plans) —
 # not project docs, kept local-only
 /docs/superpowers/
+
+# manual Wikipedia-bio review CSVs (export-unreviewed-candidates.mjs /
+# ingest-candidate-csv.mjs) — a human's working notes and their in-progress
+# review state, not project docs; kept local-only, one file per review
+# round for a backup trail
+/manual-review/

@@ -23,7 +23,10 @@
 // still need this one manual confirmation pass, but new ones only trickle
 // in a few at a time as remaining primaries resolve.
 //
-// Usage: node scripts/sync/export-unreviewed-candidates.mjs > review.csv
+// Usage: node scripts/sync/export-unreviewed-candidates.mjs > manual-review/candidates-YYYY-MM-DD-review.csv
+// (manual-review/ is gitignored — a human's working notes and in-progress
+// review state, not a project doc — but kept as a local backup trail, one
+// dated file per review round rather than overwriting the same file.)
 import { config } from "dotenv";
 config({ path: new URL("../../.env.local", import.meta.url) });
 import { createClient } from "@supabase/supabase-js";

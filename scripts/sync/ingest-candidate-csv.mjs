@@ -11,7 +11,9 @@
 // - "no" sets wikipedia_checked_no = true, so backfillCandidateBios stops
 //   retrying it every run
 //
-// Usage: node scripts/sync/ingest-candidate-csv.mjs path/to/reviewed.csv
+// Usage: node scripts/sync/ingest-candidate-csv.mjs manual-review/candidates-YYYY-MM-DD-review.csv
+// (manual-review/ is gitignored — see export-unreviewed-candidates.mjs's
+// own usage note.)
 import { config } from "dotenv";
 config({ path: new URL("../../.env.local", import.meta.url) });
 import { createClient } from "@supabase/supabase-js";
