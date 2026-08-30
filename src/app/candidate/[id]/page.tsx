@@ -6,6 +6,7 @@ import { getStateName } from "@/lib/states";
 import { getCandidateById } from "@/lib/candidates-data";
 import { PartyBadge } from "@/components/PartyBadge";
 import { GlobalFooter } from "@/components/GlobalFooter";
+import { WikipediaVerifiedBadge } from "@/components/WikipediaVerifiedBadge";
 
 const OFFICE_LABELS = {
   senate: "U.S. Senate",
@@ -62,15 +63,20 @@ export default async function CandidatePage(props: PageProps<"/candidate/[id]">)
       </div>
 
       <div className="mt-6">
-        <h2 className="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
-          Biography
-        </h2>
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+            Biography
+          </h2>
+          {candidate.bioSummary && candidate.wikipediaVerified && <WikipediaVerifiedBadge />}
+        </div>
         {candidate.bioSummary ? (
           <>
             <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">{candidate.bioSummary}</p>
-            <p className="mt-2 text-xs text-zinc-400 dark:text-zinc-600">
-              Bio matched automatically from Wikipedia and hasn&apos;t been manually verified.
-            </p>
+            {!candidate.wikipediaVerified && (
+              <p className="mt-2 text-xs text-zinc-400 dark:text-zinc-600">
+                Bio matched automatically from Wikipedia and hasn&apos;t been manually verified.
+              </p>
+            )}
           </>
         ) : (
           <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">

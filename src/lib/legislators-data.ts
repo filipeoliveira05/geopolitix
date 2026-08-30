@@ -14,6 +14,7 @@ export type Legislator = {
   photoUrl: string | null;
   birthday: string | null;
   bioSummary: string | null;
+  wikipediaVerified: boolean;
 };
 
 export type Term = {
@@ -55,6 +56,7 @@ type LegislatorRow = {
   photo_url: string | null;
   birthday: string | null;
   bio_summary: string | null;
+  wikipedia_verified: boolean;
 };
 
 const TERM_WITH_LEGISLATOR_SELECT = "*, legislator:legislators(*)";
@@ -69,6 +71,7 @@ function legislatorFromRow(row: LegislatorRow): Legislator {
     photoUrl: row.photo_url,
     birthday: row.birthday,
     bioSummary: row.bio_summary,
+    wikipediaVerified: row.wikipedia_verified,
   };
 }
 

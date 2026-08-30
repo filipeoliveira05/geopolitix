@@ -534,13 +534,19 @@ async function collectHouseRaces(stateNameToAbbr, pendingInfo) {
  * this function tries to score or verify further. Self-healing via the
  * same bio_summary IS NULL filter as every other backfill in this
  * codebase: a candidate with no search hit, or no summary, is simply
- * retried next run.
+ * retried next run. Never sets wikipedia_verified — that flag is reserved
+ * for a human-confirmed bio (see the manual-ingest path), even though the
+ * exact-match search itself is now safe against wrong-person matches.
+ * Also excludes wikipedia_checked_no rows — a manual audit's confirmed
+ * "no Wikipedia page exists" answer, so this doesn't burn search budget
+ * re-attempting a search destined to fail every single run.
  */
 async function backfillCandidateBios(supabase, abbrToStateName, warnings, { budgetMs } = {}) {
   const { data: candidates, error } = await supabase
     .from("candidates")
     .select("id, name, state_id")
-    .is("bio_summary", null);
+    .is("bio_summary", null)
+    .eq("wikipedia_checked_no", false);
   if (error) throw error;
   if (candidates.length === 0) return 0;
 
