@@ -240,21 +240,17 @@ async function loadCurrentOfficeholders(supabase) {
   for (const row of termRows) {
     const person = row.legislators;
     if (!person) continue;
-    const fullName = `${person.first_name ?? ""} ${person.last_name ?? ""}`.trim().toLowerCase();
     addEntry(row.state_id, {
       type: "legislator",
       id: row.legislator_id,
-      fullName,
-      lastName: (person.last_name ?? "").trim().toLowerCase(),
+      fullName: normalizeExactName(`${person.first_name ?? ""} ${person.last_name ?? ""}`),
     });
   }
   for (const gov of governorRows) {
-    const fullName = `${gov.first_name ?? ""} ${gov.last_name ?? ""}`.trim().toLowerCase();
     addEntry(gov.state_id, {
       type: "governor",
       id: gov.id,
-      fullName,
-      lastName: (gov.last_name ?? "").trim().toLowerCase(),
+      fullName: normalizeExactName(`${gov.first_name ?? ""} ${gov.last_name ?? ""}`),
     });
   }
   return byState;
@@ -268,16 +264,24 @@ async function loadCurrentOfficeholders(supabase) {
  * rather than guessed, same "don't guess when ambiguous" discipline as
  * governor-history.mjs's resolveParty().
  */
+/**
+ * Exact full-name match only — no surname fallback. An earlier version
+ * fell back to a surname-suffix match when it resolved to exactly one
+ * officeholder in the state, which sounded safe but wasn't: confirmed live
+ * that it linked candidates straight to a completely unrelated
+ * same-surname officeholder ("Jennifer Davis" -> Rep. Danny Davis,
+ * "Trever Nehls" -> Rep. Troy Nehls, five more besides — all caught by the
+ * user manually reviewing candidate pages, not by any automated check).
+ * This is the same class of bug the Wikipedia bio-matching heuristic had
+ * (see `titleMatchesCandidateName`) and gets the same fix: exact match
+ * only, unmatched candidates fall through to their own `/candidate/[id]`
+ * page instead of a guessed link.
+ */
 function matchOfficeholder(candidateName, stateId, officeholdersByState) {
   const officials = officeholdersByState.get(stateId);
   if (!officials || officials.length === 0) return null;
-  const nameLower = candidateName.trim().toLowerCase();
-
-  const exact = officials.find((o) => o.fullName === nameLower);
-  if (exact) return exact;
-
-  const bySurname = officials.filter((o) => o.lastName && nameLower.endsWith(o.lastName));
-  return bySurname.length === 1 ? bySurname[0] : null;
+  const nameNormalized = normalizeExactName(candidateName);
+  return officials.find((o) => o.fullName === nameNormalized) ?? null;
 }
 
 /** "John Q. Smith" + "CA" -> "ca-john-q-smith". See the design spec's normalization rule. */
