@@ -44,36 +44,27 @@ export function GlobalHeader() {
     <>
       <header
         className={`z-50 flex h-14 items-center justify-between gap-4 px-4 sm:px-6 ${
-          isHome
-            ? "fixed inset-x-0 top-0 bg-white/80 backdrop-blur-sm dark:bg-zinc-950/70"
-            : "sticky top-0 border-b border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950"
+          isHome ? "fixed inset-x-0 top-0 bg-surface/85 backdrop-blur-sm" : "sticky top-0 border-b border-rule bg-surface"
         }`}
       >
-        <Link href="/" className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
+        <Link href="/" className="font-display text-lg font-semibold text-ink">
           Geopolitix
         </Link>
 
         <nav className="flex items-center gap-4 text-sm">
-          <Link
-            href="/midterms-2026"
-            className="text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
-          >
+          <Link href="/midterms-2026" className="text-muted hover:text-seal">
             Midterms 2026
           </Link>
           {/* Phase 2/3 — light up once those sections exist; no functional
               change needed here when they do, just flip these to real links. */}
-          <span className="hidden cursor-default text-zinc-400 sm:inline dark:text-zinc-600">
-            Geography
-          </span>
-          <span className="hidden cursor-default text-zinc-400 sm:inline dark:text-zinc-600">
-            Quiz
-          </span>
+          <span className="hidden cursor-default text-muted/50 sm:inline">Geography</span>
+          <span className="hidden cursor-default text-muted/50 sm:inline">Quiz</span>
           <button
             onClick={openSearch}
             onMouseEnter={() => setWantsIndex(true)}
             onFocus={() => setWantsIndex(true)}
             aria-label="Search"
-            className="rounded-md p-1.5 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+            className="rounded p-1.5 text-muted hover:bg-seal-soft hover:text-seal"
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"

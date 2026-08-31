@@ -26,7 +26,7 @@ function freshnessTier(date: Date): { colorClassName: string; pulse: boolean; de
   const hours = (Date.now() - date.getTime()) / 3_600_000;
   if (hours < 24) return { colorClassName: "bg-emerald-500", pulse: true, description: "Synced within the last day" };
   if (hours < 24 * 7) return { colorClassName: "bg-amber-500", pulse: false, description: "Synced within the last week" };
-  return { colorClassName: "bg-zinc-400 dark:bg-zinc-600", pulse: false, description: "Synced over a week ago" };
+  return { colorClassName: "bg-muted", pulse: false, description: "Synced over a week ago" };
 }
 
 function FreshnessItem({ label, syncedAt }: { label: string; syncedAt: Date }) {
@@ -37,7 +37,7 @@ function FreshnessItem({ label, syncedAt }: { label: string; syncedAt: Date }) {
         className={`mr-1.5 inline-block h-1.5 w-1.5 rounded-full ${colorClassName} ${pulse ? "animate-pulse" : ""}`}
         title={description}
       />
-      {label} synced {timeAgo(syncedAt)}
+      {label} synced <span className="font-mono">{timeAgo(syncedAt)}</span>
     </span>
   );
 }
@@ -72,7 +72,7 @@ export function SyncFreshnessRow({
   );
   if (known.length === 0) return null;
   return (
-    <p className={`flex flex-wrap gap-x-3 gap-y-1 text-xs text-zinc-500 dark:text-zinc-400 ${className}`}>
+    <p className={`flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted ${className}`}>
       {known.map((item) => (
         <FreshnessItem key={item.label} label={item.label} syncedAt={item.syncedAt} />
       ))}
