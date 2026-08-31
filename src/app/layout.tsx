@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Fraunces, IBM_Plex_Sans, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
 import { Providers } from "./providers";
@@ -25,6 +25,25 @@ const plexMono = IBM_Plex_Mono({
 export const metadata: Metadata = {
   title: "Geopolitix",
   description: "Learn the US political system and geography, state by state.",
+  manifest: "/manifest.json",
+  appleWebApp: {
+    title: "Geopolitix",
+    statusBarStyle: "default",
+  },
+  icons: {
+    icon: [{ url: "/icons/icon-32.png", sizes: "32x32", type: "image/png" }],
+    apple: [{ url: "/icons/apple-touch-icon.png", sizes: "180x180" }],
+  },
+};
+
+// theme-color has no dark-mode equivalent in manifest.json (poor support
+// for its media-query variants), so it's set here via two media-scoped
+// meta tags instead — same light/dark seal token values as globals.css.
+export const viewport: Viewport = {
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#8c6a2f" },
+    { media: "(prefers-color-scheme: dark)", color: "#c99a52" },
+  ],
 };
 
 // No global footer here — the home page (/) is a deliberately chrome-free
@@ -54,6 +73,18 @@ try {
 } catch (e) {}
 `;
 
+// Registers the no-op service worker (public/sw.js) that exists solely to
+// satisfy Chrome's "Add to Home Screen" installability check — see that
+// file's own comment for why it does no caching. Deferred to window "load"
+// so it never competes with the initial page's own network/render work.
+const SW_REGISTER_SCRIPT = `
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", function () {
+    navigator.serviceWorker.register("/sw.js").catch(function () {});
+  });
+}
+`;
+
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
@@ -67,6 +98,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     >
       <head>
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
+        <script dangerouslySetInnerHTML={{ __html: SW_REGISTER_SCRIPT }} />
       </head>
       <body className="min-h-full flex flex-col">
         <Providers>

@@ -21,7 +21,20 @@ Build order: **Phase 1 politics → Phase 2 geography → Phase 3 quiz.** Don't 
 - MapLibre GL JS (not Mapbox — no API key/cost)
 - TanStack Query for client-side fetching/caching
 - Vercel (auto-deploy on push)
-- PWA manifest ("Add to Home Screen")
+- PWA manifest ("Add to Home Screen") — shipped 2026-08-31: `public/manifest.json` (name,
+  icons, `display: "standalone"`) + a deliberately no-op `public/sw.js` (registered from
+  `layout.tsx`, deferred to `window.load`) satisfy Chrome's installability check without
+  actually caching anything — this app always reads live Supabase data, so an offline app
+  shell would just show stale/broken content. Icons in `public/icons/` (192/512 "any" +
+  a separately-padded 512 "maskable" variant, since the source logo's gold ring nearly
+  touches the canvas edge and would get clipped by Android's circle/squircle mask without
+  it) are generated via `sharp` from the source `geopolitix-logo.png` at the repo root — no
+  standing script, regenerate by hand from that source if the logo ever changes.
+  `theme-color` is set via two `prefers-color-scheme`-scoped `<meta>` tags in `layout.tsx`
+  (manifest.json's own `theme_color` has no equivalent light/dark split) matching the
+  `--seal` design token; `apple-touch-icon` is a separate flattened (non-transparent) PNG
+  since iOS fills transparent manifest-icon areas black and ignores the manifest for its
+  own icon anyway.
 
 ## Data conventions
 
