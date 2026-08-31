@@ -610,6 +610,15 @@ Since "Current" and a specific recent year (e.g. "2024") can genuinely show diff
 the same seat if a resignation/special election happened after that Congress first convened (see
 above), the year `<select>` carries an explanatory `title` tooltip, and both map-mode legend boxes
 show a one-line reminder of this whenever a specific year (not "current") is selected.
+**Party control tally in the legend** (e.g. "53R–45D–2I", added right after the initial
+year-travel feature) — `tallyPartyLetters()`/`formatPartyControl()` (`party-colors.ts`) tally by
+`partyStyle()`'s own letter, the same classification the map's fill color already uses, so this
+can't silently drift from what's actually painted; `getSenatePartyTally()`/`getHousePartyTally()`
+(`legislators-data.ts`) derive it from the exact same cached `getSenatorsByStateMap`/
+`getRepsByDistrictKeyMap` data the map itself paints with — no extra fetch. Sorted leader-first
+(confirmed live matches real composition both directions: "53R–45D–2I" currently, "53D–45R–2I" for
+2012, when Democrats led). A seat with no synced term row (a vacancy) is simply absent from the
+tally rather than counted as anything, so the total can legitimately read a little under 100/435.
 
 **`/state/[abbr]` page** (`src/app/state/[abbr]/page.tsx` + `StateTabs.tsx`): four tabs per
 plan §5 — current representation (real, including governor); history (real Senate, House, AND

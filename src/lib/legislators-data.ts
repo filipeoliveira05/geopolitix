@@ -1,4 +1,5 @@
 import { supabase } from "./supabase";
+import { tallyPartyLetters } from "./party-colors";
 
 // Reads the Supabase `legislators`/`terms` tables (plan §4), synced via
 // `npm run sync:legislators` (see scripts/sync/legislators.mjs).
@@ -201,6 +202,21 @@ async function fetchSenatorsByStateMap(
   return map;
 }
 
+/**
+ * Party control tally for the whole Senate as of `asOfDate` (`null` =
+ * current) — e.g. "53R–45D–2I" via party-colors.ts's formatPartyControl().
+ * Reuses getSenatorsByStateMap's own cache, so this never triggers an
+ * extra fetch — just re-derives the tally from data the map already has.
+ */
+export async function getSenatePartyTally(asOfDate: string | null): Promise<Map<string, number>> {
+  const byState = await getSenatorsByStateMap(asOfDate);
+  const parties: (string | null)[] = [];
+  for (const senators of byState.values()) {
+    for (const s of senators) parties.push(s.term.party);
+  }
+  return tallyPartyLetters(parties);
+}
+
 export async function getCurrentRepresentatives(
   stateAbbr: string,
 ): Promise<TermWithLegislator[]> {
@@ -274,6 +290,15 @@ async function fetchRepsByDistrictKeyMap(
     map.set(`${row.state_id}-${row.district_number}`, fromRow(row));
   }
   return map;
+}
+
+/**
+ * Party control tally for the whole House as of `asOfDate` — mirrors
+ * getSenatePartyTally above, reusing getRepsByDistrictKeyMap's own cache.
+ */
+export async function getHousePartyTally(asOfDate: string | null): Promise<Map<string, number>> {
+  const byDistrict = await getRepsByDistrictKeyMap(asOfDate);
+  return tallyPartyLetters([...byDistrict.values()].map((r) => r.term.party));
 }
 
 export function legislatorFullName(legislator: Legislator): string {

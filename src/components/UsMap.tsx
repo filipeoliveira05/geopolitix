@@ -13,10 +13,15 @@ import {
 } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { getDistrictsGeoJson, type DistrictFeatureProperties } from "@/lib/districts-geo";
-import { getRepsByDistrictKeyMap, type TermWithLegislator } from "@/lib/legislators-data";
+import {
+  getRepsByDistrictKeyMap,
+  getSenatePartyTally,
+  getHousePartyTally,
+  type TermWithLegislator,
+} from "@/lib/legislators-data";
 import { getSenateSplitGeoJson, getSenateHalfIdsByState } from "@/lib/senate-split-geo";
 import { getStateLabelsGeoJson } from "@/lib/state-labels-geo";
-import { PARTY_COLORS, FALLBACK_PARTY_STYLE } from "@/lib/party-colors";
+import { PARTY_COLORS, FALLBACK_PARTY_STYLE, formatPartyControl } from "@/lib/party-colors";
 import {
   ELECTION_YEARS,
   asOfDateForYear,
@@ -188,6 +193,13 @@ export function UsMap({ selectedAbbr, onSelectState, year, onChangeYear }: UsMap
   const labelMarkersRef = useRef<Marker[]>([]);
   const mountedRef = useRef(true);
   const [mode, setMode] = useState<MapMode>("states");
+  // Party-control tally for the legend (e.g. "53R–45D–2I") — derived from
+  // the same cached data the map itself paints with (see
+  // getSenatePartyTally/getHousePartyTally), so it's never a second,
+  // driftable source of truth. `null` until the first fetch resolves (or
+  // for house, until Districts mode has been visited at least once).
+  const [senateTally, setSenateTally] = useState<Map<string, number> | null>(null);
+  const [houseTally, setHouseTally] = useState<Map<string, number> | null>(null);
 
   useEffect(() => {
     onSelectStateRef.current = onSelectState;
@@ -225,6 +237,9 @@ export function UsMap({ selectedAbbr, onSelectState, year, onChangeYear }: UsMap
 
     map.on("load", async () => {
       const senateGeoJson = await getSenateSplitGeoJson(asOfDate);
+      getSenatePartyTally(asOfDate).then((tally) => {
+        if (!cancelled) setSenateTally(tally);
+      });
       if (cancelled) return;
 
       map.addSource(SENATE_SOURCE_ID, {
@@ -367,6 +382,9 @@ export function UsMap({ selectedAbbr, onSelectState, year, onChangeYear }: UsMap
       districtsReadyRef.current = (async () => {
         const repsByDistrict = await getRepsByDistrictKeyMap(initialAsOfDate);
         const districtsWithReps = await joinDistrictsWithReps(repsByDistrict);
+        getHousePartyTally(initialAsOfDate).then((tally) => {
+          if (mountedRef.current) setHouseTally(tally);
+        });
         // The component can unmount while these fetches are in flight —
         // map.addSource below would throw on an already-removed map.
         if (!mountedRef.current) return;
@@ -503,6 +521,9 @@ export function UsMap({ selectedAbbr, onSelectState, year, onChangeYear }: UsMap
       if (cancelled) return;
       senateHalfIdsByStateRef.current = halfIdsByState;
       (map.getSource(SENATE_SOURCE_ID) as GeoJSONSource | undefined)?.setData(senateGeoJson);
+      getSenatePartyTally(asOfDate).then((tally) => {
+        if (!cancelled) setSenateTally(tally);
+      });
 
       if (map.getSource(DISTRICTS_SOURCE_ID)) {
         const repsByDistrict = await getRepsByDistrictKeyMap(asOfDate);
@@ -512,6 +533,9 @@ export function UsMap({ selectedAbbr, onSelectState, year, onChangeYear }: UsMap
         (map.getSource(DISTRICTS_SOURCE_ID) as GeoJSONSource | undefined)?.setData(
           districtsWithReps,
         );
+        getHousePartyTally(asOfDate).then((tally) => {
+          if (!cancelled) setHouseTally(tally);
+        });
       }
     })();
 
@@ -628,6 +652,11 @@ export function UsMap({ selectedAbbr, onSelectState, year, onChangeYear }: UsMap
         <div className="absolute bottom-2 left-2 flex max-w-[calc(100%-1rem)] flex-col gap-1 rounded-md border border-zinc-300 bg-white/90 p-1.5 text-[11px] shadow-sm sm:bottom-3 sm:left-3 sm:max-w-none sm:p-2 sm:text-xs text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900/90 dark:text-zinc-300">
           <div className="font-medium">
             {year === "current" ? "Current" : `${year} election`} House rep&apos;s party
+            {houseTally && (
+              <span className="ml-1 font-normal text-zinc-500 dark:text-zinc-400">
+                ({formatPartyControl(houseTally)})
+              </span>
+            )}
           </div>
           <LegendRow color="#2563eb" label="Democrat" />
           <LegendRow color="#dc2626" label="Republican" />
@@ -657,6 +686,11 @@ export function UsMap({ selectedAbbr, onSelectState, year, onChangeYear }: UsMap
         <div className="absolute bottom-2 left-2 flex max-w-[calc(100%-1rem)] flex-col gap-1 rounded-md border border-zinc-300 bg-white/90 p-1.5 text-[11px] shadow-sm sm:bottom-3 sm:left-3 sm:max-w-none sm:p-2 sm:text-xs text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900/90 dark:text-zinc-300">
           <div className="font-medium">
             {year === "current" ? "Current" : `${year} election`} senators&apos; party
+            {senateTally && (
+              <span className="ml-1 font-normal text-zinc-500 dark:text-zinc-400">
+                ({formatPartyControl(senateTally)})
+              </span>
+            )}
           </div>
           <LegendRow color="#2563eb" label="Democrat" />
           <LegendRow color="#dc2626" label="Republican" />
