@@ -594,15 +594,13 @@ export function UsMap({ selectedAbbr, onSelectState, year, onChangeYear }: UsMap
           "2026 Midterms" link that used to sit up here was dropped once
           GlobalHeader grew its own "Midterms 2026" nav link — redundant. */}
       <div className="absolute top-16 left-2 flex items-start gap-2 sm:left-3">
-        <div className="flex overflow-hidden rounded-md border border-zinc-300 text-xs shadow-sm sm:text-sm dark:border-zinc-700">
+        <div className="flex overflow-hidden rounded border border-rule text-xs sm:text-sm">
           {(["states", "districts"] as const).map((m) => (
             <button
               key={m}
               onClick={() => setMode(m)}
               className={`px-2 py-1 capitalize transition-colors sm:px-3 sm:py-1.5 ${
-                mode === m
-                  ? "bg-blue-600 text-white"
-                  : "bg-white text-zinc-700 hover:bg-zinc-100 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                mode === m ? "bg-seal text-surface" : "bg-surface text-ink hover:bg-paper"
               }`}
             >
               {m}
@@ -621,7 +619,7 @@ export function UsMap({ selectedAbbr, onSelectState, year, onChangeYear }: UsMap
           }}
           aria-label="Year"
           title="A specific year shows that Congress as first sworn in — today's actual roster ('Current') can differ slightly since, e.g. after a resignation or special election."
-          className="rounded-md border border-zinc-300 bg-white px-2 py-1 text-xs shadow-sm sm:px-3 sm:py-1.5 sm:text-sm dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300"
+          className="rounded border border-rule bg-surface px-2 py-1 text-xs text-ink sm:px-3 sm:py-1.5 sm:text-sm"
         >
           {ELECTION_YEARS.map((y) => (
             <option key={y} value={String(y)}>
@@ -631,31 +629,29 @@ export function UsMap({ selectedAbbr, onSelectState, year, onChangeYear }: UsMap
         </select>
       </div>
 
-      <div className="absolute bottom-2 right-2 flex flex-col overflow-hidden rounded-md border border-zinc-300 text-sm shadow-sm sm:bottom-3 sm:right-3 dark:border-zinc-700">
+      <div className="absolute bottom-2 right-2 flex flex-col overflow-hidden rounded border border-rule text-sm sm:bottom-3 sm:right-3">
         <button
           onClick={() => mapRef.current?.zoomIn()}
           aria-label="Zoom in"
-          className="border-b border-zinc-300 bg-white px-2.5 py-1.5 font-medium text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"
+          className="border-b border-rule bg-surface px-2.5 py-1.5 font-medium text-ink hover:bg-paper"
         >
           +
         </button>
         <button
           onClick={() => mapRef.current?.zoomOut()}
           aria-label="Zoom out"
-          className="bg-white px-2.5 py-1.5 font-medium text-zinc-700 hover:bg-zinc-100 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"
+          className="bg-surface px-2.5 py-1.5 font-medium text-ink hover:bg-paper"
         >
           −
         </button>
       </div>
 
       {mode === "districts" && (
-        <div className="absolute bottom-2 left-2 flex max-w-[calc(100%-1rem)] flex-col gap-1 rounded-md border border-zinc-300 bg-white/90 p-1.5 text-[11px] shadow-sm sm:bottom-3 sm:left-3 sm:max-w-none sm:p-2 sm:text-xs text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900/90 dark:text-zinc-300">
+        <div className="absolute bottom-2 left-2 flex max-w-[calc(100%-1rem)] flex-col gap-1 rounded border border-rule bg-surface/90 p-1.5 text-[11px] text-ink sm:bottom-3 sm:left-3 sm:max-w-none sm:p-2 sm:text-xs">
           <div className="font-medium">
             {year === "current" ? "Current" : `${year} election`} House rep&apos;s party
             {houseTally && (
-              <span className="ml-1 font-normal text-zinc-500 dark:text-zinc-400">
-                ({formatPartyControl(houseTally)})
-              </span>
+              <span className="ml-1 font-normal text-muted">({formatPartyControl(houseTally)})</span>
             )}
           </div>
           <LegendRow color="#2563eb" label="Democrat" />
@@ -674,7 +670,7 @@ export function UsMap({ selectedAbbr, onSelectState, year, onChangeYear }: UsMap
             </div>
           )}
           {year !== "current" && (
-            <div className="hidden text-zinc-500 sm:block dark:text-zinc-400">
+            <div className="hidden text-muted sm:block">
               Shows this Congress as first sworn in - &quot;Current&quot; can
               differ after a later resignation or special election.
             </div>
@@ -683,25 +679,23 @@ export function UsMap({ selectedAbbr, onSelectState, year, onChangeYear }: UsMap
       )}
 
       {mode === "states" && (
-        <div className="absolute bottom-2 left-2 flex max-w-[calc(100%-1rem)] flex-col gap-1 rounded-md border border-zinc-300 bg-white/90 p-1.5 text-[11px] shadow-sm sm:bottom-3 sm:left-3 sm:max-w-none sm:p-2 sm:text-xs text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900/90 dark:text-zinc-300">
+        <div className="absolute bottom-2 left-2 flex max-w-[calc(100%-1rem)] flex-col gap-1 rounded border border-rule bg-surface/90 p-1.5 text-[11px] text-ink sm:bottom-3 sm:left-3 sm:max-w-none sm:p-2 sm:text-xs">
           <div className="font-medium">
             {year === "current" ? "Current" : `${year} election`} senators&apos; party
             {senateTally && (
-              <span className="ml-1 font-normal text-zinc-500 dark:text-zinc-400">
-                ({formatPartyControl(senateTally)})
-              </span>
+              <span className="ml-1 font-normal text-muted">({formatPartyControl(senateTally)})</span>
             )}
           </div>
           <LegendRow color="#2563eb" label="Democrat" />
           <LegendRow color="#dc2626" label="Republican" />
           <LegendRow color="#71717a" label="Independent" />
           <LegendRow color="#a1a1aa" label="No data / no senators" />
-          <div className="mt-1 hidden text-zinc-500 sm:block dark:text-zinc-400">
+          <div className="mt-1 hidden text-muted sm:block">
             Split states show both senators - senior senator top-left,
             junior bottom-right.
           </div>
           {year !== "current" && (
-            <div className="hidden text-zinc-500 sm:block dark:text-zinc-400">
+            <div className="hidden text-muted sm:block">
               Shows this Congress as first sworn in - &quot;Current&quot; can
               differ after a later resignation or special election.
             </div>
