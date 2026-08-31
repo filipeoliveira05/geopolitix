@@ -32,7 +32,11 @@ function HomeInner() {
       <div className="relative min-h-0 flex-1">
         <UsMap selectedAbbr={selectedAbbr} onSelectState={handleSelectState} />
       </div>
-      <aside className="w-full max-h-[45vh] overflow-y-auto border-t border-zinc-200 sm:max-h-none sm:w-80 sm:border-l sm:border-t-0 dark:border-zinc-800">
+      {/* sm:pt-14 — on desktop this sidebar spans the full h-dvh height
+          alongside the map, so its top content would otherwise sit under
+          GlobalHeader's fixed overlay (h-14); on mobile it's stacked below
+          the map, already clear of the header. */}
+      <aside className="w-full max-h-[45vh] overflow-y-auto border-t border-zinc-200 sm:max-h-none sm:w-80 sm:border-l sm:border-t-0 sm:pt-14 dark:border-zinc-800">
         <StatePanel
           abbr={selectedAbbr}
           selectedDistrict={selectedDistrict}

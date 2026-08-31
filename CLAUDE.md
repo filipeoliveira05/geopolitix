@@ -372,6 +372,48 @@ Build order: **Phase 1 politics → Phase 2 geography → Phase 3 quiz.** Don't 
   site's stalest job) and removed the redundant one rather than just re-labeling it. The home map
   (`/`) gets neither — its `h-dvh` fullscreen layout has no room for a footer row without either
   overflowing the viewport or getting clipped.
+- **`GlobalHeader` (added 2026-08-31) is a persistent header shown on every route**, rendered
+  once in `src/app/layout.tsx` — the long-term IA answer for how politics/geography/quiz phases
+  relate: one shared nav bar all three hang an entry off, instead of every page inventing its own
+  "back to map" link (which is all that existed before this). Full design in
+  `docs/superpowers/specs/2026-08-31-global-search-nav-design.md`. Self-adjusts its own
+  positioning via `usePathname()` rather than needing a per-page opt-in: a `fixed`, semi-
+  transparent overlay on `/` (the map is a chrome-free `h-dvh` layout that can't afford to shrink
+  for a pushed-down header), `sticky`-in-flow with a solid background everywhere else. `UsMap.tsx`'s
+  own top-anchored controls (mode toggle, "2026 Midterms" link) are shifted from `top-2`/`top-3` to
+  `top-16` to clear the overlay, and `page.tsx`'s desktop state-panel sidebar gets `sm:pt-14` for
+  the same reason (mobile stacks the panel below the map already, unaffected). Carries "Midterms
+  2026" today plus disabled "Geography"/"Quiz" slots that light up once those phases ship — no
+  functional change needed elsewhere when they do.
+- **Global search (`SearchOverlay`, added 2026-08-31)** — opened from `GlobalHeader`'s search
+  icon, an icon-triggered modal rather than an always-visible inline box (near-zero permanent
+  header width, same interaction on mobile/desktop). Matches happen entirely client-side against a
+  pre-fetched flat index (`src/lib/search-index.ts`'s `buildSearchIndex()` — legislators,
+  governors incl. the OpenStates-gap/historical `governor_terms` fallback `getGovernor()` already
+  uses, candidates, and states from the free local `getAllStates()`) via Fuse.js
+  (`ignoreLocation: true` — without it, a typo late in a multi-word name like "Fetterrman" scored
+  too low to surface "John Fetterman", confirmed live before adding this option), not a per-
+  keystroke server query — "John Smith" as one string can't `ilike` split `first_name`/`last_name`
+  columns without a SQL function, and the ~15,700-row population is small enough to hold in memory
+  for the session instead. The index fetch is lazy (`useQuery`'s `enabled` flips on the search
+  button's hover/focus/click, `staleTime: Infinity`) so nobody who never touches search pays the
+  payload cost. Departed legislators get a generic "Former member of Congress" subtitle rather than
+  their actual last chamber/state — accurate subtitles would need fetching all ~45k `terms` rows
+  just for display text, defeating the point of a light index; a deliberate trade-off, not a gap.
+  `SearchOverlay` is only mounted while open (`{searchOpen && <SearchOverlay .../>}` in
+  `GlobalHeader`, not an `isOpen` prop rendering `null`) so every open gets fresh `useState`
+  defaults for free, avoiding a reset-in-effect. Verified live: a current senator, a departed
+  legislator, a governor (including an OpenStates-gap state), a candidate, and a state name all
+  resolve to the correct page; a typo still surfaces the right result; Esc/click-outside close it;
+  arrow keys + Enter navigate with no mouse; both the home overlay and every other page's sticky
+  header render correctly on desktop and mobile (393×851) with zero console errors. Each result
+  row also shows a small (32px, rounded) photo on the left — `SearchEntry.photoUrl`, carried
+  straight through from the same `photo_url` column each profile page already reads, rendered via
+  `next/image`'s `unoptimized` (same convention `/legislator/[id]` etc. already use for these
+  external URLs — no `remotePatterns` configured, this app never proxies photos through Next's
+  image optimizer). States have no photo; a person can legitimately lack one too (see the
+  coverage caveats elsewhere in this doc) — either case falls back to a fixed-size placeholder
+  circle (a generic person icon) so rows stay aligned rather than being pushed left.
 
 ## Open decisions
 

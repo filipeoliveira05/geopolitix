@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import {
   Map as MapLibreMap,
@@ -188,7 +187,13 @@ export function UsMap({ selectedAbbr, onSelectState }: UsMapProps) {
       container: containerRef.current,
       style: EMPTY_STYLE,
       bounds: US_BOUNDS,
-      fitBoundsOptions: { padding: 24 },
+      // Extra top padding (24 + 56) — GlobalHeader floats as a fixed h-14
+      // overlay on this page (see GlobalHeader.tsx) without shrinking the
+      // map's own h-dvh container, so a uniform 24px on every side let the
+      // header visually cover a sliver of the US's northern states. Only
+      // the initial fit needs this — UsMap is only ever rendered on this
+      // one page, so there's no "other page" case to also account for.
+      fitBoundsOptions: { padding: { top: 80, bottom: 24, left: 24, right: 24 } },
       attributionControl: false,
       maxBounds: MAX_PAN_BOUNDS,
       // Otherwise Mercator wraps horizontally — zooming out far enough shows the same US map
@@ -481,14 +486,11 @@ export function UsMap({ selectedAbbr, onSelectState }: UsMapProps) {
     <div className="relative h-full w-full">
       <div ref={containerRef} className="h-full w-full" />
 
-      <Link
-        href="/midterms-2026"
-        className="absolute top-2 right-2 rounded-md border border-zinc-300 bg-white px-2 py-1 text-xs shadow-sm hover:bg-zinc-100 sm:top-3 sm:right-3 sm:px-3 sm:py-1.5 sm:text-sm dark:border-zinc-700 dark:bg-zinc-900 dark:hover:bg-zinc-800"
-      >
-        2026 Midterms
-      </Link>
-
-      <div className="absolute top-2 left-2 flex overflow-hidden rounded-md border border-zinc-300 text-xs shadow-sm sm:top-3 sm:left-3 sm:text-sm dark:border-zinc-700">
+      {/* top-16, not top-2/top-3 — clears GlobalHeader's fixed overlay
+          (h-14) on this page, see layout.tsx/GlobalHeader.tsx. The
+          "2026 Midterms" link that used to sit up here was dropped once
+          GlobalHeader grew its own "Midterms 2026" nav link — redundant. */}
+      <div className="absolute top-16 left-2 flex overflow-hidden rounded-md border border-zinc-300 text-xs shadow-sm sm:left-3 sm:text-sm dark:border-zinc-700">
         {(["states", "districts"] as const).map((m) => (
           <button
             key={m}
