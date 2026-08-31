@@ -13,6 +13,7 @@ import { getStateName } from "@/lib/states";
 import { asOfDateForYear, yearLabel, type ElectionYear } from "@/lib/election-years";
 import { PartyBadge } from "@/components/PartyBadge";
 import { RepresentativesList } from "@/components/RepresentativesList";
+import { SectionHeading } from "@/components/SectionHeading";
 
 type StatePanelProps = {
   abbr: string | null;
@@ -66,7 +67,7 @@ export function StatePanel({
 
   if (!abbr) {
     return (
-      <div className="p-6 text-sm text-zinc-500 dark:text-zinc-400">
+      <div className="p-6 text-sm text-muted">
         Click a state on the map to see its current representation.
       </div>
     );
@@ -78,14 +79,14 @@ export function StatePanel({
     <div className="flex flex-col gap-6 p-6">
       <div>
         <div className="flex items-start justify-between gap-2">
-          <h2 className="text-xl font-semibold">
-            {getStateName(abbr) ?? abbr} <span className="text-zinc-400 dark:text-zinc-500">({abbr})</span>
+          <h2 className="font-display text-xl font-semibold text-ink">
+            {getStateName(abbr) ?? abbr} <span className="text-muted">({abbr})</span>
           </h2>
           {onClose && (
             <button
               onClick={onClose}
               aria-label="Close panel"
-              className="rounded-md p-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
+              className="rounded p-1 text-muted hover:bg-seal-soft hover:text-seal"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -103,62 +104,55 @@ export function StatePanel({
           )}
         </div>
         {summary && (
-          <p className="text-sm text-zinc-500 dark:text-zinc-400">
+          <p className="text-sm text-muted">
             Capital: {summary.capital} · Population:{" "}
             {summary.population.toLocaleString()}
           </p>
         )}
-        <Link
-          href={`/state/${abbr}`}
-          className="mt-1 inline-block text-sm text-blue-600 hover:underline dark:text-blue-400"
-        >
+        <Link href={`/state/${abbr}`} className="link-accent mt-1 inline-block text-sm text-seal">
           View full state page →
         </Link>
       </div>
 
       <div>
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+        <SectionHeading as="h3">
           Governor{" "}
           {year !== "current" && (
-            <span className="normal-case text-zinc-400 dark:text-zinc-500">
-              ({yearLabel(year)} election)
-            </span>
+            <span className="normal-case text-muted">({yearLabel(year)} election)</span>
           )}
-        </h3>
+        </SectionHeading>
         {governorError ? (
           <FetchError onRetry={() => refetchGovernor()} />
         ) : governor === undefined ? (
-          <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">Loading…</p>
+          <p className="mt-1 text-sm text-muted">Loading…</p>
         ) : governor ? (
           <p className="mt-1">
-            <Link href={`/governor/${governor.id}`} className="hover:underline">
+            <Link href={`/governor/${governor.id}`} className="link-accent">
               {governorFullName(governor)}
             </Link>{" "}
             <PartyBadge party={governor.party} />
           </p>
         ) : (
-          <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">No governor data.</p>
+          <p className="mt-1 text-sm text-muted">No governor data.</p>
         )}
       </div>
 
       <div>
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+        <SectionHeading as="h3">
           Senators{" "}
           {year !== "current" && (
-            <span className="normal-case text-zinc-400 dark:text-zinc-500">
-              ({yearLabel(year)} election)
-            </span>
+            <span className="normal-case text-muted">({yearLabel(year)} election)</span>
           )}
-        </h3>
+        </SectionHeading>
         {senatorsError ? (
           <FetchError onRetry={() => refetchSenators()} />
         ) : senators === undefined ? (
-          <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">Loading…</p>
+          <p className="mt-1 text-sm text-muted">Loading…</p>
         ) : senators.length > 0 ? (
           <ul className="mt-1 flex flex-col gap-1">
             {senators.map(({ legislator, term }) => (
               <li key={legislator.id}>
-                <Link href={`/legislator/${legislator.id}`} className="hover:underline">
+                <Link href={`/legislator/${legislator.id}`} className="link-accent">
                   {legislatorFullName(legislator)}
                 </Link>{" "}
                 <PartyBadge party={term.party} />
@@ -166,38 +160,34 @@ export function StatePanel({
             ))}
           </ul>
         ) : (
-          <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+          <p className="mt-1 text-sm text-muted">
             No senators (territory or non-voting delegate only).
           </p>
         )}
       </div>
 
       <div>
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+        <SectionHeading as="h3">
           House representatives{" "}
           {year !== "current" && (
-            <span className="normal-case text-zinc-400 dark:text-zinc-500">
-              ({yearLabel(year)} election)
-            </span>
+            <span className="normal-case text-muted">({yearLabel(year)} election)</span>
           )}
-        </h3>
+        </SectionHeading>
         {representativesError ? (
           <FetchError onRetry={() => refetchRepresentatives()} />
         ) : representatives === undefined ? (
-          <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">Loading…</p>
+          <p className="mt-1 text-sm text-muted">Loading…</p>
         ) : representatives.length > 0 ? (
           <RepresentativesList
             representatives={representatives}
             selectedDistrict={selectedDistrict}
           />
         ) : (
-          <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-            No representative data.
-          </p>
+          <p className="mt-1 text-sm text-muted">No representative data.</p>
         )}
       </div>
 
-      <p className="text-xs text-zinc-400 dark:text-zinc-600">
+      <p className="text-xs text-muted">
         Senators/representatives/governor synced from real sources. Capital/population are
         mock data — Phase 2 geography sync not built yet.
       </p>

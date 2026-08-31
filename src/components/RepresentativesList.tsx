@@ -37,7 +37,7 @@ export function RepresentativesList({
             }
           >
             {term.district === 0 ? "At-large" : `District ${term.district}`}:{" "}
-            <Link href={`/legislator/${legislator.id}`} className="hover:underline">
+            <Link href={`/legislator/${legislator.id}`} className="link-accent">
               {legislatorFullName(legislator)}
             </Link>{" "}
             <PartyBadge party={term.party} />
