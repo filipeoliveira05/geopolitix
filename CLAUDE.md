@@ -271,7 +271,18 @@ Build order: **Phase 1 politics → Phase 2 geography → Phase 3 quiz.** Don't 
   (`GOVERNOR_HISTORY_SCOPE=current`) all correctly reported "unchanged" on a clean rerun, and
   `races-2026.mjs`'s `CANDIDATES_BACKFILL_ONLY` path correctly itemized 7 "no wikipedia match"
   candidates by name (MA/RI, pending-primary states) where the old log only said "Backfilled 0".
-- **Not built yet:** geography/sports sync (Phase 2). Source research is in plan §3.
+- **Not built yet:** geography/sports sync (Phase 2). Source research is in plan §3. **A `cities`/
+  `sports_teams` schema already exists** (`cities`: name/state_id/population/is_capital/latitude/
+  longitude, FK to `states`; `sports_teams`: name/league/city_id, FK to `cities`; `states` also
+  carries a `capital_city_id` FK into `cities`) — real early scaffolding from the very start of the
+  project, built directly against the live database rather than through a migration, which is why
+  it went undetected until Supabase's Advisors flagged both tables as "RLS enabled, no policy"
+  (2026-08-31). Formally adopted into version control via
+  `20260831160000_adopt_geography_scaffolding.sql` (idempotent — matches what already existed
+  live) with the same public-read policy/grant every other table uses. Both tables are still
+  **empty and unused** — nothing syncs into them or reads from them yet, and the actual source
+  choice (Census/Wikidata/GeoNames per the Open decisions section) isn't locked in — treat this
+  schema as a starting draft to revise, not a settled design, when Phase 2 actually starts.
 - **House terms/races carry `district_number` (plain int) separately from `district_id`** (FK
   into `districts` — still unused by anything, on both `terms` and `races_2026`; the map,
   `getCurrentRepsByDistrictKey()`, and every House `StateTabs.tsx` display all join on
