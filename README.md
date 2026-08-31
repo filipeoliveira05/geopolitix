@@ -1,36 +1,48 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Geopolitix
 
-## Getting Started
+An educational app for the US political system (House, Senate, Governors, Congress history)
+and US geography, built on the back of the 2026 midterms.
 
-First, run the development server:
+See [`CLAUDE.md`](./CLAUDE.md) for operating conventions and current build state, and
+[`geopolitix-app-plan.md`](./geopolitix-app-plan.md) for the full project plan (goals, data
+sources, schema, sync strategy, page flow, roadmap).
+
+## Tech stack
+
+- Next.js (App Router) + Tailwind CSS
+- Supabase (Postgres) — the app always reads from Supabase, never calls external APIs directly
+- MapLibre GL JS
+- TanStack Query
+- Installable as a PWA ("Add to Home Screen")
+
+## Getting started
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) to see it. You'll need Supabase
+credentials in a gitignored `.env.local` — see `geopolitix-app-plan.md` §7 for the required
+env vars.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Syncing data
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+The app never calls external APIs from the browser — everything it reads lives in Supabase,
+populated by the scripts in `scripts/sync/`:
 
-## Learn More
+```bash
+npm run sync:states              # minimal state seed — run first (FK dependency)
+npm run sync:legislators         # current + historical House/Senate terms
+npm run sync:governors           # current governors (needs OPENSTATES_API_KEY)
+npm run sync:governor-history    # full governor history back to statehood
+npm run sync:races               # 2026 Senate/Governor/House races
+npm run sync:districts           # House district boundaries (metadata + geometry)
+```
 
-To learn more about Next.js, take a look at the following resources:
+These also run on a schedule via GitHub Actions — see `.github/workflows/`.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Learn more
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- [Next.js Documentation](https://nextjs.org/docs)
+- [Supabase Documentation](https://supabase.com/docs)
