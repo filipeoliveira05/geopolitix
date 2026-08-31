@@ -355,11 +355,23 @@ Build order: **Phase 1 politics → Phase 2 geography → Phase 3 quiz.** Don't 
   conventions, error red) still need explicit `dark:` pairs. Three font roles via
   `next/font/google`: `font-display` (Fraunces — headings, person names, big numbers only, spent
   sparingly), `font-sans` (IBM Plex Sans, the `body` default — don't add the class explicitly),
-  `font-mono` (IBM Plex Mono — dates, tallies, sync timestamps, any tabular numeric column; when
-  wrapping just a value in its own `<span className="font-mono">` next to preceding text, keep the
-  space as its own JSX text node — e.g. `synced{" "}\n<span>...` — a space merged into the
-  preceding string instead got silently collapsed by the browser at the new element boundary,
-  caught live as "synced1 hour ago"). Radius is plain Tailwind `rounded` (4px) everywhere, never
+  `font-mono` (IBM Plex Mono — dates, tallies, sync timestamps, any tabular numeric column; mono
+  only the number itself, not a full phrase — wrapping an entire string like "8 hours ago" in
+  font-mono puts its internal word-spaces in monospace's wider fixed-width glyph, visibly wider
+  than the surrounding sans-serif text's spaces and misread as a stray double space, caught live
+  in `SyncFreshnessNote.tsx`'s "X synced Y ago" text). **Separate gotcha, easy to conflate with
+  that one because the visual symptom looks similar:** a lone single-space JSX text node sitting
+  directly at an element boundary inside a `whitespace-nowrap` container collapses to zero width
+  in Chromium, even when it's already its own isolated JSX child (`synced{" "}` followed by
+  `<span>...` on the next line reads like the fix, but the plain-ASCII space inside those braces
+  still silently collapsed — caught live as "synced1 hour ago", confirmed by a direct DOM
+  measurement showing zero `getClientRects()` for that text node). The actual fix is a literal
+  non-breaking space escape (`"\u00A0"`) in place of the plain `" "` — NBSP (U+00A0) is defined
+  as non-collapsible in CSS and always holds real width regardless of position. Always write it
+  as the explicit `"\u00A0"` string escape, never a pasted literal NBSP character — the latter
+  is visually indistinguishable from a normal space in an editor/diff, and a well-meaning
+  plain-space edit on top of one silently reverts to collapsing again with no visible diff
+  explaining why. Radius is plain Tailwind `rounded` (4px) everywhere, never
   `rounded-md`/`-lg`/`-xl`; no `box-shadow` on any surface (the `SearchOverlay` backdrop scrim is
   the one exception). Shared primitives: `Card` (`src/components/Card.tsx`, a bordered
   `bg-surface` wrapper), `SectionHeading` (`src/components/SectionHeading.tsx`, the

@@ -2,16 +2,23 @@
 // of critical info. An item with a null `syncedAt` (query failed, or
 // nothing has synced yet) is simply omitted rather than shown broken — see
 // src/lib/sync-freshness.ts's own comment on why that lib never throws.
-function timeAgo(date: Date): string {
+//
+// Returns the leading number separately from its unit/suffix so only the
+// number gets font-mono treatment (CLAUDE.md's own convention: mono for
+// numbers/dates, not full phrases) — wrapping the whole "8 hours ago" string
+// in font-mono put its internal word-spaces in a monospace glyph, which
+// render visibly wider than the surrounding sans-serif text's spaces and
+// read as a stray double space next to "hours"/"ago".
+function timeAgo(date: Date): { value: string; suffix: string } {
   const seconds = Math.max(0, Math.floor((Date.now() - date.getTime()) / 1000));
   const minutes = Math.floor(seconds / 60);
   const hours = Math.floor(minutes / 60);
   const days = Math.floor(hours / 24);
 
-  if (days >= 1) return `${days} day${days === 1 ? "" : "s"} ago`;
-  if (hours >= 1) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
-  if (minutes >= 1) return `${minutes} minute${minutes === 1 ? "" : "s"} ago`;
-  return "just now";
+  if (days >= 1) return { value: String(days), suffix: `day${days === 1 ? "" : "s"} ago` };
+  if (hours >= 1) return { value: String(hours), suffix: `hour${hours === 1 ? "" : "s"} ago` };
+  if (minutes >= 1) return { value: String(minutes), suffix: `minute${minutes === 1 ? "" : "s"} ago` };
+  return { value: "", suffix: "just now" };
 }
 
 // Reuses this app's existing "Live/pending" dot convention (amber
@@ -31,14 +38,22 @@ function freshnessTier(date: Date): { colorClassName: string; pulse: boolean; de
 
 function FreshnessItem({ label, syncedAt }: { label: string; syncedAt: Date }) {
   const { colorClassName, pulse, description } = freshnessTier(syncedAt);
+  const { value, suffix } = timeAgo(syncedAt);
   return (
     <span className="inline-flex items-center whitespace-nowrap">
       <span
         className={`mr-1.5 inline-block h-1.5 w-1.5 rounded-full ${colorClassName} ${pulse ? "animate-pulse" : ""}`}
         title={description}
       />
-      {label} synced{" "}
-      <span className="font-mono">{timeAgo(syncedAt)}</span>
+      {label} synced{"\u00A0"}
+      {value ? (
+        <>
+          <span className="font-mono">{value}</span>{"\u00A0"}
+          {suffix}
+        </>
+      ) : (
+        suffix
+      )}
     </span>
   );
 }
