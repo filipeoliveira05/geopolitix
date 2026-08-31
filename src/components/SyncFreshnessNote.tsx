@@ -37,7 +37,8 @@ function FreshnessItem({ label, syncedAt }: { label: string; syncedAt: Date }) {
         className={`mr-1.5 inline-block h-1.5 w-1.5 rounded-full ${colorClassName} ${pulse ? "animate-pulse" : ""}`}
         title={description}
       />
-      {label} synced <span className="font-mono">{timeAgo(syncedAt)}</span>
+      {label} synced{" "}
+      <span className="font-mono">{timeAgo(syncedAt)}</span>
     </span>
   );
 }
