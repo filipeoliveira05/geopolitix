@@ -1,26 +1,76 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --paper: #f6f4ef;
+  --surface: #fcfbf8;
+  --ink: #1b1a17;
+  --muted: #6b6558;
+  --rule: #ddd7c9;
+  --seal: #8c6a2f;
+  --seal-soft: rgba(140, 106, 47, 0.1);
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-paper: var(--paper);
+  --color-surface: var(--surface);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-rule: var(--rule);
+  --color-seal: var(--seal);
+  --color-seal-soft: var(--seal-soft);
+  --font-sans: var(--font-plex-sans);
+  --font-display: var(--font-fraunces);
+  --font-mono: var(--font-plex-mono);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --paper: #16130f;
+    --surface: #1e1a14;
+    --ink: #ede9df;
+    --muted: #a39a85;
+    --rule: #3a352a;
+    --seal: #c99a52;
+    --seal-soft: rgba(201, 154, 82, 0.12);
   }
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-sans);
+}
+
+/* Replaces bare hover:underline on in-content text links — transparent
+   underline at rest, solidifies to the accent color on hover/focus. */
+.link-accent {
+  text-decoration-line: underline;
+  text-decoration-color: transparent;
+  text-underline-offset: 2px;
+  transition: text-decoration-color 150ms ease-out;
+}
+.link-accent:hover,
+.link-accent:focus-visible {
+  text-decoration-color: var(--seal);
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 200ms ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-in {
+    animation: none;
+  }
 }
