@@ -533,12 +533,17 @@ backfill (current + past, Senate + House all share one pool/one job) reached **1
 manual `legislator-bio-backfill.yml` triggers), so per this doc's own retirement note below, that
 dedicated workflow's schedule is now paused (`workflow_dispatch` kept as a manual fallback, same
 pattern as `races-sync.yml`'s pause) — the weekly `BACKFILL_SCOPE=recent` pass in `sync.yml` is
-sufficient for ongoing maintenance from here. One known permanent gap, not a bug: a legislator
-whose `congress-legislators` entry has no `wikipedia`
-field at all (confirmed live for bioguide `G000607`, James Gallagher — a real Wikipedia article
-exists, `congress-legislators` just never linked it) can't be resolved by the backfill and stays
-`bio_summary IS NULL` forever unless fixed by hand or upstream — same class of gap as OpenStates'
-missing Governor entries and Wikidata's bare-QID labels elsewhere in this doc.
+sufficient for ongoing maintenance from here. One known gap class, not a bug: a legislator whose
+`congress-legislators` entry has no `wikipedia` field at all can't be resolved by the automated
+backfill and stays `bio_summary IS NULL`/`wikipedia_title IS NULL` forever unless fixed by hand or
+upstream — same class of gap as OpenStates' missing Governor entries and Wikidata's bare-QID
+labels elsewhere in this doc. Bioguide `G000607` (James Gallagher) was this gap's one confirmed
+live instance; `bio_summary`/`photo_url` had already been populated by some earlier means, so only
+`wikipedia_title` was actually null (breaking the "sourced" Wikipedia badge/link on his
+`/legislator/G000607` page) — hand-patched 2026-08-31 to
+`James_Gallagher_(California_politician)` after the user supplied the real article URL. No
+scripted mechanism was added for this — it's a manual, one-off fix, so a future
+`congress-legislators`-sourced gap of this shape would need the same by-hand treatment again.
 
 Base Next.js + Tailwind + TypeScript scaffold in place. Infra checklist (plan §7) mostly done:
 GitHub repo pushed and tracked; Supabase project linked via CLI (credentials in gitignored
