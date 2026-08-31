@@ -42,80 +42,16 @@
 // rationale as legislators.mjs's own BACKFILL_SCOPE.
 import { supabaseAdmin, TRIGGERED_BY } from "./_supabase-admin.mjs";
 import { createChangeLog } from "./_change-log.mjs";
-import {
-  USER_AGENT,
-  fetchWikipediaSummary,
-  mapWithConcurrency,
-  withHardTimeout,
-} from "./_wikipedia.mjs";
+import { fetchWikipediaSummary, mapWithConcurrency, withHardTimeout } from "./_wikipedia.mjs";
+import { sparql, qidFromUri, toDateOnly, chunk, fetchJson } from "./_wikidata.mjs";
 
 const WIKIDATA_API = "https://www.wikidata.org/w/api.php";
-const SPARQL_ENDPOINT = "https://query.wikidata.org/sparql";
 
+// Not part of the _wikidata.mjs extraction (that file's retry logic has its
+// own internal sleep) — this one throttles between per-state main() loop
+// iterations, a concern local to this script.
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-// 502/504 in addition to 429/503 — the query service (unlike the plain
-// wbsearchentities API) genuinely returned a 502 under load during a real
-// full-run test here, a known WDQS gotcha for large/slow queries, not just
-// theoretical.
-const RETRYABLE_STATUSES = new Set([429, 502, 503, 504]);
-
-// No timeout at all let a hung connection block a run indefinitely with
-// zero progress and zero error — hit for real (a run sat with 0 new log
-// lines and flat CPU time for 40+ minutes before being killed by hand).
-// AbortSignal.timeout() turns that into a retryable error instead.
-const FETCH_TIMEOUT_MS = 30_000;
-
-async function fetchJson(url, headers = {}, attempt = 1) {
-  let res;
-  try {
-    res = await fetch(url, {
-      headers: { "User-Agent": USER_AGENT, ...headers },
-      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-    });
-  } catch (err) {
-    // A thrown fetch (DNS failure, connection reset — "TypeError: fetch
-    // failed" wrapping a SocketError, hit for real mid-run against the
-    // query service; or now a timeout abort) never reaches a status code
-    // at all, so it needs its own retry path alongside the below.
-    if (attempt <= 5) {
-      await sleep(3000 * attempt);
-      return fetchJson(url, headers, attempt + 1);
-    }
-    throw err;
-  }
-  if (RETRYABLE_STATUSES.has(res.status) && attempt <= 5) {
-    await sleep(3000 * attempt);
-    return fetchJson(url, headers, attempt + 1);
-  }
-  if (!res.ok) throw new Error(`Request failed: ${res.status} ${res.statusText} (${url})`);
-  const text = await res.text();
-  if (!text) {
-    if (attempt <= 5) {
-      await sleep(3000 * attempt);
-      return fetchJson(url, headers, attempt + 1);
-    }
-    throw new Error(`Empty response after ${attempt} attempts (${url})`);
-  }
-  return JSON.parse(text);
-}
-
-async function sparql(query) {
-  const url = `${SPARQL_ENDPOINT}?query=${encodeURIComponent(query)}`;
-  const data = await fetchJson(url, { Accept: "application/sparql-results+json" });
-  return data.results.bindings;
-}
-
-/** Bare "Q123" from a full "http://www.wikidata.org/entity/Q123" URI. */
-function qidFromUri(uri) {
-  return uri.split("/").pop();
-}
-
-/** "2019-01-07T00:00:00Z" -> "2019-01-07", matching Postgres `date` columns. */
-function toDateOnly(isoString) {
-  return isoString ? isoString.slice(0, 10) : null;
 }
 
 async function findGovernorPositionQid(stateName) {
@@ -153,12 +89,6 @@ async function fetchTerms(positionQid) {
     start: toDateOnly(r.start?.value),
     end: toDateOnly(r.end?.value),
   }));
-}
-
-function chunk(array, size) {
-  const chunks = [];
-  for (let i = 0; i < array.length; i += size) chunks.push(array.slice(i, i + size));
-  return chunks;
 }
 
 // Batched — a long-history state (Connecticut, one of the original
