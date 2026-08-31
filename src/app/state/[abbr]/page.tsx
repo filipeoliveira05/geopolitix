@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { getStateName, isValidStateAbbr } from "@/lib/states";
@@ -14,6 +13,7 @@ import { getRacesForState } from "@/lib/races-data";
 import { StateTabs } from "@/components/StateTabs";
 import { SyncFreshnessRow } from "@/components/SyncFreshnessNote";
 import { getJobFreshness } from "@/lib/sync-freshness";
+import { BackToMapLink } from "@/components/BackToMapLink";
 
 export async function generateMetadata(
   props: PageProps<"/state/[abbr]">,
@@ -58,16 +58,11 @@ export default async function StatePage(props: PageProps<"/state/[abbr]">) {
   ]);
 
   return (
-    <div className="mx-auto w-full max-w-3xl flex-1 p-6 sm:p-10">
-      <Link
-        href="/"
-        className="text-sm text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200"
-      >
-        ← Back to map
-      </Link>
+    <div className="mx-auto w-full max-w-3xl flex-1 animate-fade-in p-6 sm:p-10">
+      <BackToMapLink />
 
-      <h1 className="mt-2 text-3xl font-semibold">
-        {name} <span className="text-zinc-400 dark:text-zinc-600">({abbr})</span>
+      <h1 className="mt-2 font-display text-3xl font-semibold text-ink">
+        {name} <span className="text-muted">({abbr})</span>
       </h1>
       <SyncFreshnessRow
         items={[

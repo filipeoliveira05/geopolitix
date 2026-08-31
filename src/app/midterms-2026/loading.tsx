@@ -9,7 +9,7 @@ export default function Loading() {
 
       <div className="mt-6 grid grid-cols-2 gap-4">
         {[0, 1].map((i) => (
-          <div key={i} className="rounded-md border border-zinc-200 p-4 dark:border-zinc-800">
+          <div key={i} className="rounded border border-rule bg-surface p-4">
             <Skeleton className="h-3 w-24" />
             <Skeleton className="mt-2 h-6 w-20" />
           </div>

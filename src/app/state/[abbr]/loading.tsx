@@ -7,7 +7,7 @@ export default function Loading() {
       <Skeleton className="mt-2 h-9 w-56" />
 
       <div className="mt-6">
-        <div className="flex gap-1 border-b border-zinc-200 dark:border-zinc-800">
+        <div className="flex gap-1 border-b border-rule">
           {["current", "history", "geography", "midterms"].map((k) => (
             <Skeleton key={k} className="mb-2 h-8 w-28 shrink-0" />
           ))}

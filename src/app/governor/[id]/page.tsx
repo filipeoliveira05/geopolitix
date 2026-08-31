@@ -17,6 +17,8 @@ import {
   WikipediaSourcedBadge,
   WikipediaNoPageBadge,
 } from "@/components/WikipediaVerifiedBadge";
+import { SectionHeading } from "@/components/SectionHeading";
+import { BackToMapLink } from "@/components/BackToMapLink";
 
 type Profile = {
   name: string;
@@ -89,13 +91,8 @@ export default async function GovernorPage(props: PageProps<"/governor/[id]">) {
   const stateName = getStateName(profile.stateId) ?? profile.stateId;
 
   return (
-    <div className="mx-auto w-full max-w-3xl flex-1 p-6 sm:p-10">
-      <Link
-        href="/"
-        className="text-sm text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200"
-      >
-        ← Back to map
-      </Link>
+    <div className="mx-auto w-full max-w-3xl flex-1 animate-fade-in p-6 sm:p-10">
+      <BackToMapLink />
 
       <div className="mt-2 flex items-center gap-4">
         {profile.photoUrl && (
@@ -107,10 +104,10 @@ export default async function GovernorPage(props: PageProps<"/governor/[id]">) {
           </div>
         )}
         <div>
-          <h1 className="text-3xl font-semibold">{profile.name}</h1>
-          <p className="text-sm text-zinc-500 dark:text-zinc-400">
+          <h1 className="font-display text-3xl font-semibold text-ink">{profile.name}</h1>
+          <p className="text-sm text-muted">
             <PartyBadge party={profile.party} /> Governor of{" "}
-            <Link href={`/state/${profile.stateId}`} className="hover:underline">
+            <Link href={`/state/${profile.stateId}`} className="link-accent">
               {stateName}
             </Link>
           </p>
@@ -118,10 +115,8 @@ export default async function GovernorPage(props: PageProps<"/governor/[id]">) {
       </div>
 
       <div className="mt-6">
-        <div className="flex items-center justify-between gap-2">
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
-            Biography
-          </h2>
+        <div className="flex items-center justify-between gap-2 border-b border-rule pb-1">
+          <SectionHeading>Biography</SectionHeading>
           {profile.bioSummary &&
             (profile.wikipediaVerified ? (
               <WikipediaVerifiedBadge title={profile.wikipediaTitle} />
@@ -130,24 +125,19 @@ export default async function GovernorPage(props: PageProps<"/governor/[id]">) {
             ))}
           {!profile.bioSummary && profile.wikipediaCheckedNo && <WikipediaNoPageBadge />}
         </div>
-        <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-          {profile.bioSummary ?? "Not synced yet."}
-        </p>
+        <p className="mt-1 text-sm text-muted">{profile.bioSummary ?? "Not synced yet."}</p>
       </div>
 
       <div className="mt-6">
-        <h2 className="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
-          Term history
-        </h2>
+        <div className="border-b border-rule pb-1">
+          <SectionHeading>Term history</SectionHeading>
+        </div>
         {profile.terms.length > 0 ? (
-          <div className="mt-1 overflow-x-auto overflow-y-hidden">
+          <div className="mt-2 overflow-x-auto overflow-y-hidden">
             <table className="w-full min-w-[26rem] border-collapse text-sm">
               <tbody>
                 {profile.terms.map((term) => (
-                  <tr
-                    key={term.id}
-                    className="border-b border-zinc-100 last:border-0 dark:border-zinc-800"
-                  >
+                  <tr key={term.id} className="border-b border-rule last:border-0">
                     <td className="w-px py-1.5 pr-1.5 align-middle">
                       {term.isCurrent && (
                         <span
@@ -162,7 +152,7 @@ export default async function GovernorPage(props: PageProps<"/governor/[id]">) {
                     <td className="w-px py-1.5 pr-3 align-middle whitespace-nowrap">
                       <PartyBadge party={term.party} />
                     </td>
-                    <td className="py-1.5 text-right align-middle whitespace-nowrap text-zinc-500 dark:text-zinc-400">
+                    <td className="py-1.5 text-right align-middle whitespace-nowrap font-mono text-muted">
                       {term.startDate ?? "?"} – {term.endDate ?? (term.isCurrent ? "present" : "?")}
                     </td>
                   </tr>
@@ -171,7 +161,7 @@ export default async function GovernorPage(props: PageProps<"/governor/[id]">) {
             </table>
           </div>
         ) : (
-          <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+          <p className="mt-1 text-sm text-muted">
             Term dates not available — OpenStates has no history, and this person&apos;s Wikidata
             term record didn&apos;t match cleanly (see sync_logs).
           </p>

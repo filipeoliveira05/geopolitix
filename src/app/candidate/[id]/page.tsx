@@ -1,4 +1,3 @@
-import Link from "next/link";
 import Image from "next/image";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
@@ -7,6 +6,8 @@ import { getCandidateById } from "@/lib/candidates-data";
 import { PartyBadge } from "@/components/PartyBadge";
 import { GlobalFooter } from "@/components/GlobalFooter";
 import { WikipediaVerifiedBadge, WikipediaNoPageBadge } from "@/components/WikipediaVerifiedBadge";
+import { SectionHeading } from "@/components/SectionHeading";
+import { BackToMapLink } from "@/components/BackToMapLink";
 
 const OFFICE_LABELS = {
   senate: "U.S. Senate",
@@ -34,13 +35,8 @@ export default async function CandidatePage(props: PageProps<"/candidate/[id]">)
       : OFFICE_LABELS[race.office];
 
   return (
-    <div className="mx-auto w-full max-w-3xl flex-1 p-6 sm:p-10">
-      <Link
-        href="/"
-        className="text-sm text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200"
-      >
-        ← Back to map
-      </Link>
+    <div className="mx-auto w-full max-w-3xl flex-1 animate-fade-in p-6 sm:p-10">
+      <BackToMapLink />
 
       <div className="mt-2 flex items-center gap-4">
         {candidate.photoUrl && (
@@ -52,8 +48,8 @@ export default async function CandidatePage(props: PageProps<"/candidate/[id]">)
           </div>
         )}
         <div>
-          <h1 className="text-3xl font-semibold">{candidate.name}</h1>
-          <p className="text-sm text-zinc-500 dark:text-zinc-400">
+          <h1 className="font-display text-3xl font-semibold text-ink">{candidate.name}</h1>
+          <p className="text-sm text-muted">
             <PartyBadge party={race.party} /> {race.isIncumbent && "Incumbent — "}Running for{" "}
             {officeLabel} in {getStateName(race.stateId) ?? race.stateId}
           </p>
@@ -61,10 +57,8 @@ export default async function CandidatePage(props: PageProps<"/candidate/[id]">)
       </div>
 
       <div className="mt-6">
-        <div className="flex items-center justify-between gap-2">
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
-            Biography
-          </h2>
+        <div className="flex items-center justify-between gap-2 border-b border-rule pb-1">
+          <SectionHeading>Biography</SectionHeading>
           {candidate.bioSummary && candidate.wikipediaVerified && (
             <WikipediaVerifiedBadge title={candidate.wikipediaTitle} />
           )}
@@ -72,17 +66,15 @@ export default async function CandidatePage(props: PageProps<"/candidate/[id]">)
         </div>
         {candidate.bioSummary ? (
           <>
-            <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">{candidate.bioSummary}</p>
+            <p className="mt-1 text-sm text-muted">{candidate.bioSummary}</p>
             {!candidate.wikipediaVerified && (
-              <p className="mt-2 text-xs text-zinc-400 dark:text-zinc-600">
+              <p className="mt-2 text-xs text-muted">
                 Bio matched automatically from Wikipedia and hasn&apos;t been manually verified.
               </p>
             )}
           </>
         ) : (
-          <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-            No biography available yet.
-          </p>
+          <p className="mt-1 text-sm text-muted">No biography available yet.</p>
         )}
       </div>
 
