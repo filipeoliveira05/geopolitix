@@ -1,7 +1,6 @@
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { getStateName, isValidStateAbbr } from "@/lib/states";
-import { getMockStateSummary } from "@/lib/mock-states";
 import {
   getCurrentSenators,
   getCurrentRepresentatives,
@@ -10,6 +9,11 @@ import {
 } from "@/lib/legislators-data";
 import { getGovernor, getGovernorHistory, governorFullName } from "@/lib/governors-data";
 import { getRacesForState } from "@/lib/races-data";
+import {
+  getStateGeography,
+  getCitiesForState,
+  getSportsTeamsForState,
+} from "@/lib/geography-data";
 import { StateTabs } from "@/components/StateTabs";
 import { SyncFreshnessRow } from "@/components/SyncFreshnessNote";
 import { getJobFreshness } from "@/lib/sync-freshness";
@@ -33,7 +37,6 @@ export default async function StatePage(props: PageProps<"/state/[abbr]">) {
   }
 
   const name = getStateName(abbr)!;
-  const summary = getMockStateSummary(abbr);
   const [
     governor,
     senators,
@@ -42,6 +45,9 @@ export default async function StatePage(props: PageProps<"/state/[abbr]">) {
     houseHistory,
     governorHistory,
     races,
+    geography,
+    cities,
+    sportsTeams,
   ] = await Promise.all([
     getGovernor(abbr),
     getCurrentSenators(abbr),
@@ -50,12 +56,18 @@ export default async function StatePage(props: PageProps<"/state/[abbr]">) {
     getHouseHistory(abbr),
     getGovernorHistory(abbr),
     getRacesForState(abbr),
+    getStateGeography(abbr),
+    getCitiesForState(abbr),
+    getSportsTeamsForState(abbr),
   ]);
-  const [legislatorsSyncedAt, governorsSyncedAt, governorHistorySyncedAt] = await Promise.all([
-    getJobFreshness(["legislators"]),
-    getJobFreshness(["governors"]),
-    getJobFreshness(["governor_history"]),
-  ]);
+  const [legislatorsSyncedAt, governorsSyncedAt, governorHistorySyncedAt, geographySyncedAt, sportsSyncedAt] =
+    await Promise.all([
+      getJobFreshness(["legislators"]),
+      getJobFreshness(["governors"]),
+      getJobFreshness(["governor_history"]),
+      getJobFreshness(["geography"]),
+      getJobFreshness(["sports"]),
+    ]);
 
   return (
     <div className="mx-auto w-full max-w-3xl flex-1 animate-fade-in p-6 sm:p-10">
@@ -69,6 +81,8 @@ export default async function StatePage(props: PageProps<"/state/[abbr]">) {
           { label: "Legislators", syncedAt: legislatorsSyncedAt },
           { label: "Governor", syncedAt: governorsSyncedAt },
           { label: "Governor history", syncedAt: governorHistorySyncedAt },
+          { label: "Geography", syncedAt: geographySyncedAt },
+          { label: "Sports", syncedAt: sportsSyncedAt },
         ]}
         className="mt-1"
       />
@@ -82,8 +96,12 @@ export default async function StatePage(props: PageProps<"/state/[abbr]">) {
               ? { id: governor.id, name: governorFullName(governor), party: governor.party ?? "" }
               : null
           }
-          capital={summary?.capital ?? null}
-          population={summary?.population ?? null}
+          capital={geography?.capitalName ?? null}
+          population={geography?.population ?? null}
+          region={geography?.region ?? null}
+          flagUrl={geography?.flagUrl ?? null}
+          cities={cities}
+          sportsTeams={sportsTeams}
           senators={senators}
           representatives={representatives}
           senateHistory={senateHistory}

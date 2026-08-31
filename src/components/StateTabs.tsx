@@ -10,6 +10,7 @@ import {
 } from "@/lib/legislators-data";
 import type { GovernorTerm } from "@/lib/governors-data";
 import { primaryPendingMessage, type Race } from "@/lib/races-data";
+import type { City, SportsTeam } from "@/lib/geography-data";
 
 type TabKey = "current" | "history" | "geography" | "midterms";
 
@@ -26,6 +27,10 @@ export type StateTabsProps = {
   governor: { id: string; name: string; party: string } | null;
   capital: string | null;
   population: number | null;
+  region: string | null;
+  flagUrl: string | null;
+  cities: City[];
+  sportsTeams: SportsTeam[];
   senators: TermWithLegislator[];
   representatives: TermWithLegislator[];
   senateHistory: TermWithLegislator[];
@@ -372,27 +377,73 @@ function HistoryTab({ senateHistory, houseHistory, governorHistory }: StateTabsP
   );
 }
 
-function GeographyTab({ capital, population }: StateTabsProps) {
+function GeographyTab({ capital, population, region, flagUrl, cities, sportsTeams }: StateTabsProps) {
   return (
     <div className="flex flex-col gap-6">
       <Section title="Overview">
-        {capital || population ? (
-          <p>
-            {capital && <>Capital: {capital}</>}
-            {capital && population && " · "}
-            {population && <>Population: {population.toLocaleString()}</>}
-          </p>
+        {capital || population || region || flagUrl ? (
+          <div className="flex items-center gap-3">
+            {flagUrl && (
+              // eslint-disable-next-line @next/next/no-img-element -- external Commons URL, same convention as photo_url elsewhere
+              <img src={flagUrl} alt="" className="h-8 w-auto shrink-0 rounded-sm" />
+            )}
+            <p>
+              {capital && <>Capital: {capital}</>}
+              {capital && population && " · "}
+              {population && <>Population: {population.toLocaleString()}</>}
+              {(capital || population) && region && " · "}
+              {region && <>Region: {region}</>}
+            </p>
+          </div>
         ) : (
           <Empty>No geography data yet — not synced for this state.</Empty>
         )}
       </Section>
 
       <Section title="Most populous cities">
-        <Empty>Not built yet — Phase 2 of the plan.</Empty>
+        {cities.length > 0 ? (
+          <div className="overflow-x-auto overflow-y-hidden">
+            <table className="w-full min-w-[24rem] border-collapse text-sm">
+              <tbody>
+                {cities.map((city) => (
+                  <tr key={city.id} className="border-b border-rule last:border-0">
+                    <td className="py-1.5 pr-3 align-middle">
+                      {city.name}
+                      {city.isCapital && (
+                        <span className="ml-1.5 rounded bg-seal-soft px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-seal">
+                          Capital
+                        </span>
+                      )}
+                    </td>
+                    <td className="py-1.5 text-right align-middle font-mono text-muted">
+                      {city.population ? city.population.toLocaleString() : "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <Empty>No city data yet — not synced for this state.</Empty>
+        )}
       </Section>
 
       <Section title="Sports teams">
-        <Empty>Not built yet — Phase 2 of the plan.</Empty>
+        {sportsTeams.length > 0 ? (
+          <ul className="flex flex-col gap-1">
+            {sportsTeams.map((team) => (
+              <li key={team.id}>
+                {team.name}{" "}
+                <span className="text-xs font-medium uppercase tracking-wide text-muted">
+                  {team.league}
+                </span>{" "}
+                <span className="text-muted">({team.cityName})</span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <Empty>No major-league sports teams synced for this state.</Empty>
+        )}
       </Section>
     </div>
   );
