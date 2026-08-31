@@ -146,18 +146,16 @@ export function SearchOverlay({ onClose, entries, isLoading }: SearchOverlayProp
 // (see the coverage caveats documented in CLAUDE.md). `unoptimized` matches
 // how /legislator/[id] etc. already render these same external URLs (no
 // remotePatterns configured — this app never proxies photos through Next's
-// image optimizer).
+// image optimizer). `fill`, not width/height props — see
+// legislator/[id]/page.tsx's comment on the same pattern for why (a real
+// Next.js dev-warning race with non-square source photos + object-cover
+// cropping).
 function ResultAvatar({ entry }: { entry: SearchEntry }) {
   if (entry.photoUrl) {
     return (
-      <Image
-        src={entry.photoUrl}
-        alt=""
-        width={32}
-        height={32}
-        unoptimized
-        className="h-8 w-8 shrink-0 rounded-full object-cover"
-      />
+      <div className="relative h-8 w-8 shrink-0 overflow-hidden rounded-full">
+        <Image src={entry.photoUrl} alt="" fill unoptimized className="object-cover" />
+      </div>
     );
   }
   return (

@@ -44,14 +44,12 @@ export default async function CandidatePage(props: PageProps<"/candidate/[id]">)
 
       <div className="mt-2 flex items-center gap-4">
         {candidate.photoUrl && (
-          <Image
-            src={candidate.photoUrl}
-            alt=""
-            width={80}
-            height={80}
-            unoptimized
-            className="h-20 w-20 rounded object-cover"
-          />
+          // `fill`, not width/height props — see legislator/[id]/page.tsx's
+          // comment on the same pattern for why (a real Next.js dev-warning
+          // race with non-square source photos + object-cover cropping).
+          <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded">
+            <Image src={candidate.photoUrl} alt="" fill unoptimized className="object-cover" />
+          </div>
         )}
         <div>
           <h1 className="text-3xl font-semibold">{candidate.name}</h1>

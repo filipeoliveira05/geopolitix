@@ -47,14 +47,17 @@ export default async function LegislatorPage(props: PageProps<"/legislator/[id]"
 
       <div className="mt-2 flex items-center gap-4">
         {legislator.photoUrl && (
-          <Image
-            src={legislator.photoUrl}
-            alt=""
-            width={80}
-            height={80}
-            unoptimized
-            className="h-20 w-20 rounded object-cover"
-          />
+          // `fill` (not width/height props) — the source photo isn't
+          // square (450x550), and pairing fixed width/height props with
+          // object-cover CSS to force a square crop is a known Next.js
+          // dev-warning race: the cached <img>'s `load` event can fire
+          // before Tailwind's box-sizing classes finish cascading,
+          // triggering a spurious "width or height modified" warning.
+          // `fill` sidesteps that check entirely — it's the pattern
+          // Next.js itself recommends for cropping to a fixed box.
+          <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded">
+            <Image src={legislator.photoUrl} alt="" fill unoptimized className="object-cover" />
+          </div>
         )}
         <div>
           <h1 className="text-3xl font-semibold">{legislatorFullName(legislator)}</h1>
