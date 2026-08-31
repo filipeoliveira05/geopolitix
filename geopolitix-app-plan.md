@@ -43,7 +43,7 @@ No hardcoded data in the codebase.
 2. A **manual refresh** (today: `npm run sync:<name>`) can force a pull any time, and is the only mechanism for tables without automatic sync.
 3. The production app **always reads from Supabase**, never calls external APIs directly from the browser.
 
-**Current implementation state** (see `CLAUDE.md` Status for the up-to-date picture): `states`, `legislators`/`terms`, `governors`, `races_2026`/`race_candidates`, and `districts` sync scripts all write directly to Supabase — though `districts`' actual geometry lives in a Supabase Storage bucket rather than a table column (§7 step 10 explains why). Geography/sports sync aren't built yet; follow the Supabase-writing pattern when building them.
+**Current implementation state** (see `CLAUDE.md` Status for the up-to-date picture): `states`, `legislators`/`terms`, `governors`, `races_2026`/`race_candidates`, `districts`, `cities`, and `sports_teams` sync scripts all write directly to Supabase — though `districts`' actual geometry lives in a Supabase Storage bucket rather than a table column (§7 step 10 explains why).
 
 **Derived/joined geometry is a separate concern from syncing.** Anything computed by combining two already-synced datasets — e.g. joining district shapes to current reps' party, or splitting a state's real geometry into per-senator halves — belongs in `src/lib/*-geo.ts`, computed at read time and memoized, not precomputed by a sync script.
 
@@ -93,11 +93,11 @@ No hardcoded data in the codebase.
 - **Census Bureau cartographic boundary files** (current Congress, e.g. 119th) — official, no key, pre-generalized for web use (smaller/faster than full TIGER/Line detail). In use via `sync:districts`.
 - `unitedstates/districts` (GitHub) — **stale**, last full-nationwide set is from 2016 (pre-2020-census redistricting; later folders are single-state off-cycle updates only). Don't use without re-verifying it's had a genuine full-nationwide update since.
 
-### Geography (Phase 2, not started)
-- US Census Bureau API (population), Wikidata/Wikipedia REST (capitals, founding dates), GeoNames (city coordinates) — likely Census for population + Wikidata for structured facts + GeoNames as a coordinates fallback, but the exact combination is picked at Phase 2 start (§9).
+### Geography (Phase 2, shipped 2026-08-31)
+- **Wikidata SPARQL only**, not the Census+GeoNames combination originally sketched here — reuses the no-key pattern already proven in `sync:governor-history`, now shared via `scripts/sync/_wikidata.mjs`. Full source/query detail and several real live-discovered fixes (a `P131+` transitive-closure timeout, city-vs-non-city classification, DC's one-off handling) are in `CLAUDE.md`'s Data conventions section — don't re-derive here.
 
-### Sports (Phase 2, not started)
-- TheSportsDB API — free tier, sports teams by city/state/league.
+### Sports (Phase 2, shipped 2026-08-31)
+- **Not TheSportsDB** — its free key turned out to hard-cap every league's team list at 10 results (confirmed live), unusable for full rosters. Sourced instead by parsing Wikipedia's own "List of professional sports teams in the United States and Canada" article. Full parsing detail and a real row-format edge case (the NHL's Seattle Kraken/Vancouver Canucks rows) are in `CLAUDE.md`'s Data conventions section.
 
 ### `unitedstates` GitHub org — other repos worth knowing about
 The org (`github.com/unitedstates`) has ~40 repos total; most haven't been touched since
@@ -271,7 +271,7 @@ involved).
   (House) — see `CLAUDE.md`'s UI conventions for why not three modes and how split-party states
   render.
 - Clicking either mode selects a state (Districts additionally tracks which district).
-- A future "Geography" mode (Phase 2) will layer capitals/cities/sports onto the same map.
+- **Not planned:** a dedicated "Geography" map mode. Geography content lives as a tab on `/state/[abbr]` instead (shipped 2026-08-31) — reconsidered and deliberately not added here, since a per-state tab already covers this app's actual use case without a third map mode alongside States/Districts.
 - In a political mode: option to highlight states with contested 2026 races.
 
 ### `/state/[abbr]` — State Page
@@ -325,8 +325,8 @@ CLAUDE.md's data-conventions section):
 | Sync governor history (current term) | Wikidata | Weekly (`sync.yml`, rides along with governors in the same run), `GOVERNOR_HISTORY_SCOPE=current` — only that state's current term row + its bio backfill (`BACKFILL_SCOPE=recent`) get written | `governor_terms` (current term per state) |
 | Sync governor history (full statehood-to-now) | Wikidata | **Manual only** (`npm run sync:governor-history` with `GOVERNOR_HISTORY_SCOPE` unset) — same crowdsourced-correction rationale as legislators | `governor_terms` (full history) |
 | Sync districts/geometry | Census cartographic boundary files | Manual only (~static, redistricting is ~once/decade) | `districts` |
-| Sync geography (population/capital/cities) | Census Bureau API, Wikidata | **Not built yet** (Phase 2) — suggested monthly once it exists | `states` (population/capital columns), `cities` |
-| Sync sports | TheSportsDB API | Not built yet (Phase 2) — manual only once built (~static) | `sports_teams` |
+| Sync geography (population/capital/cities) | Wikidata | Manual only (`npm run sync:geography`) — this data changes on the order of years to decades, same reasoning as `districts` | `states` (population/region/flag_url/capital_city_id columns), `cities` |
+| Sync sports | Wikipedia (team-list page parsing) | Manual only (`npm run sync:sports`, must run after `sync:geography`) — franchise rosters/relocations change rarely | `sports_teams` |
 | Sync 2026 races (Senate + Governor + House, pending states only) | Wikipedia infobox parsing | Weekly, **its own separate workflow** (`races-sync.yml`, decoupled from `sync.yml` since 2026-08-29 so this cadence can move independently — e.g. paused after the last 2026 primaries (Sep 15) and resumed near the Nov 3 general; offset an hour to Monday 07:00 UTC as of 2026-08-30, since `sync.yml`'s own 06:00 UTC run can also hit Wikipedia's REST API and the two shouldn't compound rate-limit pressure by starting at the same moment), `RACES_SCOPE=pending` — only re-fetches states whose primary isn't resolved yet in our own data (confirmed live: 28/506 races needed a real fetch on a real run) | `races_2026`, `race_candidates`, plus matching against current legislators/governors (`matched_legislator_id`/`matched_governor_id`) |
 | Sync 2026 races (full sweep, every state) | Wikipedia infobox parsing | **Manual only** (`RACES_SCOPE` unset/`"full"`) — an occasional full resync, and mandatory for the Nov 3 general itself, when every state needs re-checking regardless of primary status | same as above |
 | Sync challenger candidate bios (recent backlog) | Wikipedia REST API | Folded into the weekly `races-sync.yml` run, budget-capped (`BACKFILL_BUDGET_MS`, 10 min) so a normal week stays short | `candidates.bio_summary`/`photo_url` |

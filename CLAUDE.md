@@ -293,18 +293,108 @@ Build order: **Phase 1 politics → Phase 2 geography → Phase 3 quiz.** Don't 
   (`GOVERNOR_HISTORY_SCOPE=current`) all correctly reported "unchanged" on a clean rerun, and
   `races-2026.mjs`'s `CANDIDATES_BACKFILL_ONLY` path correctly itemized 7 "no wikipedia match"
   candidates by name (MA/RI, pending-primary states) where the old log only said "Backfilled 0".
-- **Not built yet:** geography/sports sync (Phase 2). Source research is in plan §3. **A `cities`/
-  `sports_teams` schema already exists** (`cities`: name/state_id/population/is_capital/latitude/
-  longitude, FK to `states`; `sports_teams`: name/league/city_id, FK to `cities`; `states` also
-  carries a `capital_city_id` FK into `cities`) — real early scaffolding from the very start of the
-  project, built directly against the live database rather than through a migration, which is why
-  it went undetected until Supabase's Advisors flagged both tables as "RLS enabled, no policy"
-  (2026-08-31). Formally adopted into version control via
-  `20260831160000_adopt_geography_scaffolding.sql` (idempotent — matches what already existed
-  live) with the same public-read policy/grant every other table uses. Both tables are still
-  **empty and unused** — nothing syncs into them or reads from them yet, and the actual source
-  choice (Census/Wikidata/GeoNames per the Open decisions section) isn't locked in — treat this
-  schema as a starting draft to revise, not a settled design, when Phase 2 actually starts.
+- **`geography.mjs`/`sports.mjs` (Phase 2, added 2026-08-31)** — populate the `cities`/
+  `sports_teams` schema that had existed empty since early scaffolding (see the adoption-migration
+  note this entry used to carry; both tables are now real, live data: 533 cities, 142 teams,
+  confirmed live). Both are **manual-only** (`npm run sync:geography` / `sync:sports`, no GitHub
+  Actions wiring) — this data changes on the order of years to decades, same reasoning `districts`
+  already established. `sports.mjs` must run AFTER `geography.mjs` (FK dependency on `cities`).
+  **Wikidata only** for geography (population/region/flag/capital/cities), not the plan's original
+  Census+Wikidata+GeoNames sketch — reuses the no-key SPARQL pattern already proven in
+  `governor-history.mjs`, now extracted into a shared `scripts/sync/_wikidata.mjs` (`sparql`,
+  `fetchJson`, `qidFromUri`, `toDateOnly`, `chunk`, `parsePoint`, `lookupCityFacts`) — pure
+  extraction, `governor-history.mjs`'s own behavior unchanged (verified live: a `GOVERNOR_HISTORY_SCOPE=current`
+  rerun after the extraction reported "50 unchanged" as expected). `region` is a static
+  `src/data/state-regions.json` lookup (the 4-region Census classification never changes), not
+  sourced from any API, same idea as `fips-to-abbr.json`.
+  **Real, live-discovered gotchas, several full iterations each:**
+  - **`?city wdt:P131+ wd:${stateQid}` (unbounded transitive "located in") times out/502s for a
+    real state** — isolated live: California alone has 83,625 entities transitively P131-linked to
+    it (every neighborhood/precinct chains up eventually), which WDQS can't resolve in its query
+    timeout. Fixed by bounding to exactly city->county->state (2 hops, via a `UNION`) — verified
+    live against California (huge), Vermont (New England "town"-form government), and Alaska
+    (unusual borough structure) before trusting the shape.
+  - **Classifying "is this a real city" took three real attempts.** A curated Wikidata-class
+    allowlist (`wd:Q1093829`/`wd:Q515`/etc.) worked for most states but missed Pennsylvania's
+    largest city, Philadelphia (its actual classes are "consolidated city-county" and a
+    PER-STATE class, "city of Pennsylvania" — not practical to enumerate "city of X" for 50
+    states). Fetching the full ~408-entry subclass-of-`Q515` closure once and reusing it as a
+    `VALUES` allowlist still 502'd combined with the 2-hop `UNION`. Landed on a two-stage,
+    keyword-based approach instead: fetch a large (100) population-ranked candidate pool with NO
+    class filter (fast), then check only those ~100 known entities' classes in a second, cheap
+    bounded query, keeping a candidate only if ANY of its classes' LABEL contains "city"/"town"/
+    "village"/"municipality"/"census-designated place"/"borough"/"township" — a positive keyword
+    match on the class label (not a QID allowlist, not an exclude-by-name blocklist — both tried
+    and abandoned live, since the leaking non-city entities kept changing shape: counties,
+    metropolitan/micropolitan/combined-statistical areas, congressional/state-legislative
+    districts, water districts, dioceses) generalizes correctly across every real state-specific
+    settlement class. Verified live against California, Pennsylvania, Vermont, and Alaska.
+  - **A single state's city-fetch failure must not crash the whole run** — caught live: after the
+    P131+ fix above, a persistent failure on one state's query still crashed `mapWithConcurrency`'s
+    `Promise.all`, losing every other state's already-fetched work (same class of mistake
+    `governors.mjs` already learned from — a single unretried PA 502 once lost all 50 states'
+    progress there). Fixed with a per-state try/catch, falling back to capital-only for that one
+    state and logging a warning instead.
+  - **DC bypasses the whole top-10 mechanism entirely**, not just an empty-result fallback — P36
+    ("capital") has no value on DC's own Wikidata entity (a state can't be its own capital), and
+    the city->county->state search finds nothing (DC has no county substructure). A first fix
+    (fallback only when the result list was empty) still let through a real but wrong result on a
+    second live run — DC's search actually returns "Logan Circle" (a real DC neighborhood matching
+    the settlement-keyword filter), which got wrongly stored as DC's only "city." Fixed by
+    skipping the search for DC entirely and synthesizing its one row directly from the population
+    already resolved at the state level (DC's state-level and city-level population are the same
+    figure, since it's one entity).
+  - **A city name can legitimately duplicate within one state's fetched list** — Wikidata
+    occasionally carries more than one `P625` coordinate statement for the same entity at
+    different precision, and `SELECT DISTINCT` operates on the whole result tuple, so two rows
+    differing only in `coord` both survive it. An undeduped duplicate violates the `(state_id,
+    name)` unique constraint (below) and fails the whole batch upsert atomically — fixed by
+    deduping by name (first-seen wins, since results are population-sorted) before upserting.
+  - **`states.upsert()` needs `name` in every row, even for existing states** — caught live:
+    Postgres rejects an entire `INSERT ... ON CONFLICT DO UPDATE` batch if any proposed row is
+    missing a `NOT NULL` column, even for a row that will resolve as an UPDATE (Postgres has to
+    construct the full candidate row, defaults and all, before conflict resolution even runs).
+    `states.name` (seeded by `states.mjs`) was never included in `geography.mjs`'s upsert payload
+    — fixed by selecting and reusing each state's already-seeded name.
+  - **`cities`/`sports_teams` needed real unique constraints before any of this worked** —
+    `20260831190000_cities_sports_unique_constraints.sql` adds `unique (state_id, name)` on
+    `cities` and `unique (league, name)` on `sports_teams` (both tables previously had only a
+    surrogate uuid PK from their original empty-scaffolding migration). Verified live: reruns of
+    both scripts correctly report "unchanged"/no new rows, not duplicates.
+  - **TheSportsDB (the plan's original §3 suggestion) turned out to be unusable**: confirmed live
+    that its free key hard-caps every league's team list at 10 results (e.g. NFL's 32 teams
+    truncated to 10, alphabetically) with no pagination workaround — a state with a real team
+    showing none would read as a bug on the Geography tab. `sports.mjs` instead parses Wikipedia's
+    own "List of professional sports teams in the United States and Canada" article — one page,
+    one wikitable per league (NFL/NBA/MLB/NHL/MLS), each league's table located by heading TEXT at
+    runtime (not a hardcoded section index, which drifts as the page is edited) via MediaWiki's
+    own `action=parse&prop=sections`. NFL/NBA/MLB/NHL tables have 5 columns (Conference, Division,
+    Team, Location, Venue) with `rowspan` header cells; MLS has 4 (no Division) — one parser
+    handles both shapes by taking, from each row's own wikitext block, every `"|"`-prefixed
+    (non-`"!"`) line joined together before splitting on `"||"`, then keeping the LAST 3 resulting
+    cells (Team, Location, Venue) — robust to the column-count difference and to `rowspan` cells
+    (always `"!"`-prefixed, never counted). **A genuine parser edge case, caught live**: the NHL's
+    Seattle Kraken and Vancouver Canucks rows put Team on its own line with Location/Venue on a
+    SEPARATE following line (unlike every other row, all three on one line) — an earlier version
+    of the parser picked only the single line that already contained `"||"`, silently
+    mis-assigning Location+Venue as [team, location] and losing Seattle Kraken (a real US team)
+    into the "skipped" list under a garbage name. Fixed by joining ALL of a row's `"|"`-lines
+    before splitting, which handles both row shapes uniformly. Canadian teams (Toronto/Montreal/
+    Ottawa/Winnipeg/Calgary/Edmonton/Vancouver) are filtered out for free: their location's
+    province name simply doesn't match any entry in the US state name->abbr map built the same way
+    `states.mjs` seeds `states` from (`us-atlas` + `fips-to-abbr.json`). Washington D.C. teams use
+    the literal `"[[Washington, D.C.]]"` wikilink (no comma-separated "state" the normal parser
+    extracts), handled as an explicit special case. **Verified live, exact real-world counts**:
+    NFL 32, NBA 29 (30 minus Toronto), MLB 29 (30 minus Toronto), NHL 25 (32 minus 7 Canadian
+    teams), MLS 27 (30 minus 3 Canadian teams) — 142 total, 12 correctly skipped as Canadian, 0
+    incorrectly skipped. A team whose home city isn't already one of that state's top-10-by-
+    population + capital rows (e.g. Green Bay for the Packers) gets a new `cities` row upserted
+    via `_wikidata.mjs`'s `lookupCityFacts()` — itself needed a fix live: "Green Bay" is
+    genuinely ambiguous on Wikidata (the city AND the actual bay/lake both carry that exact label
+    and both link into Wisconsin's P131 hierarchy), and an unconstrained `LIMIT 1` with no `ORDER
+    BY` non-deterministically picked the bay (no population) over the city on one real test —
+    fixed by making `?city wdt:P1082 ?population` a REQUIRED triple, not optional, which
+    effectively filters to populated places only.
 - **House terms/races join on `district_number` (plain int)** — the map, `getCurrentRepsByDistrictKey()`,
   and every House `StateTabs.tsx` display all key off it; see the `districts` entry above for why
   the once-parallel `district_id` FK column was dropped rather than wired up.
@@ -519,8 +609,6 @@ Build order: **Phase 1 politics → Phase 2 geography → Phase 3 quiz.** Don't 
   auth only if something worth saving per-user (quiz progress) gets built.
 - **Congress history: full depth everywhere**, matching Senate's `getSenateHistory()`. Capping
   is a UI task (collapse/paginate once House/Governors history exists), not a data-scope one.
-- **Geography sync (Phase 2):** Claude Code picks the Census/Wikidata/GeoNames combination at
-  Phase 2 start — not locked in now.
 - **Still open:** MapLibre vs. Mapbox (recommendation: MapLibre, already in use, no reason to
   revisit — flag if work ever depends on switching).
 
@@ -576,7 +664,10 @@ a data-completeness pass (governor history, loading/error states) has since ship
 it. A full visual design-system overhaul (typography, color tokens, shared Card/SectionHeading/
 BackToMapLink primitives — see UI conventions' Design system entry) shipped 2026-08-31, replacing
 the original default-Next.js look app-wide; the app's actual pages/data/routing are unchanged by
-it. Next up per the build order is Phase 2 (geography/sports sync), unless told otherwise.
+it. **Phase 2 (geography/sports) is also complete**, shipped 2026-08-31 — see the
+`geography.mjs`/`sports.mjs` entry in Data conventions above for the full sync writeup and its
+several real live-discovered gotchas. Next up per the build order is Phase 3 (quiz), unless told
+otherwise.
 
 **Profile data coverage (name/photo/bio/term history), verified live — a living snapshot, not a
 one-time claim; re-check the actual counts before trusting old numbers here:**
@@ -647,7 +738,7 @@ doesn't apply here. `withHardTimeout` (`_wikipedia.mjs`) combines a real `Promis
 signal — both matter; an earlier version had only one or the other and let stuck retries pile
 up silently.
 
-Remaining: geography/sports sync (Phase 2).
+Remaining: quiz (Phase 3).
 
 **Home page** (`src/app/page.tsx` + `UsMap.tsx`): interactive MapLibre map, two modes (see UI
 conventions) — States (default, current Senate delegation) and Districts (current House
@@ -733,7 +824,10 @@ tally rather than counted as anything, so the total can legitimately read a litt
 plan §5 — current representation (real, including governor); history (real Senate, House, AND
 governor history back to statehood as aligned tables, current officeholder marked with a dot
 rather than "(current)" text — see UI conventions; `getHouseHistory()` mirrors
-`getSenateHistory()`); geography (mock, cities/sports flagged "Phase 2, not built"); 2026 midterms
+`getSenateHistory()`); geography (real, added 2026-08-31 — capital/population/region/flag in an
+Overview line, a "Most populous cities" table with a capital badge, a "Sports teams" list grouped
+by league, all from `src/lib/geography-data.ts`; see the `geography.mjs`/`sports.mjs` entry in
+Data conventions above for the sync itself); 2026 midterms
 (real — Senate, Governor, AND House races for this state, per-candidate party + incumbent flag;
 a House race's `Section` title includes its district number/"At-large" since a state can have
 dozens of them, sorted by district — see `raceSectionTitle()`/`OFFICE_ORDER` in `StateTabs.tsx`;
@@ -833,5 +927,12 @@ everyone else links here.
   conventions note above on why geometry isn't a table column.
 - `fips-to-abbr.json` — static FIPS↔abbreviation table, shared by multiple scripts and
   `src/lib/state-fips.ts`.
+- `geography` (`cities` + `states.population`/`region`/`flag_url`/`capital_city_id`) — top 10
+  most populous cities + capital per state, from Wikidata (533 cities across 51 states/DC,
+  confirmed live, no key). See the Data conventions gotchas above before re-running or modifying
+  this one — several real, non-obvious query-performance and correctness fixes went into it.
+- `sports` (`sports_teams`) — NFL/NBA/MLB/NHL/MLS teams, from Wikipedia's team-list page (142
+  teams, confirmed live, no key). Must run after `sync:geography`. See the Data conventions entry
+  above — includes why this isn't TheSportsDB despite the plan's original suggestion.
 
-Not started: geography/sports sync, quiz (Phase 3).
+Not started: quiz (Phase 3).
