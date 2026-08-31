@@ -396,6 +396,32 @@ Build order: **Phase 1 politics → Phase 2 geography → Phase 3 quiz.** Don't 
   CSS spec, leaving `overflow-y` unset while `overflow-x` isn't `visible` silently computes
   `overflow-y` to `auto` too, which trapped a tiny vertical scroll on `StateTabs`' tab bar
   before this was caught. Same pattern for horizontally-scrolling non-table content.
+- **`/state/[abbr]`'s History tab (added 2026-08-31) splits its three tables differently, not
+  uniformly** — flat, ungrouped Senate/House/Governor tables became unusably long once real
+  data was in (confirmed live: California's House history alone is 2,207 rows, since the old
+  list mixed every one of its ~52 districts' full 175-year history into one chronological
+  table). House gets `HouseHistoryByDistrict` — grouped by `term.district`, each district a
+  collapsed-by-default row (same interaction `HouseRacesByState.tsx` already established on
+  `/midterms-2026`, reused for consistency, not reinvented) — shrinking CA's 2,207 rows into
+  ~52 sections of ~40 each. Senate and Governor instead get `CappedHistorySection` (cap 15,
+  "Show all N" expand) since neither is district-splittable — Senate has no stable per-seat id
+  in the schema (just 2 undifferentiated slots per state), Governor has only one seat — and
+  neither gets anywhere near House's row count anyway (CA: 79 Senate terms, 42 governor terms,
+  vs. 2,207 House). Grouping by `district_number` is a display convenience only, not a claim of
+  seat continuity — district lines have been redrawn many times since 1789 (see
+  `getHouseHistory`'s own comment), stated as a one-line disclaimer above the grouped list, same
+  spirit as the redistricting-boundary disclaimer already used elsewhere. **Surfaced a real,
+  pre-existing data-display gap while building this, not introduced by it:** `congress-legislators`
+  uses `district_number = -1` for pre-1967 (Apportionment Act) multi-member "general ticket"
+  seats, distinct from `0` (a genuine single at-large seat) — confirmed live via CA's 22 such
+  terms, 1849–1861. The app's other `district === 0 ? "At-large" : ...` call sites
+  (`legislator/[id]/page.tsx`, `RepresentativesList.tsx`, every race/candidate page) never hit
+  this, since current terms and 2026 races are all modern single-member districts — but History's
+  new per-district grouping turns what used to be one easy-to-miss inline cell into its own
+  group heading, which is what actually surfaced it. Fixed here only (`districtLabel()` in
+  `StateTabs.tsx`, rendering `-1` as "At-large (multi-member)") — `legislator/[id]/page.tsx`'s
+  own copy of the same unguarded check is a known, still-open instance of the identical gap,
+  left alone as out of scope for this change.
 - **"Live/pending" indicator convention:** a small `animate-pulse` colored dot — amber for a
   not-yet-decided race or the midterms countdown, emerald for "this is the current officeholder"
   in history tables. Place it `inline-block` with `align-middle` next to text that might wrap

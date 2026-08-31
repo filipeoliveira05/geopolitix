@@ -121,131 +121,253 @@ function CurrentTab({
   );
 }
 
+// Normalized shape every history table row renders from, regardless of
+// source (Senate/House terms, governor terms) — lets HistoryTable,
+// CappedHistorySection, and the House district grouping below all share one
+// rendering path instead of three near-identical copies.
+type HistoryRow = {
+  id: string;
+  isCurrent: boolean;
+  currentTitle: string;
+  href: string;
+  name: string;
+  party: string | null;
+  startDate: string;
+  endDate: string | null;
+};
+
+function senateRow({ legislator, term }: TermWithLegislator): HistoryRow {
+  return {
+    id: term.id,
+    isCurrent: term.isCurrent,
+    currentTitle: "Current senator",
+    href: `/legislator/${legislator.id}`,
+    name: legislatorFullName(legislator),
+    party: term.party,
+    startDate: term.startDate,
+    endDate: term.endDate,
+  };
+}
+
+function houseRow({ legislator, term }: TermWithLegislator): HistoryRow & { district: number } {
+  return {
+    id: term.id,
+    isCurrent: term.isCurrent,
+    currentTitle: "Current representative",
+    href: `/legislator/${legislator.id}`,
+    name: legislatorFullName(legislator),
+    party: term.party,
+    startDate: term.startDate,
+    endDate: term.endDate,
+    district: term.district ?? 0,
+  };
+}
+
+function governorRow(term: GovernorTerm): HistoryRow {
+  return {
+    id: term.id,
+    isCurrent: term.isCurrent,
+    currentTitle: "Current governor",
+    href: `/governor/${term.governorId ?? term.wikidataPersonId}`,
+    name: term.name,
+    party: term.party,
+    startDate: term.startDate ?? "?",
+    endDate: term.endDate ?? (term.isCurrent ? "present" : "?"),
+  };
+}
+
+function HistoryTable({ rows }: { rows: HistoryRow[] }) {
+  return (
+    <div className="overflow-x-auto overflow-y-hidden">
+      <table className="w-full min-w-[26rem] border-collapse text-sm">
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.id} className="border-b border-rule last:border-0">
+              <td className="w-px py-1.5 pr-1.5 align-middle">
+                {row.isCurrent && (
+                  <span
+                    className="block h-1.5 w-1.5 rounded-full bg-emerald-500"
+                    title={row.currentTitle}
+                  />
+                )}
+              </td>
+              <td className="py-1.5 pr-3 align-middle">
+                <Link href={row.href} className="link-accent">
+                  {row.name}
+                </Link>
+              </td>
+              <td className="w-px py-1.5 pr-3 align-middle whitespace-nowrap">
+                <PartyBadge party={row.party} />
+              </td>
+              <td className="py-1.5 text-right align-middle whitespace-nowrap font-mono text-muted">
+                {row.startDate} – {row.endDate}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// Senate/Governor history is long but not district-splittable (Senate has
+// no stable per-seat id in the schema, Governor has only one seat) — a
+// simple "most recent N, expand for the rest" cap is enough for these two,
+// unlike House below which needs actual grouping. Rows arrive newest-first
+// (getSenateHistory/getGovernorHistory), so the cap naturally shows the
+// most recent officeholders by default.
+const HISTORY_CAP = 15;
+
+function CappedHistorySection({
+  title,
+  rows,
+  emptyMessage,
+}: {
+  title: string;
+  rows: HistoryRow[];
+  emptyMessage: string;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const visibleRows = expanded ? rows : rows.slice(0, HISTORY_CAP);
+
+  return (
+    <Section title={title}>
+      {rows.length > 0 ? (
+        <>
+          <HistoryTable rows={visibleRows} />
+          {rows.length > HISTORY_CAP && (
+            <button
+              type="button"
+              onClick={() => setExpanded((e) => !e)}
+              className="mt-2 text-xs font-medium text-seal hover:underline"
+            >
+              {expanded ? "Show fewer" : `Show all ${rows.length}`}
+            </button>
+          )}
+        </>
+      ) : (
+        <Empty>{emptyMessage}</Empty>
+      )}
+    </Section>
+  );
+}
+
+// -1 is a real congress-legislators convention, not missing data: before the
+// 1967 Apportionment Act required single-member districts, some states
+// elected multiple reps statewide on one "general ticket" — distinct from 0,
+// which means a single at-large seat. Confirmed live: CA has 22 such
+// pre-1852 terms. The plain `district === 0` check used elsewhere in the app
+// (legislator/[id]/page.tsx, RepresentativesList.tsx, race pages) never hits
+// this case — races/current-terms are all modern, single-member districts —
+// but grouping surfaces it as its own labeled bucket instead of one
+// inline cell, so it needs its own label here.
+function districtLabel(district: number): string {
+  if (district === 0) return "At-large";
+  if (district === -1) return "At-large (multi-member)";
+  return `District ${district}`;
+}
+
+// Collapsed by default, same interaction as HouseRacesByState.tsx's
+// per-state rows on /midterms-2026 — an already-established convention for
+// "there are too many House rows to show flat, group and let the user
+// expand what they care about."
+function DistrictHistoryGroup({
+  district,
+  rows,
+}: {
+  district: number;
+  rows: HistoryRow[];
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  return (
+    <div className="border-b border-rule last:border-0">
+      <button
+        type="button"
+        onClick={() => setIsOpen((open) => !open)}
+        className="flex w-full items-center justify-between gap-2 py-2 text-left text-sm"
+        aria-expanded={isOpen}
+      >
+        <span className="flex items-center gap-2">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className={`h-3 w-3 shrink-0 text-muted transition-transform duration-150 ${isOpen ? "rotate-90" : ""}`}
+            aria-hidden="true"
+          >
+            <path d="M9 6l6 6-6 6" />
+          </svg>
+          {districtLabel(district)}
+        </span>
+        <span className="text-muted">
+          {rows.length} term{rows.length === 1 ? "" : "s"}
+        </span>
+      </button>
+      {isOpen && (
+        <div className="pb-2 pl-5">
+          <HistoryTable rows={rows} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// District lines have been redrawn many times since 1789 (see
+// getHouseHistory's own comment) — grouping by district_number is purely an
+// organizational convenience for browsing, not a claim that "District 12"
+// names one continuous seat across the whole list.
+function HouseHistoryByDistrict({ rows }: { rows: (HistoryRow & { district: number })[] }) {
+  const groups = new Map<number, HistoryRow[]>();
+  for (const row of rows) {
+    const group = groups.get(row.district);
+    if (group) group.push(row);
+    else groups.set(row.district, [row]);
+  }
+  const sortedDistricts = [...groups.keys()].sort((a, b) => a - b);
+
+  return (
+    <div>
+      {sortedDistricts.map((district) => (
+        <DistrictHistoryGroup key={district} district={district} rows={groups.get(district)!} />
+      ))}
+    </div>
+  );
+}
+
 function HistoryTab({ senateHistory, houseHistory, governorHistory }: StateTabsProps) {
+  const houseRows = houseHistory.map(houseRow);
+
   return (
     <div className="flex flex-col gap-6">
-      <Section title="Senators over time">
-        {senateHistory.length > 0 ? (
-          <div className="overflow-x-auto overflow-y-hidden">
-            <table className="w-full min-w-[26rem] border-collapse text-sm">
-              <tbody>
-                {senateHistory.map(({ legislator, term }) => (
-                  <tr
-                    key={term.id}
-                    className="border-b border-rule last:border-0"
-                  >
-                    <td className="w-px py-1.5 pr-1.5 align-middle">
-                      {term.isCurrent && (
-                        <span
-                          className="block h-1.5 w-1.5 rounded-full bg-emerald-500"
-                          title="Current senator"
-                        />
-                      )}
-                    </td>
-                    <td className="py-1.5 pr-3 align-middle">
-                      <Link href={`/legislator/${legislator.id}`} className="link-accent">
-                        {legislatorFullName(legislator)}
-                      </Link>
-                    </td>
-                    <td className="w-px py-1.5 pr-3 align-middle whitespace-nowrap">
-                      <PartyBadge party={term.party} />
-                    </td>
-                    <td className="py-1.5 text-right align-middle whitespace-nowrap font-mono text-muted">
-                      {term.startDate} – {term.endDate}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <Empty>No Senate history data.</Empty>
-        )}
-      </Section>
+      <CappedHistorySection
+        title="Senators over time"
+        rows={senateHistory.map(senateRow)}
+        emptyMessage="No Senate history data."
+      />
 
       <Section title="Representatives over time">
-        {houseHistory.length > 0 ? (
-          <div className="overflow-x-auto overflow-y-hidden">
-            <table className="w-full min-w-[26rem] border-collapse text-sm">
-              <tbody>
-                {houseHistory.map(({ legislator, term }) => (
-                  <tr
-                    key={term.id}
-                    className="border-b border-rule last:border-0"
-                  >
-                    <td className="w-px py-1.5 pr-1.5 align-middle">
-                      {term.isCurrent && (
-                        <span
-                          className="block h-1.5 w-1.5 rounded-full bg-emerald-500"
-                          title="Current representative"
-                        />
-                      )}
-                    </td>
-                    <td className="py-1.5 pr-3 align-middle">
-                      <Link href={`/legislator/${legislator.id}`} className="link-accent">
-                        {legislatorFullName(legislator)}
-                      </Link>
-                    </td>
-                    <td className="w-px py-1.5 pr-3 align-middle whitespace-nowrap font-mono text-muted">
-                      {term.district === 0 ? "At-large" : `District ${term.district}`}
-                    </td>
-                    <td className="w-px py-1.5 pr-3 align-middle whitespace-nowrap">
-                      <PartyBadge party={term.party} />
-                    </td>
-                    <td className="py-1.5 text-right align-middle whitespace-nowrap font-mono text-muted">
-                      {term.startDate} – {term.endDate}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+        {houseRows.length > 0 ? (
+          <>
+            <p className="mb-2 text-xs text-muted">
+              Grouped by district — district lines have been redrawn many times since 1789, so a
+              district number here doesn&apos;t represent one continuous seat.
+            </p>
+            <HouseHistoryByDistrict rows={houseRows} />
+          </>
         ) : (
           <Empty>No House history data.</Empty>
         )}
       </Section>
 
-      <Section title="Governors over time">
-        {governorHistory.length > 0 ? (
-          <div className="overflow-x-auto overflow-y-hidden">
-            <table className="w-full min-w-[26rem] border-collapse text-sm">
-              <tbody>
-                {governorHistory.map((term) => (
-                  <tr
-                    key={term.id}
-                    className="border-b border-rule last:border-0"
-                  >
-                    <td className="w-px py-1.5 pr-1.5 align-middle">
-                      {term.isCurrent && (
-                        <span
-                          className="block h-1.5 w-1.5 rounded-full bg-emerald-500"
-                          title="Current governor"
-                        />
-                      )}
-                    </td>
-                    <td className="py-1.5 pr-3 align-middle">
-                      <Link
-                        href={`/governor/${term.governorId ?? term.wikidataPersonId}`}
-                        className="link-accent"
-                      >
-                        {term.name}
-                      </Link>
-                    </td>
-                    <td className="w-px py-1.5 pr-3 align-middle whitespace-nowrap">
-                      <PartyBadge party={term.party} />
-                    </td>
-                    <td className="py-1.5 text-right align-middle whitespace-nowrap font-mono text-muted">
-                      {term.startDate ?? "?"} – {term.endDate ?? (term.isCurrent ? "present" : "?")}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <Empty>No governor history data.</Empty>
-        )}
-      </Section>
+      <CappedHistorySection
+        title="Governors over time"
+        rows={governorHistory.map(governorRow)}
+        emptyMessage="No governor history data."
+      />
     </div>
   );
 }
