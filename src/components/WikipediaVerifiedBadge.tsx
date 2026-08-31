@@ -48,12 +48,9 @@ export function WikipediaVerifiedBadge({ title }: { title?: string | null }) {
       tooltip="A person manually confirmed this bio against the real Wikipedia page"
       className="inline-flex items-center gap-1 text-xs font-medium text-emerald-600 dark:text-emerald-400"
     >
-      <svg viewBox="0 0 20 20" fill="currentColor" className="h-3.5 w-3.5">
-        <path
-          fillRule="evenodd"
-          d="M16.704 5.29a.75.75 0 0 1 .006 1.06l-7.5 7.75a.75.75 0 0 1-1.08.02l-3.5-3.5a.75.75 0 1 1 1.06-1.06l2.955 2.955 6.977-7.21a.75.75 0 0 1 1.06-.015Z"
-          clipRule="evenodd"
-        />
+      <svg viewBox="0 0 20 20" fill="none" className="h-3.5 w-3.5">
+        <circle cx="10" cy="10" r="7.25" stroke="currentColor" strokeWidth="1.5" fill="currentColor" fillOpacity="0.15" />
+        <path d="M7 10.2l2 2 4-4.4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
       Wikipedia verified
     </WikipediaBadgeLink>
@@ -99,9 +96,9 @@ export function WikipediaSourcedBadge({
       tooltip={tooltip}
       className="inline-flex items-center gap-1 text-xs font-medium text-sky-600 dark:text-sky-400"
     >
-      <svg viewBox="0 0 20 20" fill="currentColor" className="h-3.5 w-3.5">
-        <path d="M12.232 4.232a2.5 2.5 0 0 1 3.536 3.536l-1.225 1.224a.75.75 0 0 0 1.061 1.06l1.224-1.224a4 4 0 0 0-5.656-5.656l-3 3a4 4 0 0 0 .225 5.865.75.75 0 0 0 .977-1.138 2.5 2.5 0 0 1-.142-3.667l3-3Z" />
-        <path d="M11.603 7.963a.75.75 0 0 0-.977 1.138 2.5 2.5 0 0 1 .142 3.667l-3 3a2.5 2.5 0 0 1-3.536-3.536l1.225-1.224a.75.75 0 0 0-1.061-1.06l-1.224 1.224a4 4 0 1 0 5.656 5.656l3-3a4 4 0 0 0-.225-5.865Z" />
+      <svg viewBox="0 0 20 20" fill="none" className="h-3.5 w-3.5">
+        <circle cx="10" cy="10" r="7.25" stroke="currentColor" strokeWidth="1.5" />
+        <circle cx="10" cy="10" r="2" fill="currentColor" />
       </svg>
       {label}
     </WikipediaBadgeLink>
@@ -119,12 +116,8 @@ export function WikipediaNoPageBadge() {
       className="inline-flex items-center gap-1 text-xs font-medium text-zinc-400 dark:text-zinc-500"
       title="A person manually confirmed no Wikipedia article exists for this person"
     >
-      <svg viewBox="0 0 20 20" fill="currentColor" className="h-3.5 w-3.5">
-        <path
-          fillRule="evenodd"
-          d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16ZM8.28 7.22a.75.75 0 0 0-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 1 0 1.06 1.06L10 11.06l1.72 1.72a.75.75 0 1 0 1.06-1.06L11.06 10l1.72-1.72a.75.75 0 0 0-1.06-1.06L10 8.94 8.28 7.22Z"
-          clipRule="evenodd"
-        />
+      <svg viewBox="0 0 20 20" fill="none" className="h-3.5 w-3.5">
+        <circle cx="10" cy="10" r="7.25" stroke="currentColor" strokeWidth="1.5" strokeDasharray="2.5 2.5" />
       </svg>
       No Wikipedia page (confirmed)
     </span>
