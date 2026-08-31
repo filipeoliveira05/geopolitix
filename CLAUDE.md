@@ -418,10 +418,12 @@ Build order: **Phase 1 politics → Phase 2 geography → Phase 3 quiz.** Don't 
   (`legislator/[id]/page.tsx`, `RepresentativesList.tsx`, every race/candidate page) never hit
   this, since current terms and 2026 races are all modern single-member districts — but History's
   new per-district grouping turns what used to be one easy-to-miss inline cell into its own
-  group heading, which is what actually surfaced it. Fixed here only (`districtLabel()` in
-  `StateTabs.tsx`, rendering `-1` as "At-large (multi-member)") — `legislator/[id]/page.tsx`'s
-  own copy of the same unguarded check is a known, still-open instance of the identical gap,
-  left alone as out of scope for this change.
+  group heading, which is what actually surfaced it. Fixed both here (`districtLabel()` in
+  `StateTabs.tsx`) and in `legislator/[id]/page.tsx`'s own copy of the same unguarded check (its
+  own local `districtLabel()`, same `-1` → "At-large (multi-member)" mapping) — confirmed live
+  against G000172 (Edward Gilbert, one of CA's 1849 multi-member at-large reps).
+  `RepresentativesList.tsx`/race pages were left unfixed — current terms/2026 races never carry
+  `-1`, so it's unreachable dead code there, not a live gap.
 - **"Live/pending" indicator convention:** a small `animate-pulse` colored dot — amber for a
   not-yet-decided race or the midterms countdown, emerald for "this is the current officeholder"
   in history tables. Place it `inline-block` with `align-middle` next to text that might wrap

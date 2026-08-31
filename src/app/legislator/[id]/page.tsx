@@ -19,6 +19,16 @@ import { BackToMapLink } from "@/components/BackToMapLink";
 
 const CHAMBER_LABELS = { senate: "U.S. Senate", house: "U.S. House" } as const;
 
+// -1 is a real congress-legislators convention (pre-1967 Apportionment Act
+// multi-member "general ticket" seats), not missing data — distinct from 0,
+// a genuine single at-large seat. See StateTabs.tsx's districtLabel for the
+// same fix applied to the state History tab.
+function districtLabel(district: number | null): string {
+  if (district === 0) return "At-large";
+  if (district === -1) return "At-large (multi-member)";
+  return `District ${district}`;
+}
+
 export async function generateMetadata(
   props: PageProps<"/legislator/[id]">,
 ): Promise<Metadata> {
@@ -107,9 +117,7 @@ export default async function LegislatorPage(props: PageProps<"/legislator/[id]"
                     <td className="py-1.5 pr-3 align-middle">
                       {CHAMBER_LABELS[term.chamber]} —{" "}
                       {term.chamber === "house"
-                        ? `${getStateName(term.stateId) ?? term.stateId} ${
-                            term.district === 0 ? "At-large" : `District ${term.district}`
-                          }`
+                        ? `${getStateName(term.stateId) ?? term.stateId} ${districtLabel(term.district)}`
                         : getStateName(term.stateId) ?? term.stateId}
                     </td>
                     <td className="w-px py-1.5 pr-3 align-middle whitespace-nowrap">
