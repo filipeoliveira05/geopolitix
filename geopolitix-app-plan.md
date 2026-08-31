@@ -145,10 +145,8 @@ General reports, SCOTUS volumes, etc.) has no connection to this app's scope.
 ### `terms`
 A legislator's term — full historical record without duplicating `legislators`.
 - `id` (PK) · `legislator_id` (FK) · `chamber` (`house`|`senate`) · `state_id` (FK) ·
-  `district_id` (FK → `districts`, nullable) · `district_number` (plain int, nullable — House
-  only; populated independently of `district_id` — nothing populates the FK itself yet, even
-  though `districts` now exists; `getCurrentRepsByDistrictKey()` still joins on
-  `district_number`) · `party` (nullable — some historical terms predate parties) ·
+  `district_number` (plain int, nullable — House only; `getCurrentRepsByDistrictKey()` joins on
+  this) · `party` (nullable — some historical terms predate parties) ·
   `start_date` · `end_date` (nullable if current) · `is_current` (bool) · `last_synced_at`
   (the cutover marker `legislators.mjs` cleans up against — full resync inserts the fresh
   set first, only removing the previous run's rows once every new row succeeds, rather than
@@ -209,9 +207,8 @@ governors predate OpenStates entirely and have no `legislators.id`-style natural
 ### `races_2026`
 Senate + Governor + House (§3) — House added after the MVP once its different Wikipedia page
 structure (one page per state, not per race) was scoped.
-- `id` (PK) · `office` (`house`|`senate`|`governor`) · `state_id` (FK) · `district_id` (FK,
-  nullable — unused by anything, same as `terms.district_id`) · `district_number` (plain int,
-  nullable — House-only, same convention as `terms.district_number`) · `candidates` — a related
+- `id` (PK) · `office` (`house`|`senate`|`governor`) · `state_id` (FK) · `district_number` (plain
+  int, nullable — House-only, same convention as `terms.district_number`) · `candidates` — a related
   table `race_candidates` (`race_id` FK, `name`, `party`, `is_incumbent`, plus `candidate_id`/
   `matched_legislator_id`/`matched_governor_id` — see below), not a JSON array, so a winner can
   reference a real row · `status` (`open`|`called`) · `winner_candidate_id`
@@ -365,8 +362,10 @@ Getting from "JSON stand-in" to the real infrastructure. Current progress is tra
     since raw per-district GeoJSON costs ~13MB vs. ~2.5MB for one shared-border topology):
     **resolved as neither literally** — geometry lives in a public Supabase Storage bucket
     (`district-geometry/topology.json`), not a Postgres column at all, while `districts` itself
-    is a normal metadata-only table (id/state_id/district_number) so its FKs
-    (`terms.district_id`, `races_2026.district_id`) can resolve. Cron automation is also done —
+    is a normal metadata-only table (id/state_id/district_number). `terms`/`races_2026` never
+    got a working FK onto it (`district_id` sat null and unused, dropped 2026-08-31 — see
+    CLAUDE.md's `districts` entry); House data joins on `state_id`+`district_number` instead.
+    Cron automation is also done —
     a weekly GitHub Actions workflow (§2), not Vercel Cron/Supabase `pg_cron` as this plan
     originally sketched (§2 explains why). Manual `npm run sync:*` still works too.
 

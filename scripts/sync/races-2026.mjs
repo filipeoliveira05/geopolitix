@@ -770,7 +770,6 @@ async function main() {
       .insert({
         office: race.office,
         state_id: race.state_id,
-        district_id: null,
         district_number: race.district_number ?? null,
         status: race.status,
         last_synced_at: new Date().toISOString(),

@@ -100,10 +100,19 @@ Build order: **Phase 1 politics → Phase 2 geography → Phase 3 quiz.** Don't 
   geometry) into the `districts` table, and the combined TopoJSON topology (~2.5MB, one blob
   sharing borders between adjacent districts — a 5x reduction from ~13MB as independent
   per-row GeoJSON) to a public Supabase Storage bucket (`district-geometry/topology.json`),
-  not a `geojson` column. `terms.district_id`/`races_2026.district_id` can now resolve, though
-  nothing populates them yet — House terms still join by the separate `district_number` column
-  (`getCurrentRepsByDistrictKey()`). `src/lib/districts-geo.ts` fetches the Storage blob
-  directly (public URL, no auth) rather than querying Postgres for it.
+  not a `geojson` column. `src/lib/districts-geo.ts` fetches the Storage blob directly (public
+  URL, no auth) rather than querying Postgres for it. **`terms.district_id`/`races_2026.district_id`
+  (the FK onto this table) were dropped 2026-08-31**
+  (`20260831180000_drop_unused_district_id.sql`) — introduced alongside this metadata-only
+  redesign but never actually populated by any sync script (every one wrote `district_number`
+  only) and never read by any query (`getCurrentRepsByDistrictKey()`/`StateTabs.tsx`/the map all
+  join on `state_id`+`district_number`), so it sat null forever as pure schema debt. Worth
+  reintroducing only if `districts` ever needs to model **more than one geometry per
+  state+number** — e.g. redistricting-cycle versioning (pre-2022 vs. current lines as separate
+  rows sharing a `district_number`), at which point `district_number` alone stops being a
+  reliable key and something like `district_id` becomes the only way to pin a historical
+  term/race to the exact boundary it ran under. Not planned — `districts` only models current
+  (119th Congress) lines today (see the House terms/races entry below).
 - **`races_2026.mjs`** — full source research in plan §3, don't re-derive. A "called" race needs
   `after_election` to name an actual parsed candidate, not just be non-empty (some pages use a
   `"TBD"` placeholder pre-results). `cleanWikiText()` strips wiki markup but not raw HTML — check
@@ -283,10 +292,9 @@ Build order: **Phase 1 politics → Phase 2 geography → Phase 3 quiz.** Don't 
   **empty and unused** — nothing syncs into them or reads from them yet, and the actual source
   choice (Census/Wikidata/GeoNames per the Open decisions section) isn't locked in — treat this
   schema as a starting draft to revise, not a settled design, when Phase 2 actually starts.
-- **House terms/races carry `district_number` (plain int) separately from `district_id`** (FK
-  into `districts` — still unused by anything, on both `terms` and `races_2026`; the map,
-  `getCurrentRepsByDistrictKey()`, and every House `StateTabs.tsx` display all join on
-  `district_number` instead).
+- **House terms/races join on `district_number` (plain int)** — the map, `getCurrentRepsByDistrictKey()`,
+  and every House `StateTabs.tsx` display all key off it; see the `districts` entry above for why
+  the once-parallel `district_id` FK column was dropped rather than wired up.
 - **New Supabase tables need an explicit `GRANT`, not just an RLS policy** — Supabase's cloud
   default gives a fresh table no Data API access at all. Add the `anon` `SELECT` grant when a
   table's read path is actually built (not speculatively); `service_role` already has a
