@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { getMockStateSummary } from "@/lib/mock-states";
 import {
   getCurrentSenators,
   getSenatorsAsOf,
@@ -9,6 +8,7 @@ import {
   legislatorFullName,
 } from "@/lib/legislators-data";
 import { getGovernor, getGovernorAsOf, governorFullName } from "@/lib/governors-data";
+import { getStateGeography } from "@/lib/geography-data";
 import { getStateName } from "@/lib/states";
 import { asOfDateForYear, yearLabel, type ElectionYear } from "@/lib/election-years";
 import { PartyBadge } from "@/components/PartyBadge";
@@ -32,6 +32,15 @@ export function StatePanel({
   year = "current",
 }: StatePanelProps) {
   const asOfDate = asOfDateForYear(year);
+  const {
+    data: geography,
+    isError: geographyError,
+    refetch: refetchGeography,
+  } = useQuery({
+    queryKey: ["geography", abbr],
+    queryFn: () => getStateGeography(abbr as string),
+    enabled: abbr !== null,
+  });
   const {
     data: governor,
     isError: governorError,
@@ -73,8 +82,6 @@ export function StatePanel({
     );
   }
 
-  const summary = getMockStateSummary(abbr);
-
   return (
     <div className="flex flex-col gap-6 p-6">
       <div>
@@ -103,12 +110,15 @@ export function StatePanel({
             </button>
           )}
         </div>
-        {summary && (
+        {geographyError ? (
+          <FetchError onRetry={() => refetchGeography()} />
+        ) : geography?.capitalName || geography?.population ? (
           <p className="text-sm text-muted">
-            Capital: {summary.capital} · Population:{" "}
-            {summary.population.toLocaleString()}
+            {geography.capitalName && <>Capital: {geography.capitalName}</>}
+            {geography.capitalName && geography.population && " · "}
+            {geography.population && <>Population: {geography.population.toLocaleString()}</>}
           </p>
-        )}
+        ) : null}
         <Link href={`/state/${abbr}`} className="link-accent mt-1 inline-block text-sm text-seal">
           View full state page →
         </Link>
@@ -186,11 +196,6 @@ export function StatePanel({
           <p className="mt-1 text-sm text-muted">No representative data.</p>
         )}
       </div>
-
-      <p className="text-xs text-muted">
-        Senators/representatives/governor synced from real sources. Capital/population are
-        mock data — Phase 2 geography sync not built yet.
-      </p>
     </div>
   );
 }
