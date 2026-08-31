@@ -43,6 +43,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { load as loadYaml } from "js-yaml";
 import { supabaseAdmin, logSync } from "./_supabase-admin.mjs";
+import { createChangeLog } from "./_change-log.mjs";
 import {
   USER_AGENT,
   fetchWikipediaSummary,
@@ -194,7 +195,7 @@ async function fetchRecentLegislatorIds(supabase) {
  * either — isn't re-fetched forever; same accepted tradeoff as
  * governor-history.mjs's backfillBios().
  */
-async function backfillLegislatorBios(supabase, warnings, { budgetMs, scope = "all" } = {}) {
+async function backfillLegislatorBios(supabase, warnings, changeLog, { budgetMs, scope = "all" } = {}) {
   let people = await selectAllPages(() =>
     supabase.from("legislators").select("id, photo_url, wikipedia_title").is("bio_summary", null),
   );
@@ -237,6 +238,7 @@ async function backfillLegislatorBios(supabase, warnings, { budgetMs, scope = "a
       const title = person.wikipedia_title;
       if (!title) {
         warnings.push(`bio backfill: no Wikipedia title for ${person.id}`);
+        changeLog.record("no wikipedia title", person.id);
         recordProcessed();
         return;
       }
@@ -270,6 +272,7 @@ async function backfillLegislatorBios(supabase, warnings, { budgetMs, scope = "a
         // real time rather than silent until completion.
         console.warn(`  bio backfill: fetch failed for ${person.id} — ${err.message}`);
         warnings.push(`bio backfill: fetch failed for ${person.id} — ${err.message}`);
+        changeLog.record("fetch failed", person.id);
         recordProcessed();
         return;
       }
@@ -285,10 +288,15 @@ async function backfillLegislatorBios(supabase, warnings, { budgetMs, scope = "a
       ).catch((err) => ({ error: err }));
       if (updateError) {
         warnings.push(`bio backfill: update failed for ${person.id} — ${updateError.message}`);
+        changeLog.record("update failed", person.id);
         recordProcessed();
         return;
       }
       updated++;
+      changeLog.record(
+        updates.photo_url ? "backfilled (bio+photo)" : "backfilled (bio only)",
+        person.id,
+      );
       recordProcessed();
     },
     { shouldStop },
@@ -355,23 +363,40 @@ async function main() {
   // the (still-404) guessed URL, since buildLegislator's guess is always
   // present in the upsert payload. Not needed at all in backfill-only mode
   // since that mode never upserts legislators.
-  const existingPhotoById = BACKFILL_ONLY
+  const existingById = BACKFILL_ONLY
     ? new Map()
     : new Map(
-        (await selectAllPages(() => supabase.from("legislators").select("id, photo_url"))).map(
-          (r) => [r.id, r.photo_url],
-        ),
+        (
+          await selectAllPages(() =>
+            supabase.from("legislators").select("id, photo_url, first_name, last_name"),
+          )
+        ).map((r) => [r.id, r]),
       );
 
   const today = new Date().toISOString().slice(0, 10);
   const legislators = [];
   const terms = [];
   const seenIds = new Set();
+  const legislatorChangeLog = createChangeLog();
 
   function keepExistingOrGuessedPhoto(legislator) {
     const guessed = legislator.photo_url;
-    const existing = existingPhotoById.get(legislator.id);
+    const existing = existingById.get(legislator.id)?.photo_url;
     legislator.photo_url = existing && existing !== guessed ? existing : guessed;
+  }
+
+  function recordLegislatorChange(legislator) {
+    const previous = existingById.get(legislator.id);
+    if (!previous) {
+      legislatorChangeLog.record("new", `${legislator.id}: ${legislator.first_name} ${legislator.last_name}`);
+    } else if (previous.first_name !== legislator.first_name || previous.last_name !== legislator.last_name) {
+      legislatorChangeLog.record(
+        "renamed",
+        `${legislator.id}: "${previous.first_name} ${previous.last_name}" -> "${legislator.first_name} ${legislator.last_name}"`,
+      );
+    } else {
+      legislatorChangeLog.record("unchanged");
+    }
   }
 
   // current/historical are empty arrays in BACKFILL_ONLY mode (see above),
@@ -383,6 +408,7 @@ async function main() {
       if (!legislator || seenIds.has(legislator.id)) continue;
       seenIds.add(legislator.id);
       keepExistingOrGuessedPhoto(legislator);
+      recordLegislatorChange(legislator);
       legislators.push(legislator);
       terms.push(
         ...buildTerms(legislator.id, person.terms ?? [], today, startedAt, { onlySenate: false }),
@@ -403,12 +429,48 @@ async function main() {
       if (historicalTerms.length === 0) continue;
       seenIds.add(legislator.id);
       keepExistingOrGuessedPhoto(legislator);
+      recordLegislatorChange(legislator);
       legislators.push(legislator);
       terms.push(...historicalTerms);
     }
   }
 
   let error = null;
+
+  // Content-hash the fresh terms so the insert-then-cleanup below (which
+  // always reinserts every in-scope term regardless of whether anything
+  // changed) can still report how many are genuinely new content — a real
+  // officeholder/term change — versus rows that already existed unchanged.
+  // Fetched scoped to `seenIds` only (this run's own population), chunked
+  // the same way the cleanup delete below already is.
+  function termContentKey(t) {
+    return `${t.legislator_id}|${t.chamber}|${t.state_id}|${t.district_number}|${t.party}|${t.start_date}|${t.end_date}`;
+  }
+  const termsChangeLog = createChangeLog();
+  if (!BACKFILL_ONLY && terms.length > 0) {
+    const existingTermKeys = new Set();
+    const idsForExisting = [...seenIds];
+    const SELECT_CHUNK_SIZE = 500;
+    for (let i = 0; i < idsForExisting.length; i += SELECT_CHUNK_SIZE) {
+      const idChunk = idsForExisting.slice(i, i + SELECT_CHUNK_SIZE);
+      const rows = await selectAllPages(() =>
+        supabase
+          .from("terms")
+          .select("legislator_id, chamber, state_id, district_number, party, start_date, end_date")
+          .in("legislator_id", idChunk),
+      );
+      for (const row of rows) existingTermKeys.add(termContentKey(row));
+    }
+    for (const t of terms) {
+      if (existingTermKeys.has(termContentKey(t))) termsChangeLog.record("unchanged");
+      else {
+        termsChangeLog.record(
+          "new/changed",
+          `${t.legislator_id}: ${t.chamber} ${t.state_id}${t.district_number ? `-${t.district_number}` : ""} (${t.start_date}–${t.end_date ?? "present"})`,
+        );
+      }
+    }
+  }
 
   if (!BACKFILL_ONLY) {
     const legislatorsResult = await supabase.from("legislators").upsert(legislators, {
@@ -466,9 +528,10 @@ async function main() {
 
   const warnings = [];
   let bioCount = 0;
+  const bioChangeLog = createChangeLog();
   if (!error) {
     try {
-      bioCount = await backfillLegislatorBios(supabase, warnings, {
+      bioCount = await backfillLegislatorBios(supabase, warnings, bioChangeLog, {
         budgetMs: BACKFILL_BUDGET_MS,
         scope: BACKFILL_SCOPE,
       });
@@ -497,9 +560,9 @@ async function main() {
 
   const syncedMessage = BACKFILL_ONLY
     ? "legislators/terms sync skipped (backfill-only mode)"
-    : `Synced ${legislators.length} legislators / ${terms.length} terms (scope: ${SCOPE ?? "all"})`;
+    : `Synced ${legislators.length} legislators (${legislatorChangeLog.summary()}) / ${terms.length} terms (${termsChangeLog.summary()}) (scope: ${SCOPE ?? "all"})`;
   console.log(
-    `${syncedMessage}, backfilled bio/photo for ${bioCount} people (${warnings.length} warning(s)).`,
+    `${syncedMessage}, backfilled bio/photo for ${bioCount} people — ${bioChangeLog.summary()} (${warnings.length} warning(s)).`,
   );
 }
 

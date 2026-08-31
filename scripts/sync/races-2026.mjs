@@ -40,6 +40,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { supabaseAdmin, logSync } from "./_supabase-admin.mjs";
+import { createChangeLog } from "./_change-log.mjs";
 import { fetchWikipediaSummary, mapWithConcurrency, withHardTimeout } from "./_wikipedia.mjs";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -541,7 +542,7 @@ async function collectHouseRaces(stateNameToAbbr, pendingInfo) {
  * "no Wikipedia page exists" answer, so this doesn't burn search budget
  * re-attempting a search destined to fail every single run.
  */
-async function backfillCandidateBios(supabase, abbrToStateName, warnings, { budgetMs } = {}) {
+async function backfillCandidateBios(supabase, abbrToStateName, warnings, changeLog, { budgetMs } = {}) {
   const { data: candidates, error } = await supabase
     .from("candidates")
     .select("id, name, state_id")
@@ -575,10 +576,12 @@ async function backfillCandidateBios(supabase, abbrToStateName, warnings, { budg
       );
     } catch (err) {
       warnings.push(`candidate bio backfill: search failed for ${candidate.name} — ${err.message}`);
+      changeLog.record("search failed", `${candidate.state_id}: ${candidate.name}`);
       processed++;
       return;
     }
     if (!title) {
+      changeLog.record("no wikipedia match", `${candidate.state_id}: ${candidate.name}`);
       processed++;
       return; // no hit — stays bio_summary null, retried next run
     }
@@ -593,6 +596,7 @@ async function backfillCandidateBios(supabase, abbrToStateName, warnings, { budg
       ));
     } catch (err) {
       warnings.push(`candidate bio backfill: summary fetch failed for ${candidate.name} — ${err.message}`);
+      changeLog.record("summary fetch failed", `${candidate.state_id}: ${candidate.name}`);
       processed++;
       return;
     }
@@ -603,10 +607,15 @@ async function backfillCandidateBios(supabase, abbrToStateName, warnings, { budg
       .eq("id", candidate.id);
     if (updateError) {
       warnings.push(`candidate bio backfill: update failed for ${candidate.name} — ${updateError.message}`);
+      changeLog.record("update failed", `${candidate.state_id}: ${candidate.name}`);
       processed++;
       return;
     }
     updated++;
+    changeLog.record(
+      photoUrl ? "backfilled (bio+photo)" : "backfilled (bio only)",
+      `${candidate.state_id}: ${candidate.name}`,
+    );
     processed++;
     if (processed % 10 === 0) console.log(`  ${processed}/${candidates.length} processed`);
   }, { shouldStop });
@@ -644,8 +653,9 @@ async function main() {
     const warnings = [];
     let backfillError = null;
     let bioCount = 0;
+    const changeLog = createChangeLog();
     try {
-      bioCount = await backfillCandidateBios(supabase, abbrToStateName, warnings, {
+      bioCount = await backfillCandidateBios(supabase, abbrToStateName, warnings, changeLog, {
         budgetMs: BACKFILL_BUDGET_MS,
       });
     } catch (err) {
@@ -666,7 +676,7 @@ async function main() {
       job: "races_candidate_backfill",
     });
     if (backfillError) throw backfillError;
-    console.log(`Backfilled ${bioCount} candidate bio(s) (backfill-only mode).`);
+    console.log(`Backfilled ${bioCount} candidate bio(s) (backfill-only mode) — ${changeLog.summary()}.`);
     return;
   }
 
@@ -694,6 +704,30 @@ async function main() {
 
   const officeholdersByState = await loadCurrentOfficeholders(supabase);
 
+  // Fetched before the insert loop below so the log can say WHAT changed
+  // (a race newly called, a candidate added/dropped) instead of just "506
+  // races synced" — every race gets physically reinserted every run
+  // regardless of content (races_2026.id has no natural upsert key), so
+  // this content diff is the only way to tell a real change from a
+  // no-op resync.
+  const { data: existingRaceRows, error: existingRacesError } = await supabase
+    .from("races_2026")
+    .select("office, state_id, district_number, status, race_candidates!race_candidates_race_id_fkey(name, party)");
+  if (existingRacesError) throw existingRacesError;
+  function raceKey(office, stateId, districtNumber) {
+    return `${office}|${stateId}|${districtNumber ?? 0}`;
+  }
+  function candidateSetLabel(candidates) {
+    return [...candidates].map((c) => `${c.name}(${c.party ?? "?"})`).sort().join(", ");
+  }
+  const existingRaceByKey = new Map(
+    existingRaceRows.map((r) => [
+      raceKey(r.office, r.state_id, r.district_number),
+      { status: r.status, candidateLabel: candidateSetLabel(r.race_candidates) },
+    ]),
+  );
+  const racesChangeLog = createChangeLog();
+
   // races_2026.id has no natural key (unlike legislators/governors) to
   // upsert against, so this still fully replaces the table's contents each
   // run — but inserts the fresh set FIRST and only removes old rows after,
@@ -716,6 +750,20 @@ async function main() {
 
   for (const race of races) {
     if (error) break;
+
+    const key = raceKey(race.office, race.state_id, race.district_number);
+    const previous = existingRaceByKey.get(key);
+    const newCandidateLabel = candidateSetLabel(race.candidates);
+    const raceLabel = `${race.state_id}${race.district_number ? `-${race.district_number}` : ""} ${race.office}`;
+    if (!previous) {
+      racesChangeLog.record("new race", raceLabel);
+    } else if (previous.status !== race.status) {
+      racesChangeLog.record("status changed", `${raceLabel}: ${previous.status} -> ${race.status}`);
+    } else if (previous.candidateLabel !== newCandidateLabel) {
+      racesChangeLog.record("candidates changed", raceLabel);
+    } else {
+      racesChangeLog.record("unchanged");
+    }
 
     const { data: raceRow, error: raceError } = await supabase
       .from("races_2026")
@@ -833,9 +881,10 @@ async function main() {
 
   const warnings = [];
   let bioCount = 0;
+  const bioChangeLog = createChangeLog();
   if (!error) {
     try {
-      bioCount = await backfillCandidateBios(supabase, abbrToStateName, warnings, {
+      bioCount = await backfillCandidateBios(supabase, abbrToStateName, warnings, bioChangeLog, {
         budgetMs: BACKFILL_BUDGET_MS,
       });
     } catch (err) {
@@ -858,7 +907,8 @@ async function main() {
 
   const called = races.filter((r) => r.status === "called").length;
   console.log(
-    `Synced ${races.length} races (${senateRaces.length} Senate, ${governorRaces.length} Governor, ${houseRaces.length} House), ${called} called, backfilled ${bioCount} candidate bio(s) (scope: ${RACES_SCOPE}).`,
+    `Synced ${races.length} races (${senateRaces.length} Senate, ${governorRaces.length} Governor, ${houseRaces.length} House), ${called} called — ${racesChangeLog.summary()}. ` +
+      `Backfilled ${bioCount} candidate bio(s) (scope: ${RACES_SCOPE}) — ${bioChangeLog.summary()}.`,
   );
 }
 

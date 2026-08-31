@@ -248,6 +248,29 @@ Build order: **Phase 1 politics → Phase 2 geography → Phase 3 quiz.** Don't 
   identical reason — chunked delete-then-insert (45k+ rows) left `terms` incomplete on a
   chunk failure partway through. Needed a new `terms.last_synced_at` column first (`terms`,
   unlike `races_2026`, never had one) to have a cutover marker to clean up against.
+- **All six sync scripts log a per-run change summary, not just aggregate counts** (added
+  2026-08-31) — every script previously reported only "N rows synced"/"backfilled N", which
+  couldn't distinguish a genuine change from a no-op resync, or say why an item was skipped
+  (a "no Wikipedia match" backfill outcome was previously indistinguishable in the log from
+  "not yet attempted" — caught live from a real `candidate-bio-backfill.yml` run whose log gave
+  no way to tell what changed without a separate Supabase query). `scripts/sync/_change-log.mjs`
+  (`createChangeLog()`) is the shared tracker: each script fetches the relevant existing rows
+  before writing (or, for backfill loops, categorizes each outcome as it's processed), calls
+  `record(category, label)` per item, and prints `summary()` — a count per category with
+  itemized labels capped at 25 so a large population (e.g. ~12,700 legislators) doesn't flood
+  the log while the category total stays exact. Bulk-upsert scripts (`states.mjs`,
+  `governors.mjs`, `districts.mjs`) diff against a pre-upsert fetch of existing rows to report
+  new/updated/unchanged; `governor-history.mjs`'s per-state `governor_terms` upsert and
+  `legislators.mjs`'s `terms` insert-then-cleanup do the same via a content-hash comparison
+  against what existed before (terms have no natural key to diff by id); `races-2026.mjs` diffs
+  each race's status/candidate-list against its pre-sync state the same way. Every
+  bio/photo-backfill loop (candidates, legislators, governor-history) now categorizes each
+  outcome (backfilled bio+photo / bio only, no Wikipedia match, search/fetch failed, update
+  failed) instead of only incrementing a silent counter. Verified live against production data
+  post-change: `states.mjs`/`districts.mjs`/`governors.mjs`/`governor-history.mjs`
+  (`GOVERNOR_HISTORY_SCOPE=current`) all correctly reported "unchanged" on a clean rerun, and
+  `races-2026.mjs`'s `CANDIDATES_BACKFILL_ONLY` path correctly itemized 7 "no wikipedia match"
+  candidates by name (MA/RI, pending-primary states) where the old log only said "Backfilled 0".
 - **Not built yet:** geography/sports sync (Phase 2). Source research is in plan §3.
 - **House terms/races carry `district_number` (plain int) separately from `district_id`** (FK
   into `districts` — still unused by anything, on both `terms` and `races_2026`; the map,

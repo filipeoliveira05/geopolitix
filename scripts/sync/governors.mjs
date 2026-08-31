@@ -28,6 +28,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { supabaseAdmin, TRIGGERED_BY } from "./_supabase-admin.mjs";
+import { createChangeLog } from "./_change-log.mjs";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const fipsToAbbr = JSON.parse(
@@ -131,6 +132,36 @@ async function main() {
   const supabase = supabaseAdmin();
   const startedAt = new Date().toISOString();
 
+  // Fetched up front (not just an id list) so the upsert below can be
+  // diffed against what was actually there before — a plain "N governors
+  // synced" count doesn't say whether that's 50 unchanged rows or a
+  // brand-new officeholder in every state.
+  const { data: existing, error: existingSelectError } = await supabase
+    .from("governors")
+    .select("id, state_id, first_name, last_name, party");
+  if (existingSelectError) throw existingSelectError;
+  const existingById = new Map(existing.map((g) => [g.id, g]));
+
+  const changeLog = createChangeLog();
+  for (const g of governors) {
+    const previous = existingById.get(g.id);
+    if (!previous) {
+      changeLog.record("new", `${g.state_id}: ${g.first_name} ${g.last_name} (${g.party ?? "no party"})`);
+      continue;
+    }
+    const nameChanged = previous.first_name !== g.first_name || previous.last_name !== g.last_name;
+    const partyChanged = previous.party !== g.party;
+    if (nameChanged || partyChanged) {
+      const changes = [
+        nameChanged ? `name "${previous.first_name} ${previous.last_name}" -> "${g.first_name} ${g.last_name}"` : null,
+        partyChanged ? `party "${previous.party ?? "?"}" -> "${g.party ?? "?"}"` : null,
+      ].filter(Boolean);
+      changeLog.record("updated", `${g.state_id}: ${changes.join(", ")}`);
+    } else {
+      changeLog.record("unchanged");
+    }
+  }
+
   // Upsert in place (matches legislators.mjs's own pattern) rather than a
   // full delete-then-reinsert — governor_terms.governor_id carries a
   // foreign key onto governors.id (added by the governor_terms migration,
@@ -151,16 +182,14 @@ async function main() {
   const staleWarnings = [];
   if (!error) {
     const freshIds = new Set(governors.map((g) => g.id));
-    const { data: existing, error: existingError } = await supabase.from("governors").select("id");
-    if (existingError) {
-      error = existingError;
-    } else {
-      const staleIds = existing.map((r) => r.id).filter((id) => !freshIds.has(id));
-      for (const id of staleIds) {
-        const { error: deleteError } = await supabase.from("governors").delete().eq("id", id);
-        if (deleteError) {
-          staleWarnings.push(`could not remove departed governor ${id} — ${deleteError.message}`);
-        }
+    const staleIds = existing.map((r) => r.id).filter((id) => !freshIds.has(id));
+    for (const id of staleIds) {
+      const { error: deleteError } = await supabase.from("governors").delete().eq("id", id);
+      if (deleteError) {
+        staleWarnings.push(`could not remove departed governor ${id} — ${deleteError.message}`);
+      } else {
+        const departed = existingById.get(id);
+        changeLog.record("departed", `${departed?.state_id ?? id}: ${departed?.first_name ?? ""} ${departed?.last_name ?? ""}`.trim());
       }
     }
   }
@@ -186,7 +215,7 @@ async function main() {
 
   if (error) throw error;
 
-  console.log(`Synced ${governors.length} governors (${gaps.length} gap(s)).`);
+  console.log(`Synced ${governors.length} governors (${gaps.length} gap(s)) — ${changeLog.summary()}.`);
 }
 
 main().catch((err) => {

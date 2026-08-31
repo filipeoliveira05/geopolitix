@@ -41,6 +41,7 @@
 // people with a current or ~4-year-recent term, the same cutoff and
 // rationale as legislators.mjs's own BACKFILL_SCOPE.
 import { supabaseAdmin, TRIGGERED_BY } from "./_supabase-admin.mjs";
+import { createChangeLog } from "./_change-log.mjs";
 import {
   USER_AGENT,
   fetchWikipediaSummary,
@@ -233,7 +234,7 @@ function resolveParty(partyStatements, termStart) {
   return { party: null, ambiguous: true };
 }
 
-async function syncState(supabase, state, currentGovernorsByState, warnings, scope) {
+async function syncState(supabase, state, currentGovernorsByState, warnings, scope, changeLog) {
   const positionQid = await findGovernorPositionQid(state.name);
   if (!positionQid) {
     warnings.push(`${state.id}: no "Governor of ${state.name}" position found on Wikidata`);
@@ -313,6 +314,31 @@ async function syncState(supabase, state, currentGovernorsByState, warnings, sco
   }
 
   if (rows.length > 0) {
+    // Fetched before the upsert so the log can distinguish a genuinely new
+    // term (e.g. a new officeholder) from the same content simply getting
+    // rewritten by this run, like every other row this state's history has
+    // always had — the (state_id, wikidata_person_id, start_date) key
+    // matches this table's own unique constraint.
+    const { data: existingRows, error: existingError } = await supabase
+      .from("governor_terms")
+      .select("wikidata_person_id, start_date, end_date, name, party")
+      .eq("state_id", state.id);
+    if (existingError) throw new Error(`${state.id}: existing-rows fetch failed — ${existingError.message}`);
+    const existingByKey = new Map(
+      existingRows.map((r) => [`${r.wikidata_person_id}|${r.start_date}`, r]),
+    );
+    for (const row of rows) {
+      const key = `${row.wikidata_person_id}|${row.start_date}`;
+      const previous = existingByKey.get(key);
+      if (!previous) {
+        changeLog.record("new term", `${state.id}: ${row.name} (${row.start_date ?? "?"}–${row.end_date ?? "present"})`);
+      } else if (previous.end_date !== row.end_date || previous.name !== row.name || previous.party !== row.party) {
+        changeLog.record("updated term", `${state.id}: ${row.name} (${row.start_date ?? "?"})`);
+      } else {
+        changeLog.record("unchanged term");
+      }
+    }
+
     const { error } = await supabase
       .from("governor_terms")
       .upsert(rows, { onConflict: "state_id,wikidata_person_id,start_date" });
@@ -448,7 +474,7 @@ async function fetchRecentPersonIds(supabase) {
   return new Set(rows.map((r) => r.wikidata_person_id));
 }
 
-async function backfillBios(supabase, warnings, { scope = "full" } = {}) {
+async function backfillBios(supabase, warnings, changeLog, { scope = "full" } = {}) {
   // Two separate criteria for "still needs work", merged: missing a bio
   // (filters on bio_summary, not photo_url — confirmed live that ~32
   // people legitimately have no Wikipedia thumbnail but do have a real
@@ -492,6 +518,7 @@ async function backfillBios(supabase, warnings, { scope = "full" } = {}) {
     const title = titleByPerson.get(qid);
     if (!title) {
       warnings.push(`bio backfill: no Wikipedia article found for ${name} (${qid})`);
+      changeLog.record("no wikipedia article", name);
       processed++;
       return;
     }
@@ -510,6 +537,7 @@ async function backfillBios(supabase, warnings, { scope = "full" } = {}) {
       ));
     } catch (err) {
       warnings.push(`bio backfill: fetch failed for ${name} (${qid}) — ${err.message}`);
+      changeLog.record("fetch failed", name);
       processed++;
       return;
     }
@@ -521,10 +549,12 @@ async function backfillBios(supabase, warnings, { scope = "full" } = {}) {
       .eq("wikidata_person_id", qid);
     if (updateError) {
       warnings.push(`bio backfill: update failed for ${name} (${qid}) — ${updateError.message}`);
+      changeLog.record("update failed", name);
       processed++;
       return;
     }
     updated++;
+    changeLog.record(photoUrl ? "backfilled (bio+photo)" : "backfilled (bio only)", name);
     processed++;
     if (processed % 100 === 0) console.log(`  ${processed}/${people.length} processed`);
   });
@@ -556,6 +586,8 @@ async function main() {
   let bioCount = 0;
   let currentCopyCount = 0;
   let error = null;
+  const termsChangeLog = createChangeLog();
+  const bioChangeLog = createChangeLog();
 
   try {
     for (const [i, state] of states.entries()) {
@@ -564,7 +596,14 @@ async function main() {
       // was otherwise silent for its entire duration with no way to tell
       // which state or phase it was on.
       const startedState = Date.now();
-      const count = await syncState(supabase, state, currentGovernorsByState, warnings, SCOPE);
+      const count = await syncState(
+        supabase,
+        state,
+        currentGovernorsByState,
+        warnings,
+        SCOPE,
+        termsChangeLog,
+      );
       totalRows += count;
       console.log(`[${i + 1}/${states.length}] ${state.id}: ${count} terms (${Date.now() - startedState}ms)`);
       // Courtesy pacing between states — no documented Wikidata rate limit,
@@ -580,7 +619,7 @@ async function main() {
       await sleep(1500);
     }
     console.log("States done — backfilling photo/bio for every distinct person...");
-    bioCount = await backfillBios(supabase, warnings, { scope: BACKFILL_SCOPE });
+    bioCount = await backfillBios(supabase, warnings, bioChangeLog, { scope: BACKFILL_SCOPE });
     console.log("Copying current-term bio/photo onto governors...");
     currentCopyCount = await copyCurrentBiosToGovernors(supabase, warnings);
   } catch (err) {
@@ -608,7 +647,9 @@ async function main() {
   if (error) throw error;
 
   console.log(
-    `Synced ${totalRows} governor terms across ${states.length} states (scope: ${SCOPE}), backfilled bio/photo for ${bioCount} people (backfill scope: ${BACKFILL_SCOPE}), copied current bio/photo onto ${currentCopyCount} governors (${warnings.length} warning(s)).`,
+    `Synced ${totalRows} governor terms across ${states.length} states (scope: ${SCOPE}) — ${termsChangeLog.summary()}. ` +
+      `Backfilled bio/photo for ${bioCount} people (backfill scope: ${BACKFILL_SCOPE}) — ${bioChangeLog.summary()}. ` +
+      `Copied current bio/photo onto ${currentCopyCount} governors (${warnings.length} warning(s)).`,
   );
 }
 

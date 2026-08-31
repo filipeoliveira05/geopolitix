@@ -39,6 +39,7 @@ import { topology } from "topojson-server";
 import { presimplify, quantile, simplify } from "topojson-simplify";
 import { quantize } from "topojson-client";
 import { supabaseAdmin, logSync } from "./_supabase-admin.mjs";
+import { createChangeLog } from "./_change-log.mjs";
 
 const SOURCE_URL =
   "https://www2.census.gov/geo/tiger/GENZ2024/shp/cb_2024_us_cd119_500k.zip";
@@ -133,6 +134,28 @@ async function main() {
     });
   }
 
+  const { data: existingDistricts, error: existingError } = await supabase
+    .from("districts")
+    .select("id, state_id, district_number");
+  if (existingError) throw existingError;
+  const existingById = new Map(existingDistricts.map((d) => [d.id, d]));
+
+  const changeLog = createChangeLog();
+  for (const d of districtsMeta) {
+    const previous = existingById.get(d.id);
+    if (!previous) changeLog.record("new", `${d.state_id}-${d.district_number}`);
+    else if (previous.state_id !== d.state_id || previous.district_number !== d.district_number) {
+      changeLog.record(
+        "redrawn",
+        `${d.id}: ${previous.state_id}-${previous.district_number} -> ${d.state_id}-${d.district_number}`,
+      );
+    } else changeLog.record("unchanged");
+  }
+  const freshIds = new Set(districtsMeta.map((d) => d.id));
+  for (const id of existingById.keys()) {
+    if (!freshIds.has(id)) changeLog.record("removed", id);
+  }
+
   let error = uploadError;
   if (!error) {
     ({ error } = await supabase.from("districts").upsert(districtsMeta, { onConflict: "id" }));
@@ -144,7 +167,7 @@ async function main() {
 
   console.log(
     `Uploaded topology (${features.length} districts, skipped ${skippedTerritories} territory features) ` +
-      `and synced ${districtsMeta.length} district metadata rows (skipped ${skippedNoNumber} with no district number).`,
+      `and synced ${districtsMeta.length} district metadata rows (skipped ${skippedNoNumber} with no district number) — ${changeLog.summary()}.`,
   );
 }
 
