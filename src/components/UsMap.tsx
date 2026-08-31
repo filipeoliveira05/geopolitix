@@ -9,13 +9,21 @@ import {
   type LngLatBoundsLike,
   type MapLayerMouseEvent,
   type ExpressionSpecification,
+  type GeoJSONSource,
 } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { getDistrictsGeoJson, type DistrictFeatureProperties } from "@/lib/districts-geo";
-import { getCurrentRepsByDistrictKey, type TermWithLegislator } from "@/lib/legislators-data";
+import { getRepsByDistrictKeyMap, type TermWithLegislator } from "@/lib/legislators-data";
 import { getSenateSplitGeoJson, getSenateHalfIdsByState } from "@/lib/senate-split-geo";
 import { getStateLabelsGeoJson } from "@/lib/state-labels-geo";
 import { PARTY_COLORS, FALLBACK_PARTY_STYLE } from "@/lib/party-colors";
+import {
+  ELECTION_YEARS,
+  asOfDateForYear,
+  districtBoundariesReliable,
+  yearLabel,
+  type ElectionYear,
+} from "@/lib/election-years";
 import type { FeatureCollection, Geometry } from "geojson";
 
 // MapLibre resolves its worker script relative to its own bundled module's
@@ -112,6 +120,11 @@ type UsMapProps = {
   // `district` is omitted (or null) when selecting via the states layer —
   // only a districts-layer click identifies a specific district.
   onSelectState: (abbr: string | null, district?: number | null) => void;
+  // Lifted to page.tsx (not owned here) so StatePanel can also switch to
+  // the same year's senators/reps when a state is selected — see
+  // election-years.ts.
+  year: ElectionYear;
+  onChangeYear: (year: ElectionYear) => void;
 };
 
 /** Wires hover (feature-state) on a fill layer. Used for both the states and districts layers. */
@@ -140,10 +153,17 @@ function setupHover(map: MapLibreMap, sourceId: string, fillLayerId: string) {
   });
 }
 
-export function UsMap({ selectedAbbr, onSelectState }: UsMapProps) {
+export function UsMap({ selectedAbbr, onSelectState, year, onChangeYear }: UsMapProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
   const onSelectStateRef = useRef(onSelectState);
+  const asOfDate = asOfDateForYear(year);
+  // Read inside the persistent mousemove/mouseleave/click listeners
+  // (registered once in the "load" handler below, deps []) so they react
+  // to a LATER year change instead of a stale snapshot from mount time —
+  // kept in sync by the `[asOfDate]` effect further down, alongside the
+  // matching senate source data refresh.
+  const senateHalfIdsByStateRef = useRef<Map<string, string[]>>(new Map());
   // Tracks which single district is highlighted on the districts layer —
   // separate from `selectedAbbr` (state-level, shared with the side panel)
   // since a state can contain many districts and only the clicked one
@@ -204,7 +224,7 @@ export function UsMap({ selectedAbbr, onSelectState }: UsMapProps) {
     mapRef.current = map;
 
     map.on("load", async () => {
-      const senateGeoJson = await getSenateSplitGeoJson();
+      const senateGeoJson = await getSenateSplitGeoJson(asOfDate);
       if (cancelled) return;
 
       map.addSource(SENATE_SOURCE_ID, {
@@ -252,10 +272,13 @@ export function UsMap({ selectedAbbr, onSelectState }: UsMapProps) {
       });
 
       // Each state is 1-2 features here (one per senator's half, or one
-      // "whole" feature if it has fewer than 2 current senators) — hover and
-      // selection should highlight every half belonging to the state under
-      // the cursor together, not just the single half being pointed at.
-      const senateHalfIdsByState = await getSenateHalfIdsByState();
+      // "whole" feature if it has fewer than 2 senators for the selected
+      // year) — hover and selection should highlight every half belonging
+      // to the state under the cursor together, not just the single half
+      // being pointed at. Stored on a ref (not a captured const) so the
+      // persistent listeners below stay correct after a later year change
+      // — see the `[asOfDate]` effect, which keeps this ref updated.
+      senateHalfIdsByStateRef.current = await getSenateHalfIdsByState(asOfDate);
       if (cancelled) return;
       let hoveredSenateStateId: string | undefined;
 
@@ -264,12 +287,12 @@ export function UsMap({ selectedAbbr, onSelectState }: UsMapProps) {
         if (!stateId || hoveredSenateStateId === stateId) return;
 
         if (hoveredSenateStateId) {
-          for (const id of senateHalfIdsByState.get(hoveredSenateStateId) ?? []) {
+          for (const id of senateHalfIdsByStateRef.current.get(hoveredSenateStateId) ?? []) {
             map.setFeatureState({ source: SENATE_SOURCE_ID, id }, { hover: false });
           }
         }
         hoveredSenateStateId = stateId;
-        for (const id of senateHalfIdsByState.get(stateId) ?? []) {
+        for (const id of senateHalfIdsByStateRef.current.get(stateId) ?? []) {
           map.setFeatureState({ source: SENATE_SOURCE_ID, id }, { hover: true });
         }
         map.getCanvas().style.cursor = "pointer";
@@ -277,7 +300,7 @@ export function UsMap({ selectedAbbr, onSelectState }: UsMapProps) {
 
       map.on("mouseleave", SENATE_FILL_LAYER_ID, () => {
         if (hoveredSenateStateId) {
-          for (const id of senateHalfIdsByState.get(hoveredSenateStateId) ?? []) {
+          for (const id of senateHalfIdsByStateRef.current.get(hoveredSenateStateId) ?? []) {
             map.setFeatureState({ source: SENATE_SOURCE_ID, id }, { hover: false });
           }
         }
@@ -321,18 +344,28 @@ export function UsMap({ selectedAbbr, onSelectState }: UsMapProps) {
       map.remove();
       mapRef.current = null;
     };
+    // Intentionally mount-only — creates the map/layers exactly once.
+    // `asOfDate` here only seeds the INITIAL fetch (whatever `year` is on
+    // first render, "current" by default); a later year change is handled
+    // by the separate `[asOfDate]` effect below via `.setData()`, not by
+    // recreating the whole map.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   /**
    * Lazily fetches district geometry (~2.5MB topology + a 435-row House
    * join) and adds the Districts source/layers — only called on the first
    * switch to "Districts" mode, so the default "States" view never pays
-   * for it. Memoized on `districtsReadyRef` so later switches are instant.
+   * for it. Memoized on `districtsReadyRef` so later switches are instant
+   * — this only ever creates the source/layers once, seeded with whichever
+   * year was selected at that first switch; a later year change is handled
+   * by the `[asOfDate]` effect below via `.setData()`, same as the Senate
+   * source.
    */
-  function ensureDistrictsLayer(map: MapLibreMap): Promise<void> {
+  function ensureDistrictsLayer(map: MapLibreMap, initialAsOfDate: string | null): Promise<void> {
     if (!districtsReadyRef.current) {
       districtsReadyRef.current = (async () => {
-        const repsByDistrict = await getCurrentRepsByDistrictKey();
+        const repsByDistrict = await getRepsByDistrictKeyMap(initialAsOfDate);
         const districtsWithReps = await joinDistrictsWithReps(repsByDistrict);
         // The component can unmount while these fetches are in flight —
         // map.addSource below would throw on an already-removed map.
@@ -423,7 +456,7 @@ export function UsMap({ selectedAbbr, onSelectState }: UsMapProps) {
       await layersReadyRef.current;
       if (cancelled) return;
       if (mode === "districts") {
-        await ensureDistrictsLayer(map);
+        await ensureDistrictsLayer(map, asOfDate);
         if (cancelled) return;
       }
       const districtsVisibility = mode === "districts" ? "visible" : "none";
@@ -439,7 +472,53 @@ export function UsMap({ selectedAbbr, onSelectState }: UsMapProps) {
     return () => {
       cancelled = true;
     };
-  }, [mode]);
+    // `ensureDistrictsLayer` only actually uses `asOfDate` on the very
+    // first call (memoized on districtsReadyRef) — included here so a
+    // first switch to "Districts" mode after the year has already changed
+    // seeds the districts source with the right year, not "current".
+  }, [mode, asOfDate]);
+
+  // Re-fetch and repaint when the selected year changes (the home map's
+  // year dropdown, below) — the Senate source always exists once
+  // layersReadyRef resolves; the Districts source only exists once the
+  // user has switched to "Districts" mode at least once (ensureDistrictsLayer,
+  // memoized) — skipped entirely otherwise, since there's nothing to
+  // repaint. District GEOMETRY never changes here, only which occupant
+  // (and party) each district-key joins to — see election-years.ts's
+  // districtBoundariesReliable() for the redistricting caveat this doesn't
+  // (and can't) fix.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    let cancelled = false;
+    (async () => {
+      await layersReadyRef.current;
+      if (cancelled) return;
+
+      const [senateGeoJson, halfIdsByState] = await Promise.all([
+        getSenateSplitGeoJson(asOfDate),
+        getSenateHalfIdsByState(asOfDate),
+      ]);
+      if (cancelled) return;
+      senateHalfIdsByStateRef.current = halfIdsByState;
+      (map.getSource(SENATE_SOURCE_ID) as GeoJSONSource | undefined)?.setData(senateGeoJson);
+
+      if (map.getSource(DISTRICTS_SOURCE_ID)) {
+        const repsByDistrict = await getRepsByDistrictKeyMap(asOfDate);
+        if (cancelled) return;
+        const districtsWithReps = await joinDistrictsWithReps(repsByDistrict);
+        if (cancelled) return;
+        (map.getSource(DISTRICTS_SOURCE_ID) as GeoJSONSource | undefined)?.setData(
+          districtsWithReps,
+        );
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [asOfDate]);
 
   // Reflect `selectedAbbr` as MapLibre feature-state so re-selecting from
   // the side panel (not just clicking the map) highlights the right state.
@@ -451,7 +530,7 @@ export function UsMap({ selectedAbbr, onSelectState }: UsMapProps) {
     const applySelection = async () => {
       await layersReadyRef.current;
       if (cancelled) return;
-      const senateHalfIdsByState = await getSenateHalfIdsByState();
+      const senateHalfIdsByState = await getSenateHalfIdsByState(asOfDate);
       if (cancelled) return;
       for (const [stateId, ids] of senateHalfIdsByState) {
         for (const id of ids) {
@@ -480,7 +559,7 @@ export function UsMap({ selectedAbbr, onSelectState }: UsMapProps) {
     return () => {
       cancelled = true;
     };
-  }, [selectedAbbr]);
+  }, [selectedAbbr, asOfDate]);
 
   return (
     <div className="relative h-full w-full">
@@ -490,20 +569,42 @@ export function UsMap({ selectedAbbr, onSelectState }: UsMapProps) {
           (h-14) on this page, see layout.tsx/GlobalHeader.tsx. The
           "2026 Midterms" link that used to sit up here was dropped once
           GlobalHeader grew its own "Midterms 2026" nav link — redundant. */}
-      <div className="absolute top-16 left-2 flex overflow-hidden rounded-md border border-zinc-300 text-xs shadow-sm sm:left-3 sm:text-sm dark:border-zinc-700">
-        {(["states", "districts"] as const).map((m) => (
-          <button
-            key={m}
-            onClick={() => setMode(m)}
-            className={`px-2 py-1 capitalize transition-colors sm:px-3 sm:py-1.5 ${
-              mode === m
-                ? "bg-blue-600 text-white"
-                : "bg-white text-zinc-700 hover:bg-zinc-100 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"
-            }`}
-          >
-            {m}
-          </button>
-        ))}
+      <div className="absolute top-16 left-2 flex items-start gap-2 sm:left-3">
+        <div className="flex overflow-hidden rounded-md border border-zinc-300 text-xs shadow-sm sm:text-sm dark:border-zinc-700">
+          {(["states", "districts"] as const).map((m) => (
+            <button
+              key={m}
+              onClick={() => setMode(m)}
+              className={`px-2 py-1 capitalize transition-colors sm:px-3 sm:py-1.5 ${
+                mode === m
+                  ? "bg-blue-600 text-white"
+                  : "bg-white text-zinc-700 hover:bg-zinc-100 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"
+              }`}
+            >
+              {m}
+            </button>
+          ))}
+        </div>
+
+        {/* A native <select> (not a custom listbox) — matches the button
+            group's aesthetic well enough, and this doesn't need the search
+            overlay's typeahead/keyboard-nav complexity. */}
+        <select
+          value={String(year)}
+          onChange={(e) => {
+            const raw = e.target.value;
+            onChangeYear(raw === "current" ? "current" : Number(raw));
+          }}
+          aria-label="Year"
+          title="A specific year shows that Congress as first sworn in — today's actual roster ('Current') can differ slightly since, e.g. after a resignation or special election."
+          className="rounded-md border border-zinc-300 bg-white px-2 py-1 text-xs shadow-sm sm:px-3 sm:py-1.5 sm:text-sm dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300"
+        >
+          {ELECTION_YEARS.map((y) => (
+            <option key={y} value={String(y)}>
+              {yearLabel(y)}
+            </option>
+          ))}
+        </select>
       </div>
 
       <div className="absolute bottom-2 right-2 flex flex-col overflow-hidden rounded-md border border-zinc-300 text-sm shadow-sm sm:bottom-3 sm:right-3 dark:border-zinc-700">
@@ -525,25 +626,52 @@ export function UsMap({ selectedAbbr, onSelectState }: UsMapProps) {
 
       {mode === "districts" && (
         <div className="absolute bottom-2 left-2 flex max-w-[calc(100%-1rem)] flex-col gap-1 rounded-md border border-zinc-300 bg-white/90 p-1.5 text-[11px] shadow-sm sm:bottom-3 sm:left-3 sm:max-w-none sm:p-2 sm:text-xs text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900/90 dark:text-zinc-300">
-          <div className="font-medium">Current House rep&apos;s party</div>
+          <div className="font-medium">
+            {year === "current" ? "Current" : `${year} election`} House rep&apos;s party
+          </div>
           <LegendRow color="#2563eb" label="Democrat" />
           <LegendRow color="#dc2626" label="Republican" />
           <LegendRow color="#71717a" label="Independent" />
           <LegendRow color="#a1a1aa" label="No data" />
+          {/* District SHAPES are always the current (119th Congress) lines —
+              only who's colored in changes with the year — so a year before
+              those lines took effect can show real winners on approximately
+              (not necessarily exactly) right boundaries. See
+              election-years.ts's districtBoundariesReliable(). */}
+          {!districtBoundariesReliable(year) && (
+            <div className="mt-1 text-amber-700 dark:text-amber-500">
+              District boundaries shown are current-day lines - may not
+              reflect {year}&apos;s actual district shapes.
+            </div>
+          )}
+          {year !== "current" && (
+            <div className="hidden text-zinc-500 sm:block dark:text-zinc-400">
+              Shows this Congress as first sworn in - &quot;Current&quot; can
+              differ after a later resignation or special election.
+            </div>
+          )}
         </div>
       )}
 
       {mode === "states" && (
         <div className="absolute bottom-2 left-2 flex max-w-[calc(100%-1rem)] flex-col gap-1 rounded-md border border-zinc-300 bg-white/90 p-1.5 text-[11px] shadow-sm sm:bottom-3 sm:left-3 sm:max-w-none sm:p-2 sm:text-xs text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900/90 dark:text-zinc-300">
-          <div className="font-medium">Current senators&apos; party</div>
+          <div className="font-medium">
+            {year === "current" ? "Current" : `${year} election`} senators&apos; party
+          </div>
           <LegendRow color="#2563eb" label="Democrat" />
           <LegendRow color="#dc2626" label="Republican" />
           <LegendRow color="#71717a" label="Independent" />
           <LegendRow color="#a1a1aa" label="No data / no senators" />
           <div className="mt-1 hidden text-zinc-500 sm:block dark:text-zinc-400">
-            Split states show both senators — senior senator top-left,
+            Split states show both senators - senior senator top-left,
             junior bottom-right.
           </div>
+          {year !== "current" && (
+            <div className="hidden text-zinc-500 sm:block dark:text-zinc-400">
+              Shows this Congress as first sworn in - &quot;Current&quot; can
+              differ after a later resignation or special election.
+            </div>
+          )}
         </div>
       )}
     </div>

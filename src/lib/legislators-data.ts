@@ -102,17 +102,46 @@ function fromRow(row: TermRow): TermWithLegislator {
   };
 }
 
+// "current" = is_current=true (today's actual officeholder); "all" = every
+// term ever, no filter (getSenateHistory/getHouseHistory below); "asOf" =
+// whoever held the seat on a specific date — the home map's year-travel
+// feature (UsMap.tsx/StatePanel.tsx), resolved from a selected election
+// year to "${year+1}-01-03" (the day that Congress convened) one level up.
+type TermScope = { kind: "current" } | { kind: "all" } | { kind: "asOf"; date: string };
+
+// Typed off a real base query (rather than a loose structural interface)
+// so TS can actually verify the .eq()/.lte()/.or() chain below — PostgREST's
+// builder generics don't structurally match a hand-written interface.
+function baseTermsQuery() {
+  return supabase.from("terms").select(TERM_WITH_LEGISLATOR_SELECT);
+}
+type TermsQuery = ReturnType<typeof baseTermsQuery>;
+
+function applyScope(query: TermsQuery, scope: TermScope): TermsQuery {
+  if (scope.kind === "current") return query.eq("is_current", true);
+  if (scope.kind === "asOf") {
+    // end_date must be treated as EXCLUSIVE, not inclusive — confirmed live
+    // that a continuously-serving member's consecutive terms share the
+    // exact same boundary date (e.g. one term's end_date "2021-01-03" is
+    // the very next term's start_date "2021-01-03", Congress terms having
+    // no gap between them), so an inclusive `end_date >= asOfDate` matched
+    // BOTH rows simultaneously for anyone re-elected — a guaranteed dupe on
+    // every single asOf query at that boundary, not a rare edge case (hit
+    // this via a real duplicate-React-key console error before this fix).
+    return query.lte("start_date", scope.date).or(`end_date.is.null,end_date.gt.${scope.date}`);
+  }
+  return query;
+}
+
 async function getTerms(
   stateAbbr: string,
   chamber: Chamber,
-  { currentOnly }: { currentOnly: boolean },
+  scope: TermScope,
 ): Promise<TermWithLegislator[]> {
-  let query = supabase
-    .from("terms")
-    .select(TERM_WITH_LEGISLATOR_SELECT)
-    .eq("state_id", stateAbbr)
-    .eq("chamber", chamber);
-  if (currentOnly) query = query.eq("is_current", true);
+  const query = applyScope(
+    baseTermsQuery().eq("state_id", stateAbbr).eq("chamber", chamber),
+    scope,
+  );
 
   const { data, error } = await query;
   if (error) throw error;
@@ -120,20 +149,46 @@ async function getTerms(
 }
 
 export async function getCurrentSenators(stateAbbr: string): Promise<TermWithLegislator[]> {
-  return getTerms(stateAbbr, "senate", { currentOnly: true });
+  return getTerms(stateAbbr, "senate", { kind: "current" });
 }
 
+/** Whoever held this state's Senate seats on `asOfDate` — see TermScope. */
+export async function getSenatorsAsOf(
+  stateAbbr: string,
+  asOfDate: string,
+): Promise<TermWithLegislator[]> {
+  return getTerms(stateAbbr, "senate", { kind: "asOf", date: asOfDate });
+}
+
+const senatorsByStateCache = new Map<string, Promise<Map<string, TermWithLegislator[]>>>();
+
 /**
- * Every state's current senators in one query, grouped by state — for
- * src/lib/senate-split-geo.ts, which otherwise would need one query per
- * state (51 round trips) to build the map's Senate layer.
+ * Every state's senators (current, or as of a given date) in one query,
+ * grouped by state — for src/lib/senate-split-geo.ts, which otherwise
+ * would need one query per state (51 round trips) to build the map's
+ * Senate layer. Cached per `asOfDate` (`null` = current) — switching the
+ * home map's year dropdown back to an already-viewed year doesn't refetch.
  */
-export async function getCurrentSenatorsByState(): Promise<Map<string, TermWithLegislator[]>> {
-  const { data, error } = await supabase
-    .from("terms")
-    .select(TERM_WITH_LEGISLATOR_SELECT)
-    .eq("chamber", "senate")
-    .eq("is_current", true);
+export function getSenatorsByStateMap(
+  asOfDate: string | null,
+): Promise<Map<string, TermWithLegislator[]>> {
+  const key = asOfDate ?? "current";
+  let cached = senatorsByStateCache.get(key);
+  if (!cached) {
+    cached = fetchSenatorsByStateMap(asOfDate);
+    senatorsByStateCache.set(key, cached);
+  }
+  return cached;
+}
+
+async function fetchSenatorsByStateMap(
+  asOfDate: string | null,
+): Promise<Map<string, TermWithLegislator[]>> {
+  const query = applyScope(
+    baseTermsQuery().eq("chamber", "senate"),
+    asOfDate === null ? { kind: "current" } : { kind: "asOf", date: asOfDate },
+  );
+  const { data, error } = await query;
   if (error) throw error;
 
   const map = new Map<string, TermWithLegislator[]>();
@@ -149,13 +204,22 @@ export async function getCurrentSenatorsByState(): Promise<Map<string, TermWithL
 export async function getCurrentRepresentatives(
   stateAbbr: string,
 ): Promise<TermWithLegislator[]> {
-  const terms = await getTerms(stateAbbr, "house", { currentOnly: true });
+  const terms = await getTerms(stateAbbr, "house", { kind: "current" });
+  return terms.sort((a, b) => (a.term.district ?? 0) - (b.term.district ?? 0));
+}
+
+/** Whoever held this state's House seats on `asOfDate` — see TermScope. */
+export async function getRepresentativesAsOf(
+  stateAbbr: string,
+  asOfDate: string,
+): Promise<TermWithLegislator[]> {
+  const terms = await getTerms(stateAbbr, "house", { kind: "asOf", date: asOfDate });
   return terms.sort((a, b) => (a.term.district ?? 0) - (b.term.district ?? 0));
 }
 
 /** All Senate terms ever held for a state (current + past), newest first. */
 export async function getSenateHistory(stateAbbr: string): Promise<TermWithLegislator[]> {
-  const terms = await getTerms(stateAbbr, "senate", { currentOnly: false });
+  const terms = await getTerms(stateAbbr, "senate", { kind: "all" });
   return terms.sort((a, b) => b.term.startDate.localeCompare(a.term.startDate));
 }
 
@@ -166,33 +230,42 @@ export async function getSenateHistory(stateAbbr: string): Promise<TermWithLegis
  * real-world seat the way Senate's fixed 2-per-state slots are.
  */
 export async function getHouseHistory(stateAbbr: string): Promise<TermWithLegislator[]> {
-  const terms = await getTerms(stateAbbr, "house", { currentOnly: false });
+  const terms = await getTerms(stateAbbr, "house", { kind: "all" });
   return terms.sort((a, b) => b.term.startDate.localeCompare(a.term.startDate));
 }
 
-let cachedRepsByDistrictKey: Promise<Map<string, TermWithLegislator>> | null = null;
+const repsByDistrictKeyCache = new Map<string, Promise<Map<string, TermWithLegislator>>>();
 
 /**
- * Current House member keyed by "STATE-DISTRICT" (e.g. "CA-12", "WY-0" for
- * at-large) — for joining onto district geometry (src/lib/districts-geo.ts)
- * so the map's district layer can be colored/labeled by current occupant.
- * Memoized like districts-geo.ts's own cache — UsMap.tsx only fetches this
- * on the first switch to "Districts" mode, but that can happen again after
- * a remount (e.g. navigating away and back to the map), and without this
- * cache that refetched every time even though the much larger topology
- * blob it's joined against didn't.
+ * House member keyed by "STATE-DISTRICT" (e.g. "CA-12", "WY-0" for
+ * at-large) — for joining onto district geometry (src/lib/districts-geo.ts,
+ * always CURRENT/119th-Congress shapes regardless of `asOfDate` — see
+ * UsMap.tsx's redistricting-disclaimer comment) so the map's district layer
+ * can be colored/labeled by whoever held each seat on that date. `null` =
+ * current. Cached per key like getSenatorsByStateMap above, for the same
+ * reason (UsMap.tsx only fetches on the first switch to "Districts" mode
+ * for a given year, but that can happen again after a remount).
  */
-export function getCurrentRepsByDistrictKey(): Promise<Map<string, TermWithLegislator>> {
-  if (!cachedRepsByDistrictKey) cachedRepsByDistrictKey = fetchCurrentRepsByDistrictKey();
-  return cachedRepsByDistrictKey;
+export function getRepsByDistrictKeyMap(
+  asOfDate: string | null,
+): Promise<Map<string, TermWithLegislator>> {
+  const key = asOfDate ?? "current";
+  let cached = repsByDistrictKeyCache.get(key);
+  if (!cached) {
+    cached = fetchRepsByDistrictKeyMap(asOfDate);
+    repsByDistrictKeyCache.set(key, cached);
+  }
+  return cached;
 }
 
-async function fetchCurrentRepsByDistrictKey(): Promise<Map<string, TermWithLegislator>> {
-  const { data, error } = await supabase
-    .from("terms")
-    .select(TERM_WITH_LEGISLATOR_SELECT)
-    .eq("chamber", "house")
-    .eq("is_current", true);
+async function fetchRepsByDistrictKeyMap(
+  asOfDate: string | null,
+): Promise<Map<string, TermWithLegislator>> {
+  const query = applyScope(
+    baseTermsQuery().eq("chamber", "house"),
+    asOfDate === null ? { kind: "current" } : { kind: "asOf", date: asOfDate },
+  );
+  const { data, error } = await query;
   if (error) throw error;
 
   const map = new Map<string, TermWithLegislator>();

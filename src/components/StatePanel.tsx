@@ -3,11 +3,14 @@ import { useQuery } from "@tanstack/react-query";
 import { getMockStateSummary } from "@/lib/mock-states";
 import {
   getCurrentSenators,
+  getSenatorsAsOf,
   getCurrentRepresentatives,
+  getRepresentativesAsOf,
   legislatorFullName,
 } from "@/lib/legislators-data";
-import { getGovernor, governorFullName } from "@/lib/governors-data";
+import { getGovernor, getGovernorAsOf, governorFullName } from "@/lib/governors-data";
 import { getStateName } from "@/lib/states";
+import { asOfDateForYear, yearLabel, type ElectionYear } from "@/lib/election-years";
 import { PartyBadge } from "@/components/PartyBadge";
 import { RepresentativesList } from "@/components/RepresentativesList";
 
@@ -17,16 +20,25 @@ type StatePanelProps = {
   selectedDistrict?: number | null;
   /** Clears the selection, e.g. via a close button — omitted when the panel has nothing to close. */
   onClose?: () => void;
+  /** The home map's selected year (see src/lib/election-years.ts). */
+  year?: ElectionYear;
 };
 
-export function StatePanel({ abbr, selectedDistrict = null, onClose }: StatePanelProps) {
+export function StatePanel({
+  abbr,
+  selectedDistrict = null,
+  onClose,
+  year = "current",
+}: StatePanelProps) {
+  const asOfDate = asOfDateForYear(year);
   const {
     data: governor,
     isError: governorError,
     refetch: refetchGovernor,
   } = useQuery({
-    queryKey: ["governor", abbr],
-    queryFn: () => getGovernor(abbr as string),
+    queryKey: ["governor", abbr, asOfDate ?? "current"],
+    queryFn: () =>
+      asOfDate ? getGovernorAsOf(abbr as string, asOfDate) : getGovernor(abbr as string),
     enabled: abbr !== null,
   });
   const {
@@ -34,8 +46,9 @@ export function StatePanel({ abbr, selectedDistrict = null, onClose }: StatePane
     isError: senatorsError,
     refetch: refetchSenators,
   } = useQuery({
-    queryKey: ["senators", abbr],
-    queryFn: () => getCurrentSenators(abbr as string),
+    queryKey: ["senators", abbr, asOfDate ?? "current"],
+    queryFn: () =>
+      asOfDate ? getSenatorsAsOf(abbr as string, asOfDate) : getCurrentSenators(abbr as string),
     enabled: abbr !== null,
   });
   const {
@@ -43,8 +56,11 @@ export function StatePanel({ abbr, selectedDistrict = null, onClose }: StatePane
     isError: representativesError,
     refetch: refetchRepresentatives,
   } = useQuery({
-    queryKey: ["representatives", abbr],
-    queryFn: () => getCurrentRepresentatives(abbr as string),
+    queryKey: ["representatives", abbr, asOfDate ?? "current"],
+    queryFn: () =>
+      asOfDate
+        ? getRepresentativesAsOf(abbr as string, asOfDate)
+        : getCurrentRepresentatives(abbr as string),
     enabled: abbr !== null,
   });
 
@@ -102,7 +118,12 @@ export function StatePanel({ abbr, selectedDistrict = null, onClose }: StatePane
 
       <div>
         <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
-          Governor
+          Governor{" "}
+          {year !== "current" && (
+            <span className="normal-case text-zinc-400 dark:text-zinc-500">
+              ({yearLabel(year)} election)
+            </span>
+          )}
         </h3>
         {governorError ? (
           <FetchError onRetry={() => refetchGovernor()} />
@@ -122,7 +143,12 @@ export function StatePanel({ abbr, selectedDistrict = null, onClose }: StatePane
 
       <div>
         <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
-          Senators
+          Senators{" "}
+          {year !== "current" && (
+            <span className="normal-case text-zinc-400 dark:text-zinc-500">
+              ({yearLabel(year)} election)
+            </span>
+          )}
         </h3>
         {senatorsError ? (
           <FetchError onRetry={() => refetchSenators()} />
@@ -148,7 +174,12 @@ export function StatePanel({ abbr, selectedDistrict = null, onClose }: StatePane
 
       <div>
         <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
-          House representatives
+          House representatives{" "}
+          {year !== "current" && (
+            <span className="normal-case text-zinc-400 dark:text-zinc-500">
+              ({yearLabel(year)} election)
+            </span>
+          )}
         </h3>
         {representativesError ? (
           <FetchError onRetry={() => refetchRepresentatives()} />

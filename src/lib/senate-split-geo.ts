@@ -4,7 +4,7 @@ import { polygon, featureCollection } from "@turf/helpers";
 import type { Feature, FeatureCollection, Geometry, Polygon, MultiPolygon } from "geojson";
 import { getUsStatesGeoJson } from "./us-states-geo";
 import { remapInsetStates } from "./us-insets";
-import { getCurrentSenatorsByState } from "./legislators-data";
+import { getSenatorsByStateMap } from "./legislators-data";
 
 export type SenateHalfProperties = {
   id: string;
@@ -14,7 +14,7 @@ export type SenateHalfProperties = {
   senatorName: string | null;
 };
 
-let cachedPromise: Promise<FeatureCollection<Geometry, SenateHalfProperties>> | null = null;
+const cache = new Map<string, Promise<FeatureCollection<Geometry, SenateHalfProperties>>>();
 
 /**
  * Splits each state's real geometry (not just its bounding box) into two
@@ -22,20 +22,29 @@ let cachedPromise: Promise<FeatureCollection<Geometry, SenateHalfProperties>> | 
  * shape via polygon intersection — so multi-part states (islands, etc.)
  * still render correctly. A state renders as a single "whole" feature
  * instead of a split when there's nothing to show a split *for*: fewer
- * than 2 current senators (DC, a vacancy), or both senators sharing the
- * same party (the split would just be two triangles of the same color).
+ * than 2 senators for that date (DC, a vacancy), or both senators sharing
+ * the same party (the split would just be two triangles of the same
+ * color). `asOfDate` (`null` = current) selects which point in time —
+ * cached per date, like legislators-data.ts's own asOf caches, so
+ * switching the home map's year dropdown back to an already-viewed year
+ * doesn't refetch or rebuild the clipped geometry again.
  */
-export function getSenateSplitGeoJson(): Promise<
-  FeatureCollection<Geometry, SenateHalfProperties>
-> {
-  if (!cachedPromise) cachedPromise = buildSenateSplitGeoJson();
-  return cachedPromise;
+export function getSenateSplitGeoJson(
+  asOfDate: string | null,
+): Promise<FeatureCollection<Geometry, SenateHalfProperties>> {
+  const key = asOfDate ?? "current";
+  let cached = cache.get(key);
+  if (!cached) {
+    cached = buildSenateSplitGeoJson(asOfDate);
+    cache.set(key, cached);
+  }
+  return cached;
 }
 
-async function buildSenateSplitGeoJson(): Promise<
-  FeatureCollection<Geometry, SenateHalfProperties>
-> {
-  const senatorsByState = await getCurrentSenatorsByState();
+async function buildSenateSplitGeoJson(
+  asOfDate: string | null,
+): Promise<FeatureCollection<Geometry, SenateHalfProperties>> {
+  const senatorsByState = await getSenatorsByStateMap(asOfDate);
   const features: Feature<Geometry, SenateHalfProperties>[] = [];
 
   const statesGeoJson = remapInsetStates(getUsStatesGeoJson(), (p) => p.abbr);
@@ -127,8 +136,10 @@ async function buildSenateSplitGeoJson(): Promise<
  * highlight both halves of a state together on hover/selection instead of
  * just the one half under the cursor.
  */
-export async function getSenateHalfIdsByState(): Promise<Map<string, string[]>> {
-  const geojson = await getSenateSplitGeoJson();
+export async function getSenateHalfIdsByState(
+  asOfDate: string | null,
+): Promise<Map<string, string[]>> {
+  const geojson = await getSenateSplitGeoJson(asOfDate);
   const map = new Map<string, string[]>();
   for (const f of geojson.features) {
     const { stateId, id } = f.properties;

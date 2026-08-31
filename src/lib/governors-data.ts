@@ -89,6 +89,48 @@ export async function getGovernor(stateAbbr: string): Promise<Governor | null> {
   return governorFromTerm(termFromRow(term as unknown as GovernorTermRow));
 }
 
+/**
+ * Whoever held this state's governorship on `asOfDate` — the home map's
+ * year-travel feature (UsMap.tsx/StatePanel.tsx via election-years.ts),
+ * queried straight from governor_terms' full history (no `governors` table
+ * fallback needed here, unlike getGovernor() above — governor_terms already
+ * covers every state's whole history regardless of OpenStates coverage).
+ *
+ * `asOfDate` is the SAME date election-years.ts computes for Congress
+ * ("${year+1}-01-03") — a reasonable approximation, not a guarantee, since
+ * gubernatorial inaugurations vary by state and aren't all on that date
+ * (unlike Congress, which reliably convenes Jan 3). A state whose actual
+ * transition falls a few weeks later than Jan 3 could show the outgoing
+ * governor for that narrow window — same class of accepted, documented
+ * simplification as this app's other data-quality gaps (see CLAUDE.md).
+ *
+ * Uses `end_date` EXCLUSIVE (`> asOfDate`, not `>=`) for the identical
+ * reason legislators-data.ts's applyScope() does — confirmed live that
+ * `governor_terms` has the same back-to-back-terms boundary-date sharing.
+ * Picks the latest-starting match defensively (not `.maybeSingle()`, which
+ * would throw) since governor_terms' start/end dates have real, uneven
+ * gaps (see governor-history.mjs's header comment) — a genuine overlap
+ * shouldn't happen in clean data, but this degrades gracefully instead of
+ * crashing the panel if one ever does.
+ */
+export async function getGovernorAsOf(
+  stateAbbr: string,
+  asOfDate: string,
+): Promise<Governor | null> {
+  const { data, error } = await supabase
+    .from("governor_terms")
+    .select("*")
+    .eq("state_id", stateAbbr)
+    .lte("start_date", asOfDate)
+    .or(`end_date.is.null,end_date.gt.${asOfDate}`);
+  if (error) throw error;
+
+  const rows = data as unknown as GovernorTermRow[];
+  if (rows.length === 0) return null;
+  const best = rows.reduce((a, b) => ((b.start_date ?? "") > (a.start_date ?? "") ? b : a));
+  return governorFromTerm(termFromRow(best));
+}
+
 export function governorFullName(governor: Governor): string {
   return [governor.firstName, governor.lastName].filter(Boolean).join(" ");
 }

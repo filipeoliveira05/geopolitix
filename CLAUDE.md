@@ -565,6 +565,52 @@ governor/senators/House reps (Supabase, via TanStack Query) and mock capital/pop
 link to the full state page. On mobile the panel is a capped-height (`45vh`), independently
 scrolling bottom sheet rather than pushing the map off-screen.
 
+**Year travel (added 2026-08-31)** — a year dropdown next to the States/Districts toggle
+(`ELECTION_YEARS` in `src/lib/election-years.ts`: "Current" + even years 2024 down to 2000)
+repaints the map with that year's ACTUAL Senate/House winners instead of today's, using the
+already-synced full historical `terms` data — no new sync work needed. Selecting a year Y means
+"the Congress elected in Y" (resolved to `asOfDateForYear(Y)` = `"${Y+1}-01-03"`, the day that
+Congress convened — matches `terms.start_date`'s own convention), not "whoever held office on
+some date within calendar year Y." Worth remembering when reasoning about "today": as of writing
+(2026-08-31), "Current" is actually the 119th Congress, elected in **2024** — the 2026 midterms
+haven't happened yet (`/midterms-2026` tracks that separately, as upcoming). Clicking a state
+also switches `StatePanel`'s senators/reps to that year (`getSenatorsAsOf`/`getRepresentativesAsOf`
+in `legislators-data.ts`). **Governor is year-travel aware too** (`getGovernorAsOf` in
+`governors-data.ts`, added shortly after the initial Senate/House version once asked "how do we
+close this gap") — queried straight from `governor_terms`' full history (no `governors`-table
+fallback needed the way `getGovernor()` needs one, since `governor_terms` already covers every
+state regardless of OpenStates coverage; confirmed live for VA, an OpenStates-gap state, before
+and after this change). Reuses the same `asOfDate` election-years.ts computes for Congress
+(`"${year+1}-01-03"`) as an approximation, not a guarantee — gubernatorial inaugurations vary by
+state and aren't all on that date the way Congress reliably convenes Jan 3, so a state whose
+actual transition falls a few weeks later could show the outgoing governor for that narrow
+window; accepted as the same class of documented simplification as this app's other data-quality
+gaps, not surfaced as a separate UI disclaimer (unlike the district-boundary one below, which is
+a much larger and much more likely-to-matter gap). Picks the latest-starting match defensively
+(not `.maybeSingle()`, which would throw) since `governor_terms`' start/end dates have real,
+uneven gaps per state (see `governor-history.mjs`'s header comment). House **district shapes never change** with the
+year (only current, 119th-Congress geometry exists) — only the occupant/party joined onto them
+does; a year before 2022 (when the current lines took effect in most states,
+`districtBoundariesReliable()`) shows a disclaimer in the Districts legend rather than silently
+implying the boundaries themselves are historically accurate. `senate-split-geo.ts`/
+`legislators-data.ts`'s bulk map-query functions are cached per `asOfDate` (`Map`, not a single
+promise) so revisiting an already-viewed year doesn't refetch or rebuild the clipped Senate-split
+geometry again. **Real bug caught and fixed during this work, not theoretical:** the initial
+`asOf` range filter (`start_date <= asOfDate <= end_date`, both inclusive) double-counted anyone
+continuously re-elected — confirmed live that a term's `end_date` and the very next term's
+`start_date` are the exact same calendar date (Congress terms are back-to-back with no gap), so
+an inclusive `end_date >= asOfDate` matched BOTH the old and new term simultaneously at that
+boundary on every single asOf query, not a rare edge case — caught via a real duplicate-React-key
+console error, fixed by making `end_date` exclusive (`end_date > asOfDate`) in `applyScope()`.
+**The selected year is mirrored into the URL** (`?year=2020`, alongside the existing `?state=`),
+parsed back via `parseElectionYearParam()` — same reasoning `selectedAbbr` already had this: a
+reload or shared link preserves it. Omitted entirely when "current" (the default), so an ordinary
+visit still gets a bare `/`; an invalid/stale value falls back to "current" rather than erroring.
+Since "Current" and a specific recent year (e.g. "2024") can genuinely show different people for
+the same seat if a resignation/special election happened after that Congress first convened (see
+above), the year `<select>` carries an explanatory `title` tooltip, and both map-mode legend boxes
+show a one-line reminder of this whenever a specific year (not "current") is selected.
+
 **`/state/[abbr]` page** (`src/app/state/[abbr]/page.tsx` + `StateTabs.tsx`): four tabs per
 plan §5 — current representation (real, including governor); history (real Senate, House, AND
 governor history back to statehood as aligned tables, current officeholder marked with a dot
