@@ -1,5 +1,15 @@
 @import "tailwindcss";
 
+/* Manual theme toggle (ThemeToggle.tsx / RootLayout's no-flash script)
+   always sets data-theme to a resolved "light"/"dark" on <html> — even in
+   "system" mode, resolved via matchMedia — so it's never left unset while
+   JS is running. Keys Tailwind's dark: variant off the same attribute so
+   the handful of dark: utilities (party colors, badges, map labels) agree
+   with the CSS tokens and don't silently stop following the OS theme in
+   System mode. The media-query block below is a fallback for JS-disabled
+   only — the attribute is expected to always be present otherwise. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
 :root {
   --paper: #f6f4ef;
   --surface: #fcfbf8;
@@ -23,8 +33,11 @@
   --font-mono: var(--font-plex-mono);
 }
 
+/* :not([data-theme]) fallback for when JS never ran (disabled/blocked) —
+   with JS, data-theme is always explicitly "light" or "dark" (see above),
+   so this branch never applies and can't conflict with either choice. */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme]) {
     --paper: #16130f;
     --surface: #1e1a14;
     --ink: #ede9df;
@@ -33,6 +46,17 @@
     --seal: #c99a52;
     --seal-soft: rgba(201, 154, 82, 0.12);
   }
+}
+
+/* Explicit Dark choice wins even when the OS is light. */
+:root[data-theme="dark"] {
+  --paper: #16130f;
+  --surface: #1e1a14;
+  --ink: #ede9df;
+  --muted: #a39a85;
+  --rule: #3a352a;
+  --seal: #c99a52;
+  --seal-soft: rgba(201, 154, 82, 0.12);
 }
 
 body {

@@ -38,12 +38,36 @@ export const metadata: Metadata = {
 // its own positioning (fixed overlay on home, sticky in-flow elsewhere) via
 // usePathname, so it never needs a per-page opt-in/out. See its own comment
 // for why.
+// Runs before first paint (inline, in <head>) — sets data-theme from
+// localStorage synchronously so a reload doesn't flash the OS-default
+// theme before React hydrates and ThemeToggle's own effect corrects it.
+// try/catch guards a browser with localStorage disabled (private mode,
+// site-data blocked): falls through to the CSS's own prefers-color-scheme
+// default rather than throwing and breaking the page.
+const THEME_INIT_SCRIPT = `
+try {
+  var t = localStorage.getItem("theme");
+  var resolved = (t === "light" || t === "dark")
+    ? t
+    : (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+  document.documentElement.dataset.theme = resolved;
+} catch (e) {}
+`;
+
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
+      // The no-flash script below sets data-theme on this element before
+      // React hydrates, which React would otherwise flag as a hydration
+      // mismatch every load — same fix used by next-themes for the
+      // identical pattern.
+      suppressHydrationWarning
       className={`${fraunces.variable} ${plexSans.variable} ${plexMono.variable} h-full antialiased`}
     >
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
+      </head>
       <body className="min-h-full flex flex-col">
         <Providers>
           <GlobalHeader />

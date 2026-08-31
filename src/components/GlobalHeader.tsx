@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { buildSearchIndex } from "@/lib/search-index";
 import { SearchOverlay } from "@/components/SearchOverlay";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 // Rendered on every route (src/app/layout.tsx) — the one place all three
 // phases (politics/geography/quiz) hang a nav entry off, instead of every
@@ -80,6 +81,7 @@ export function GlobalHeader() {
               <path d="m21 21-4.3-4.3" />
             </svg>
           </button>
+          <ThemeToggle />
         </nav>
       </header>
 
