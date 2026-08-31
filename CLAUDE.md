@@ -325,6 +325,31 @@ Build order: **Phase 1 politics → Phase 2 geography → Phase 3 quiz.** Don't 
 
 ## UI conventions
 
+- **Design system ("Congressional Record" civic-almanac, added 2026-08-31):** CSS custom-property
+  tokens in `globals.css` — `--paper`/`--surface`/`--ink`/`--muted`/`--rule`/`--seal`/`--seal-soft`,
+  light values on `:root`, dark values under `prefers-color-scheme: dark` — mapped into Tailwind
+  v4's `@theme inline` block as ordinary utilities (`bg-paper`, `text-ink`, `border-rule`, etc.).
+  **These are already theme-aware — never pair one with a `dark:` Tailwind variant**; only
+  genuinely semantic non-token colors (party colors below, the amber/emerald/sky pulse-dot
+  conventions, error red) still need explicit `dark:` pairs. Three font roles via
+  `next/font/google`: `font-display` (Fraunces — headings, person names, big numbers only, spent
+  sparingly), `font-sans` (IBM Plex Sans, the `body` default — don't add the class explicitly),
+  `font-mono` (IBM Plex Mono — dates, tallies, sync timestamps, any tabular numeric column; when
+  wrapping just a value in its own `<span className="font-mono">` next to preceding text, keep the
+  space as its own JSX text node — e.g. `synced{" "}\n<span>...` — a space merged into the
+  preceding string instead got silently collapsed by the browser at the new element boundary,
+  caught live as "synced1 hour ago"). Radius is plain Tailwind `rounded` (4px) everywhere, never
+  `rounded-md`/`-lg`/`-xl`; no `box-shadow` on any surface (the `SearchOverlay` backdrop scrim is
+  the one exception). Shared primitives: `Card` (`src/components/Card.tsx`, a bordered
+  `bg-surface` wrapper), `SectionHeading` (`src/components/SectionHeading.tsx`, the
+  uppercase-tracked eyebrow label prefixed with a `§` mark in `--seal` — deliberately reconsidered
+  against alternatives (a seal-colored accent bar, a pilcrow, no mark at all) and kept as-is, don't
+  re-litigate), `BackToMapLink` (`src/components/BackToMapLink.tsx`, the "← Back to map" link
+  every non-home page uses). The `.link-accent` utility class (also in `globals.css`) replaces
+  bare `hover:underline` on in-content text links — transparent underline at rest, `--seal`-colored
+  on hover/focus. `.animate-fade-in` gives each top-level page's outer container a brief mount
+  fade (respects `prefers-reduced-motion`) — applied once per page, not per-element. Full design
+  rationale in `docs/superpowers/specs/2026-08-31-design-overhaul-design.md`.
 - **Party colors, fixed across the app:** Democrat blue (`#2563eb`), Republican red
   (`#dc2626`), Independent/other grey (`#71717a`). Single source of truth:
   `src/lib/party-colors.ts` (`PARTY_COLORS`, `partyStyle()`), consumed by `PartyBadge.tsx` and
@@ -487,6 +512,9 @@ version bump, check this first — verify those two files still exist in
 and reading live from Supabase; infra (below) is fully automated too. A post-Phase-1 UX polish
 pass (mobile responsiveness, map framing, table formatting — see below and UI conventions) and
 a data-completeness pass (governor history, loading/error states) has since shipped on top of
+it. A full visual design-system overhaul (typography, color tokens, shared Card/SectionHeading/
+BackToMapLink primitives — see UI conventions' Design system entry) shipped 2026-08-31, replacing
+the original default-Next.js look app-wide; the app's actual pages/data/routing are unchanged by
 it. Next up per the build order is Phase 2 (geography/sports sync), unless told otherwise.
 
 **Profile data coverage (name/photo/bio/term history), verified live — a living snapshot, not a
