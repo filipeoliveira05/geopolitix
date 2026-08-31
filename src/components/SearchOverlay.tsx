@@ -97,7 +97,7 @@ export function SearchOverlay({ onClose, entries, isLoading }: SearchOverlayProp
         aria-modal="true"
         aria-label="Search"
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-lg overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-xl dark:border-zinc-700 dark:bg-zinc-900"
+        className="w-full max-w-lg overflow-hidden rounded border border-rule bg-surface"
       >
         <input
           ref={inputRef}
@@ -106,15 +106,15 @@ export function SearchOverlay({ onClose, entries, isLoading }: SearchOverlayProp
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={handleInputKeyDown}
           placeholder="Search legislators, governors, candidates, states…"
-          className="w-full border-b border-zinc-200 bg-transparent px-4 py-3 text-sm outline-none placeholder:text-zinc-400 dark:border-zinc-700 dark:text-zinc-100 dark:placeholder:text-zinc-500"
+          className="w-full border-b border-rule bg-transparent px-4 py-3 text-sm text-ink outline-none placeholder:text-muted"
         />
 
         <ul role="listbox" className="max-h-80 overflow-y-auto py-1">
           {isLoading && query.trim() && (
-            <li className="px-4 py-3 text-sm text-zinc-500 dark:text-zinc-400">Loading search index…</li>
+            <li className="px-4 py-3 text-sm text-muted">Loading search index…</li>
           )}
           {!isLoading && query.trim() && results.length === 0 && (
-            <li className="px-4 py-3 text-sm text-zinc-500 dark:text-zinc-400">No matches.</li>
+            <li className="px-4 py-3 text-sm text-muted">No matches.</li>
           )}
           {results.map((entry, i) => (
             <li key={`${entry.type}-${entry.id}`} role="option" aria-selected={i === safeActiveIndex}>
@@ -122,15 +122,13 @@ export function SearchOverlay({ onClose, entries, isLoading }: SearchOverlayProp
                 onClick={() => navigateTo(entry)}
                 onMouseEnter={() => setActiveIndex(i)}
                 className={`flex w-full items-center gap-3 px-4 py-2 text-left ${
-                  i === safeActiveIndex
-                    ? "bg-blue-50 dark:bg-blue-950/40"
-                    : "hover:bg-zinc-50 dark:hover:bg-zinc-800"
+                  i === safeActiveIndex ? "bg-seal-soft" : "hover:bg-paper"
                 }`}
               >
                 <ResultAvatar entry={entry} />
                 <span className="flex flex-col items-start">
-                  <span className="text-sm font-medium text-zinc-900 dark:text-zinc-100">{entry.name}</span>
-                  <span className="text-xs text-zinc-500 dark:text-zinc-400">{entry.subtitle}</span>
+                  <span className="text-sm font-medium text-ink">{entry.name}</span>
+                  <span className="text-xs text-muted">{entry.subtitle}</span>
                 </span>
               </button>
             </li>
@@ -159,7 +157,7 @@ function ResultAvatar({ entry }: { entry: SearchEntry }) {
     );
   }
   return (
-    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-zinc-100 text-zinc-400 dark:bg-zinc-800 dark:text-zinc-500">
+    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-paper text-muted">
       <svg
         xmlns="http://www.w3.org/2000/svg"
         viewBox="0 0 24 24"
