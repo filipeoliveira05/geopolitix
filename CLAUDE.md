@@ -625,9 +625,24 @@ and after this change). Reuses the same `asOfDate` election-years.ts computes fo
 (`"${year+1}-01-03"`) as an approximation, not a guarantee — gubernatorial inaugurations vary by
 state and aren't all on that date the way Congress reliably convenes Jan 3, so a state whose
 actual transition falls a few weeks later could show the outgoing governor for that narrow
-window; accepted as the same class of documented simplification as this app's other data-quality
-gaps, not surfaced as a separate UI disclaimer (unlike the district-boundary one below, which is
-a much larger and much more likely-to-matter gap). Picks the latest-starting match defensively
+window. **Deliberately kept this way, not a lingering TODO** (revisited and reaffirmed
+2026-08-31): a per-state exact-inauguration-date table was considered and rejected — it would
+only narrow a days-to-weeks window nobody's reported hitting, at the cost of sourcing 50 states'
+real inauguration dates/rules from a primary source, for a codebase that otherwise treats
+Congress's fixed Jan 3 convention as the one shared rule across offices. Accepted as the same
+class of documented simplification as this app's other data-quality gaps, not surfaced as a
+separate UI disclaimer (unlike the district-boundary one below, which is a much larger and much
+more likely-to-matter gap). **A separate, unrelated gap**, also deliberately accepted rather than
+fixed: NJ/VA and, on their own distinct odd-year cycle, KY/MS/LA hold gubernatorial elections
+entirely off the even-year cycle `ELECTION_YEARS` offers — `getGovernorAsOf` still returns a
+correct answer for any of these (it queries "who held office on this date," not "who won an
+election this year," so it never errors or returns nothing), but picking a year with no actual
+election in one of these states shows a governor elected in some earlier year next to a selector
+that implies "elected in Y." Fixing the Jan 3 approximation above does nothing for this — it's a
+labeling/framing question, not a date-precision one — and was left equally unaddressed after the
+same review, for the same reason (rare to actually notice; needs a specific state + specific year
+click to surface). Would need its own disclaimer if ever revisited, not a data fix.
+Picks the latest-starting match defensively
 (not `.maybeSingle()`, which would throw) since `governor_terms`' start/end dates have real,
 uneven gaps per state (see `governor-history.mjs`'s header comment). House **district shapes never change** with the
 year (only current, 119th-Congress geometry exists) — only the occupant/party joined onto them
