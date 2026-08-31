@@ -96,10 +96,29 @@ export function parsePoint(wkt) {
  */
 export async function lookupCityFacts(name, stateQid) {
   const escaped = name.replace(/"/g, '\\"');
+  // Bounded city->county->state (2 hops via UNION), not `wdt:P131+`
+  // (unbounded transitive) — same fix geography.mjs's fetchTopCities
+  // needed after a real run showed P131+ can time out/502 (California
+  // alone has 83,625 entities transitively P131-linked to it).
+  //
+  // `?city wdt:P1082 ?population` is a REQUIRED triple, not OPTIONAL — a
+  // real disambiguation bug, caught live: "Green Bay" is genuinely
+  // ambiguous on Wikidata (the city AND the actual bay/lake both carry
+  // that exact label and both link into Wisconsin's P131 hierarchy), and
+  // with no ORDER BY, an unconstrained LIMIT 1 non-deterministically
+  // picked the bay (no population) over the city (population 107,395) on
+  // a real test run. Requiring population effectively filters to
+  // populated places only, since a geographic feature like a bay never
+  // has one.
   const query = `SELECT ?population ?coord WHERE {
   ?city rdfs:label "${escaped}"@en .
-  ?city wdt:P131+ wd:${stateQid} .
-  OPTIONAL { ?city wdt:P1082 ?population . }
+  {
+    ?city wdt:P131 wd:${stateQid} .
+  } UNION {
+    ?city wdt:P131 ?county .
+    ?county wdt:P131 wd:${stateQid} .
+  }
+  ?city wdt:P1082 ?population .
   OPTIONAL { ?city wdt:P625 ?coord . }
 } LIMIT 1`;
   const rows = await sparql(query);

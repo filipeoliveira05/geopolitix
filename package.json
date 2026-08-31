@@ -14,7 +14,9 @@
     "sync:governors": "node --env-file=.env.local scripts/sync/governors.mjs",
     "sync:governor-history": "node --env-file=.env.local scripts/sync/governor-history.mjs",
     "sync:races": "node --env-file=.env.local scripts/sync/races-2026.mjs",
-    "sync:districts": "node --env-file=.env.local scripts/sync/districts.mjs"
+    "sync:districts": "node --env-file=.env.local scripts/sync/districts.mjs",
+    "sync:geography": "node --env-file=.env.local scripts/sync/geography.mjs",
+    "sync:sports": "node --env-file=.env.local scripts/sync/sports.mjs"
   },
   "dependencies": {
     "@supabase/postgrest-js": "^2.109.0",
