@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { PartyBadge } from "@/components/PartyBadge";
+import { SectionHeading } from "@/components/SectionHeading";
 import {
   legislatorFullName,
   type TermWithLegislator,
@@ -38,15 +39,13 @@ export function StateTabs(props: StateTabsProps) {
 
   return (
     <div>
-      <div className="flex gap-1 overflow-x-auto overflow-y-hidden border-b border-zinc-200 dark:border-zinc-800">
+      <div className="flex gap-1 overflow-x-auto overflow-y-hidden border-b border-rule">
         {TABS.map((t) => (
           <button
             key={t.key}
             onClick={() => setTab(t.key)}
             className={`shrink-0 whitespace-nowrap px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
-              tab === t.key
-                ? "border-blue-600 text-blue-600 dark:border-blue-400 dark:text-blue-400"
-                : "border-transparent text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200"
+              tab === t.key ? "border-seal text-seal" : "border-transparent text-muted hover:text-ink"
             }`}
           >
             {t.label}
@@ -74,7 +73,7 @@ function CurrentTab({
       <Section title="Governor">
         {governor ? (
           <p>
-            <Link href={`/governor/${governor.id}`} className="hover:underline">
+            <Link href={`/governor/${governor.id}`} className="link-accent">
               {governor.name}
             </Link>{" "}
             <PartyBadge party={governor.party} />
@@ -89,7 +88,7 @@ function CurrentTab({
           <ul className="flex flex-col gap-1">
             {senators.map(({ legislator, term }) => (
               <li key={legislator.id}>
-                <Link href={`/legislator/${legislator.id}`} className="hover:underline">
+                <Link href={`/legislator/${legislator.id}`} className="link-accent">
                   {legislatorFullName(legislator)}
                 </Link>{" "}
                 <PartyBadge party={term.party} />
@@ -107,7 +106,7 @@ function CurrentTab({
             {representatives.map(({ legislator, term }) => (
               <li key={legislator.id}>
                 {term.district === 0 ? "At-large" : `District ${term.district}`}:{" "}
-                <Link href={`/legislator/${legislator.id}`} className="hover:underline">
+                <Link href={`/legislator/${legislator.id}`} className="link-accent">
                   {legislatorFullName(legislator)}
                 </Link>{" "}
                 <PartyBadge party={term.party} />
@@ -133,7 +132,7 @@ function HistoryTab({ senateHistory, houseHistory, governorHistory }: StateTabsP
                 {senateHistory.map(({ legislator, term }) => (
                   <tr
                     key={term.id}
-                    className="border-b border-zinc-100 last:border-0 dark:border-zinc-800"
+                    className="border-b border-rule last:border-0"
                   >
                     <td className="w-px py-1.5 pr-1.5 align-middle">
                       {term.isCurrent && (
@@ -144,14 +143,14 @@ function HistoryTab({ senateHistory, houseHistory, governorHistory }: StateTabsP
                       )}
                     </td>
                     <td className="py-1.5 pr-3 align-middle">
-                      <Link href={`/legislator/${legislator.id}`} className="hover:underline">
+                      <Link href={`/legislator/${legislator.id}`} className="link-accent">
                         {legislatorFullName(legislator)}
                       </Link>
                     </td>
                     <td className="w-px py-1.5 pr-3 align-middle whitespace-nowrap">
                       <PartyBadge party={term.party} />
                     </td>
-                    <td className="py-1.5 text-right align-middle whitespace-nowrap text-zinc-500 dark:text-zinc-400">
+                    <td className="py-1.5 text-right align-middle whitespace-nowrap font-mono text-muted">
                       {term.startDate} – {term.endDate}
                     </td>
                   </tr>
@@ -172,7 +171,7 @@ function HistoryTab({ senateHistory, houseHistory, governorHistory }: StateTabsP
                 {houseHistory.map(({ legislator, term }) => (
                   <tr
                     key={term.id}
-                    className="border-b border-zinc-100 last:border-0 dark:border-zinc-800"
+                    className="border-b border-rule last:border-0"
                   >
                     <td className="w-px py-1.5 pr-1.5 align-middle">
                       {term.isCurrent && (
@@ -183,17 +182,17 @@ function HistoryTab({ senateHistory, houseHistory, governorHistory }: StateTabsP
                       )}
                     </td>
                     <td className="py-1.5 pr-3 align-middle">
-                      <Link href={`/legislator/${legislator.id}`} className="hover:underline">
+                      <Link href={`/legislator/${legislator.id}`} className="link-accent">
                         {legislatorFullName(legislator)}
                       </Link>
                     </td>
-                    <td className="w-px py-1.5 pr-3 align-middle whitespace-nowrap text-zinc-500 dark:text-zinc-400">
+                    <td className="w-px py-1.5 pr-3 align-middle whitespace-nowrap font-mono text-muted">
                       {term.district === 0 ? "At-large" : `District ${term.district}`}
                     </td>
                     <td className="w-px py-1.5 pr-3 align-middle whitespace-nowrap">
                       <PartyBadge party={term.party} />
                     </td>
-                    <td className="py-1.5 text-right align-middle whitespace-nowrap text-zinc-500 dark:text-zinc-400">
+                    <td className="py-1.5 text-right align-middle whitespace-nowrap font-mono text-muted">
                       {term.startDate} – {term.endDate}
                     </td>
                   </tr>
@@ -214,7 +213,7 @@ function HistoryTab({ senateHistory, houseHistory, governorHistory }: StateTabsP
                 {governorHistory.map((term) => (
                   <tr
                     key={term.id}
-                    className="border-b border-zinc-100 last:border-0 dark:border-zinc-800"
+                    className="border-b border-rule last:border-0"
                   >
                     <td className="w-px py-1.5 pr-1.5 align-middle">
                       {term.isCurrent && (
@@ -227,7 +226,7 @@ function HistoryTab({ senateHistory, houseHistory, governorHistory }: StateTabsP
                     <td className="py-1.5 pr-3 align-middle">
                       <Link
                         href={`/governor/${term.governorId ?? term.wikidataPersonId}`}
-                        className="hover:underline"
+                        className="link-accent"
                       >
                         {term.name}
                       </Link>
@@ -235,7 +234,7 @@ function HistoryTab({ senateHistory, houseHistory, governorHistory }: StateTabsP
                     <td className="w-px py-1.5 pr-3 align-middle whitespace-nowrap">
                       <PartyBadge party={term.party} />
                     </td>
-                    <td className="py-1.5 text-right align-middle whitespace-nowrap text-zinc-500 dark:text-zinc-400">
+                    <td className="py-1.5 text-right align-middle whitespace-nowrap font-mono text-muted">
                       {term.startDate ?? "?"} – {term.endDate ?? (term.isCurrent ? "present" : "?")}
                     </td>
                   </tr>
@@ -309,7 +308,7 @@ function MidtermsTab({ races }: StateTabsProps) {
           const pendingMessage = primaryPendingMessage(race);
           return (
             <Section key={race.id} title={raceSectionTitle(race)}>
-              <p className="mb-1 flex items-center gap-1.5 text-xs text-zinc-500 dark:text-zinc-400">
+              <p className="mb-1 flex items-center gap-1.5 text-xs text-muted">
                 {race.status !== "called" && (
                   <span className="h-2 w-2 animate-pulse rounded-full bg-amber-500" />
                 )}
@@ -322,11 +321,9 @@ function MidtermsTab({ races }: StateTabsProps) {
                   {race.candidates.map((candidate) => (
                     <li key={candidate.id}>
                       {candidate.name} <PartyBadge party={candidate.party} />
-                      {candidate.isIncumbent && (
-                        <span className="text-zinc-500 dark:text-zinc-400"> (incumbent)</span>
-                      )}
+                      {candidate.isIncumbent && <span className="text-muted"> (incumbent)</span>}
                       {candidate.id === race.winnerCandidateId && (
-                        <span className="text-zinc-500 dark:text-zinc-400"> — winner</span>
+                        <span className="text-muted"> — winner</span>
                       )}
                     </li>
                   ))}
@@ -347,16 +344,14 @@ function MidtermsTab({ races }: StateTabsProps) {
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div>
-      <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
-        {title}
-      </h3>
-      <div className="mt-1">{children}</div>
+      <div className="border-b border-rule pb-1">
+        <SectionHeading as="h3">{title}</SectionHeading>
+      </div>
+      <div className="mt-2">{children}</div>
     </div>
   );
 }
 
 function Empty({ children }: { children: React.ReactNode }) {
-  return (
-    <p className="text-sm text-zinc-500 dark:text-zinc-400">{children}</p>
-  );
+  return <p className="text-sm text-muted">{children}</p>;
 }
