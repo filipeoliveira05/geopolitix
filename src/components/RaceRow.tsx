@@ -25,7 +25,7 @@ function candidateHref(candidate: RaceCandidate): string | null {
 export function RaceRow({ race, label }: { race: Race; label: React.ReactNode }) {
   const pendingMessage = primaryPendingMessage(race);
   return (
-    <tr className="border-b border-zinc-100 last:border-0 dark:border-zinc-800">
+    <tr className="border-b border-rule last:border-0">
       <td className="w-px py-2 pr-1.5 align-middle">
         {race.status !== "called" && (
           <span
@@ -37,7 +37,7 @@ export function RaceRow({ race, label }: { race: Race; label: React.ReactNode })
       <td className="py-2 pr-3 align-middle whitespace-nowrap">{label}</td>
       <td className="w-full py-2 pr-3 align-middle">
         {pendingMessage ? (
-          <span className="text-zinc-500 dark:text-zinc-400">{pendingMessage}</span>
+          <span className="text-muted">{pendingMessage}</span>
         ) : (
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
             {race.candidates.map((candidate) => {
@@ -45,7 +45,7 @@ export function RaceRow({ race, label }: { race: Race; label: React.ReactNode })
               return (
                 <span key={candidate.id} className="whitespace-nowrap">
                   {href ? (
-                    <Link href={href} className="hover:underline">
+                    <Link href={href} className="link-accent">
                       {candidate.name}
                     </Link>
                   ) : (

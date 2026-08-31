@@ -12,6 +12,9 @@ import { RaceRow } from "@/components/RaceRow";
 import { HouseRacesByState } from "@/components/HouseRacesByState";
 import { SyncFreshnessNote } from "@/components/SyncFreshnessNote";
 import { getJobFreshness } from "@/lib/sync-freshness";
+import { Card } from "@/components/Card";
+import { SectionHeading } from "@/components/SectionHeading";
+import { BackToMapLink } from "@/components/BackToMapLink";
 
 export const metadata: Metadata = { title: "2026 Midterms — Geopolitix" };
 // No dynamic route params here (unlike /state/[abbr]), so Next would
@@ -65,30 +68,25 @@ function ScoreboardCard({
   daysUntilElection: number;
 }) {
   return (
-    <div className="rounded-md border border-zinc-200 p-4 dark:border-zinc-800">
-      <h2 className="text-sm font-bold uppercase tracking-wide text-zinc-800 dark:text-zinc-100">
-        {label}
-      </h2>
+    <Card>
+      <h2 className="text-sm font-bold uppercase tracking-wide text-ink">{label}</h2>
       {electionHasPassed ? (
-        <p className="mt-1 text-2xl font-semibold">
+        <p className="mt-1 font-display text-2xl font-semibold text-ink">
           {called}
-          <span className="text-base font-normal text-zinc-500 dark:text-zinc-400">
-            {" "}
-            / {total} called
-          </span>
+          <span className="text-base font-normal text-muted"> / {total} called</span>
         </p>
       ) : (
         <>
-          <p className="mt-1 text-lg font-semibold text-zinc-800 dark:text-zinc-100">
+          <p className="mt-1 font-display text-lg font-semibold text-ink">
             Election in {daysUntilElection} day{daysUntilElection === 1 ? "" : "s"}{" "}
             <span className="ml-0.5 inline-block h-2 w-2 animate-pulse rounded-full bg-amber-500 align-middle" />
           </p>
-          <p className="mt-0.5 text-sm text-zinc-500 dark:text-zinc-400">
+          <p className="mt-0.5 text-sm text-muted">
             {primariesHeld === null ? `${total} races` : `${primariesHeld} / ${total} primaries held`}
           </p>
         </>
       )}
-    </div>
+    </Card>
   );
 }
 
@@ -112,16 +110,11 @@ export default async function Midterms2026Page() {
   const houseCalled = houseCounts.reduce((sum, s) => sum + s.called, 0);
 
   return (
-    <div className="mx-auto w-full max-w-3xl flex-1 p-6 sm:p-10">
-      <Link
-        href="/"
-        className="text-sm text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200"
-      >
-        ← Back to map
-      </Link>
+    <div className="mx-auto w-full max-w-3xl flex-1 animate-fade-in p-6 sm:p-10">
+      <BackToMapLink />
 
-      <h1 className="mt-2 text-3xl font-semibold">2026 Midterms</h1>
-      <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">
+      <h1 className="mt-2 font-display text-3xl font-semibold text-ink">2026 Midterms</h1>
+      <p className="mt-2 text-sm text-muted">
         This is not a real-time results service: race status updates on a periodic sync, not
         live on election night.
       </p>
@@ -154,9 +147,9 @@ export default async function Midterms2026Page() {
 
       {(["senate", "governor"] as const).map((office) => (
         <div key={office} className="mt-8">
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
-            {OFFICE_LABELS[office]} races
-          </h2>
+          <div className="border-b border-rule pb-1">
+            <SectionHeading>{OFFICE_LABELS[office]} races</SectionHeading>
+          </div>
           <div className="mt-2 overflow-x-auto overflow-y-hidden">
             <table className="w-full min-w-[32rem] border-collapse text-sm">
               <tbody>
@@ -165,7 +158,7 @@ export default async function Midterms2026Page() {
                     key={race.id}
                     race={race}
                     label={
-                      <Link href={`/state/${race.stateId}`} className="hover:underline">
+                      <Link href={`/state/${race.stateId}`} className="link-accent">
                         {getStateName(race.stateId) ?? race.stateId}
                       </Link>
                     }
@@ -178,12 +171,10 @@ export default async function Midterms2026Page() {
       ))}
 
       <div className="mt-8">
-        <h2 className="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
-          U.S. House races
-        </h2>
-        <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
-          Expand a state to load its districts.
-        </p>
+        <div className="border-b border-rule pb-1">
+          <SectionHeading>U.S. House races</SectionHeading>
+        </div>
+        <p className="mt-1 text-xs text-muted">Expand a state to load its districts.</p>
         <div className="mt-2">
           <HouseRacesByState summaries={houseCounts} electionHasPassed={electionHasPassed} />
         </div>

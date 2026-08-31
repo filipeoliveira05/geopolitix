@@ -38,7 +38,7 @@ function HouseStateRow({
     : `${summary.total} race${summary.total === 1 ? "" : "s"}`;
 
   return (
-    <div className="border-b border-zinc-100 last:border-0 dark:border-zinc-800">
+    <div className="border-b border-rule last:border-0">
       <button
         type="button"
         onClick={() => setIsOpen((open) => !open)}
@@ -58,23 +58,21 @@ function HouseStateRow({
             strokeWidth={2}
             strokeLinecap="round"
             strokeLinejoin="round"
-            className={`h-3 w-3 shrink-0 text-zinc-400 transition-transform duration-150 dark:text-zinc-500 ${isOpen ? "rotate-90" : ""}`}
+            className={`h-3 w-3 shrink-0 text-muted transition-transform duration-150 ${isOpen ? "rotate-90" : ""}`}
             aria-hidden="true"
           >
             <path d="M9 6l6 6-6 6" />
           </svg>
           {getStateName(summary.stateId) ?? summary.stateId}
         </span>
-        <span className="text-zinc-500 dark:text-zinc-400">{summaryText}</span>
+        <span className="text-muted">{summaryText}</span>
       </button>
       {isOpen && (
         <div className="overflow-x-auto overflow-y-hidden pb-2 pl-5">
           {isLoading ? (
-            <p className="py-1 text-xs text-zinc-500 dark:text-zinc-400">Loading districts…</p>
+            <p className="py-1 text-xs text-muted">Loading districts…</p>
           ) : isError ? (
-            <p className="py-1 text-xs text-zinc-500 dark:text-zinc-400">
-              Couldn&apos;t load House races for this state.
-            </p>
+            <p className="py-1 text-xs text-muted">Couldn&apos;t load House races for this state.</p>
           ) : (
             <table className="w-full min-w-[26rem] border-collapse text-sm">
               <tbody>
