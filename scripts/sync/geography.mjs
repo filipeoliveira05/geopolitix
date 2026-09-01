@@ -189,17 +189,41 @@ const BARE_QID_PATTERN = /^Q\d+$/;
 const SETTLEMENT_CLASS_PATTERN =
   /\b(cit(y|ies)|town|village|municipality|census-designated place|borough|township)\b/i;
 
-// A real, live false positive: GTA's "Vice City" (Q1172857) is `wdt:P31`
-// "fictional city" (Q1964689) — a real Wikidata class whose own label
-// contains "city", so it passed SETTLEMENT_CLASS_PATTERN and got synced
-// into FL with a fictional population (1,800,000) before this exclusion
-// was added. Same class of gap as governor-history.mjs's Ray Sullivan
-// fictional-governor fix — a positive keyword match on a class label can't
-// tell "real" from "fictional" without also checking for this word.
-const FICTIONAL_CLASS_PATTERN = /\bfictional\b/i;
+// Three real, live false positives caught via a full-database audit (2026-09-01), each a
+// Wikidata class whose LABEL contains a settlement keyword despite the entity not being a real
+// standalone city/town — the exact risk this keyword approach always carried (see the header
+// comment above). Any of these matching on ANY of a candidate's classes rejects it outright,
+// checked before the positive settlement match, since a multi-typed entity (see the county case)
+// can carry both a bad class and a plausible-looking one.
+//   - "fictional city"/"fictional town" (e.g. Q1964689): GTA's "Vice City" (Q1172857, FL) and
+//     Bully's "Bullworth" (Q56642125, NH) both slipped through this way, same class of gap
+//     governor-history.mjs's Ray Sullivan fix already solved for people, just not yet ported here.
+//   - New England's "city and town area"/"city and town area division" classes (NECTA — a Census
+//     statistical-area geography, not real settlements): confirmed live to have contaminated
+//     CT/MA/ME/NH/RI's top-10 lists — MA's real list of 10 was reduced to just 2 actual cities
+//     (Boston, Foxborough) crowded out by 8 NECTA regions, since these areas' aggregate
+//     population figures rank far above any single real town. "area"/"division" never appears in
+//     a genuine settlement class label.
+//   - "county of X" (e.g. Q13415368): Virginia's Spotsylvania County (Q506202) is, unusually,
+//     `wdt:P31`'d as BOTH "city" (Q515, likely a Wikidata tagging error given VA's independent-
+//     city legal quirk) AND "county of Virginia" — the county class alone is proof enough to
+//     reject it regardless of the coincidental "city" class also present.
+const REJECT_CLASS_PATTERN = /\b(fictional|area|division|county)\b/i;
+
+// "township" stays in SETTLEMENT_CLASS_PATTERN because in NJ/PA a township IS a real, governed
+// municipality equivalent to a city — but in these six states it's a plain civil/administrative
+// subdivision with no city-like government, and its own aggregate population regularly outranks
+// the state's actual cities. Confirmed live (2026-09-01 audit): IL's top-10 was half civil
+// townships (Rockford/Thornton/Wheeling/Worth/Proviso/Downers Grove) crowding out real cities
+// like Peoria and Elgin; the same shape hit IN/IA/MO/MI/AR. Exact-label match only (`^...$`), not
+// a bare "township" keyword reject, so it does NOT catch Michigan's distinct "charter township of
+// Michigan" class (a more city-like, more autonomous form some Michigan townships — e.g. Clinton
+// Township — actually hold) or any other state's township class not in this specific list.
+const CIVIL_TOWNSHIP_CLASS_PATTERN =
+  /^township of (illinois|indiana|iowa|missouri|michigan|arkansas|kansas|north dakota)$/i;
 
 async function filterToSettlementClasses(candidateQids) {
-  const good = new Set();
+  const classLabelsByQid = new Map();
   for (const batch of chunk(candidateQids, 100)) {
     const values = batch.map((q) => `wd:${q}`).join(" ");
     const query = `SELECT ?city ?classLabel WHERE {
@@ -209,12 +233,17 @@ async function filterToSettlementClasses(candidateQids) {
 }`;
     const rows = await sparql(query);
     for (const row of rows) {
-      const classLabel = row.classLabel?.value ?? "";
-      if (FICTIONAL_CLASS_PATTERN.test(classLabel)) continue;
-      if (SETTLEMENT_CLASS_PATTERN.test(classLabel)) {
-        good.add(qidFromUri(row.city.value));
-      }
+      const qid = qidFromUri(row.city.value);
+      const labels = classLabelsByQid.get(qid) ?? [];
+      labels.push(row.classLabel?.value ?? "");
+      classLabelsByQid.set(qid, labels);
     }
+  }
+  const good = new Set();
+  for (const [qid, labels] of classLabelsByQid) {
+    if (labels.some((label) => REJECT_CLASS_PATTERN.test(label))) continue;
+    if (labels.some((label) => CIVIL_TOWNSHIP_CLASS_PATTERN.test(label))) continue;
+    if (labels.some((label) => SETTLEMENT_CLASS_PATTERN.test(label))) good.add(qid);
   }
   return good;
 }

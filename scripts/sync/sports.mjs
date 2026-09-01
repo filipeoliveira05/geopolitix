@@ -125,6 +125,29 @@ function resolveLocation(location) {
   return { city, stateAbbr };
 }
 
+// A handful of teams' parsed Location text doesn't exactly match any
+// Wikidata-resolvable settlement — caught live via a full-database audit
+// (2026-09-01): the Yankees' "Bronx" (Wikidata's real entity is labeled
+// "The Bronx"), the White Sox's "South Side Chicago" and the Cubs' "North
+// Side Chicago" (informal Chicago community-area names, not their own
+// standalone Wikidata settlement), and the Braves' "Cumberland" (Truist
+// Park's unincorporated home community near Atlanta, itself not a
+// population-bearing Wikidata entity) all silently produced a phantom
+// `cities` row with name-only data (no population/coordinates) via the
+// exact-string cityByKey lookup below falling through to lookupCityFacts(),
+// which correctly found nothing. Curated one-off aliases to each team's
+// state's real, already-populated city row — same "explicit special case"
+// precedent as the Washington D.C. handling above, not a general fuzzy-name
+// heuristic (this codebase already tried and reverted heuristic name
+// matching elsewhere — see candidates' surname-fallback removal in
+// CLAUDE.md — after it produced wrong matches).
+const CITY_NAME_ALIASES = {
+  "NY:Bronx": "NY:The Bronx",
+  "IL:South Side Chicago": "IL:Chicago",
+  "IL:North Side Chicago": "IL:Chicago",
+  "GA:Cumberland": "GA:Atlanta",
+};
+
 /**
  * Every U.S. team across all 5 leagues, as { league, team, city, stateAbbr }.
  * `skipped` collects non-US/unparsed rows for the caller's change log.
@@ -176,10 +199,17 @@ async function main() {
   const teamRows = [];
   for (const t of teams) {
     const key = `${t.stateAbbr}:${t.city}`;
-    let city = cityByKey.get(key);
+    const aliasKey = CITY_NAME_ALIASES[key] ?? key;
+    let city = cityByKey.get(aliasKey);
     if (!city) {
       const stateQid = stateQids.get(t.stateAbbr);
       const cityFacts = stateQid ? await lookupCityFacts(t.city, stateQid) : null;
+      if (!cityFacts) {
+        changeLog.record(
+          "no city facts (from sports)",
+          `${t.team}: "${t.city}, ${t.stateAbbr}" not resolvable on Wikidata`,
+        );
+      }
       const { data: inserted, error: insertError } = await supabase
         .from("cities")
         .upsert(

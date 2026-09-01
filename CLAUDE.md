@@ -415,15 +415,70 @@ Build order: **Phase 1 politics → Phase 2 geography → Phase 3 quiz.** Don't 
     one-off (merge: repoint the affected `sports_teams.city_id` rows onto the real, populated row,
     delete the stale null-population duplicate, rename the real row) — no backfill script needed,
     since this can't recur going forward with the query fix in place.
-  - **A real Wikidata false positive slipped through `SETTLEMENT_CLASS_PATTERN` — also caught
-    live in the same session**: FL had a `cities` row named "Vice City" with population
+  - **A separate, unrelated `lookupCityFacts()` gap the same follow-up audit found**: a team's
+    parsed Location text can legitimately be an informal name with no exactly-matching Wikidata
+    settlement at all, not just a missing-label case — confirmed live for 4 teams: the Yankees'
+    "Bronx" (the real Wikidata entity is labeled "The Bronx"), the White Sox's "South Side
+    Chicago" and the Cubs' "North Side Chicago" (informal Chicago community-area names, not their
+    own standalone settlement), and the Braves' "Cumberland" (Truist Park's unincorporated home
+    community near Atlanta, itself not a population-bearing entity). Each produced the same
+    name-only phantom `cities` row `lookupCityFacts()` returning `null` always did before this
+    audit. Fixed with `CITY_NAME_ALIASES`, a curated one-off map (`sports.mjs`) from each team's
+    parsed `state:city` key to its state's real, already-resolved city row — same "explicit
+    special case" precedent as the script's existing Washington D.C. handling, not a general
+    fuzzy-name heuristic (this codebase already tried and reverted heuristic name matching
+    elsewhere — see candidates' surname-fallback removal above — after it produced wrong
+    matches). `main()`'s insert branch also now `changeLog.record()`s a distinct "no city facts
+    (from sports)" category whenever `lookupCityFacts()` genuinely returns null, so a *future*
+    unaliased case shows up in the sync's own log instead of silently creating another phantom
+    row. Recovery for the 4 already-bad rows was a manual one-off, same merge shape as the
+    Tampa/Jacksonville case above (repoint the linked `sports_teams.city_id`, delete the stale
+    null-population duplicate).
+  - **A real Wikidata false positive slipped through `SETTLEMENT_CLASS_PATTERN`, which a
+    follow-up full-database audit (same day, user-requested) showed was one instance of a wider
+    pattern, not an isolated bug**: FL had a `cities` row named "Vice City" with population
     1,800,000 — the fictional Grand Theft Auto city, not a real place. Its Wikidata class (`P31`)
     is literally labeled "fictional city" (`Q1964689`), which contains "city" and so passed the
     keyword filter same as any real settlement class would — same root problem
     `governor-history.mjs`'s Ray Sullivan fix already solved for people, just not yet ported to
-    cities. Fixed with a `FICTIONAL_CLASS_PATTERN` (`/\bfictional\b/i`) checked before the
-    settlement-keyword match in `filterToSettlementClasses()`. The one bad row was deleted by
-    hand; no other fictional entities were found live in a spot-check of the other 532 cities.
+    cities. The audit found two more classes with the identical shape (a class LABEL containing a
+    settlement keyword despite not being a real standalone settlement): NH's "Bullworth" — the
+    fictional town from Rockstar's *Bully*, same "fictional X" class pattern as Vice City, not
+    caught by the original spot-check; and New England's own Census statistical geography, "\_\_\_
+    city and town area"/"\_\_\_ city and town area division" (NECTA) — confirmed to have
+    contaminated CT/MA/ME/NH/RI's top-10 lists, reducing MA's real list to just 2 actual cities
+    (Boston, Foxborough) crowded out by 8 NECTA regions whose aggregate populations rank far above
+    any single real town. Separately, VA's "Spotsylvania County" is unusually `wdt:P31`'d as BOTH
+    "city" (`Q515`, likely a Wikidata tagging error given VA's independent-city legal quirk) AND
+    "county of Virginia" — proof the reject check must run over ALL of a multi-typed candidate's
+    classes, not just whichever one a single SPARQL row happens to pair with the settlement match.
+    All four fixed with one `REJECT_CLASS_PATTERN` (`/\b(fictional|area|division|county)\b/i`,
+    replacing the narrower `FICTIONAL_CLASS_PATTERN`) checked against every class label a
+    candidate carries before the settlement-keyword match in `filterToSettlementClasses()` (which
+    now aggregates a candidate's classes by QID first, rather than deciding per SPARQL row, so a
+    multi-typed entity can't slip through via whichever row happens to pair a bad class with a
+    plausible one). Two more binational/combined-metro entities of the same shape — TX's
+    "El Paso–Juárez" (class "metropolitan area") and MN's "Minneapolis–Saint Paul" (class
+    "metropolitan statistical area") — were found as PRE-EXISTING stale rows the code fix alone
+    couldn't remove (the `cities` upsert is purely additive, never deletes a row that falls out of
+    a fresh top-10 selection) and were deleted by hand; found via a `[–—]` en/em-dash-in-name
+    sweep, since compound-place entities of this shape reliably use one and a real single city
+    name never does.
+  - **Separately, "township" is deliberately still IN `SETTLEMENT_CLASS_PATTERN`** (NJ/PA
+    townships ARE real, governed municipalities equivalent to a city) **but is a plain
+    civil/administrative subdivision with no city-like government in several other states**,
+    confirmed live: IL's top-10 was half civil townships (Rockford/Thornton/Wheeling/Worth/
+    Proviso/Downers Grove) crowding out real cities like Peoria and Elgin, with the identical
+    shape in IN/IA/MO/AR/KS/ND. Fixed with a second, narrower exact-label reject,
+    `CIVIL_TOWNSHIP_CLASS_PATTERN` (`/^township of (illinois|indiana|iowa|missouri|michigan|
+    arkansas|kansas|north dakota)$/i`) — deliberately anchored to the EXACT plain "township of X"
+    label per state, not a bare "township" keyword reject, so it does NOT catch Michigan's
+    distinct "charter township of Michigan" class (a more autonomous, more city-like form some
+    Michigan townships — e.g. Clinton Township, Shelby Charter Township — actually hold, confirmed
+    live both correctly stayed after the fix). All bad rows across all six original + two
+    follow-up states were deleted by hand, then backfilled by a full `sync:geography` rerun (safe
+    given the additive-only upsert) — real cities correctly filled every gap (e.g. IL: Rockford,
+    Elgin, Peoria, Cicero; IN: Hammond, Gary, Greenwood).
 - **House terms/races join on `district_number` (plain int)** — the map, `getCurrentRepsByDistrictKey()`,
   and every House `StateTabs.tsx` display all key off it; see the `districts` entry above for why
   the once-parallel `district_id` FK column was dropped rather than wired up.
