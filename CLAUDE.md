@@ -395,6 +395,35 @@ Build order: **Phase 1 politics → Phase 2 geography → Phase 3 quiz.** Don't 
     BY` non-deterministically picked the bay (no population) over the city on one real test —
     fixed by making `?city wdt:P1082 ?population` a REQUIRED triple, not optional, which
     effectively filters to populated places only.
+  - **Missing "en" labels produced bare-QID city names and duplicate rows — caught live 2026-09-01**,
+    reported by the user off three literal `"Q49255"`/`"Q49231"`/`"Q16568"` names in `cities`.
+    Wikidata's SPARQL label service falls back to emitting the bare entity id as if it were the
+    label when an entity has no `"en"` `rdfs:label` at all — same underlying gap
+    `governor-history.mjs`'s `BARE_QID_PATTERN` already handles for people, just never ported to
+    cities. Confirmed live: Tampa, Norfolk, and Jacksonville (all real, major US cities with full
+    English Wikipedia articles) genuinely have no `"en"` label on Wikidata, only a `"mul"`
+    (language-independent) one — `fetchCandidateCities()`'s label service now requests
+    `"en,mul"`, which resolves all three real cases; `fetchTopCities()` also keeps a
+    `BARE_QID_PATTERN` skip-with-warning as a defensive backstop for any future entity lacking
+    both. The same gap hit `lookupCityFacts()` (`_wikidata.mjs`, used by `sports.mjs` for a team's
+    home city outside its state's top 10) a second, worse way: its exact `rdfs:label "X"@en`
+    triple match returned zero rows for Tampa/Jacksonville, and the `null` fallback let
+    `sports.mjs` insert a SECOND `cities` row for each — same name, `population: null` — rather
+    than reusing the real row `geography.mjs` had already fetched (undetected because the bare-QID
+    name meant the two rows never looked like duplicates); fixed the same way, an `en`/`mul`
+    `UNION`. Recovery for the 3 already-bad rows plus the 2 accidental duplicates was a manual
+    one-off (merge: repoint the affected `sports_teams.city_id` rows onto the real, populated row,
+    delete the stale null-population duplicate, rename the real row) — no backfill script needed,
+    since this can't recur going forward with the query fix in place.
+  - **A real Wikidata false positive slipped through `SETTLEMENT_CLASS_PATTERN` — also caught
+    live in the same session**: FL had a `cities` row named "Vice City" with population
+    1,800,000 — the fictional Grand Theft Auto city, not a real place. Its Wikidata class (`P31`)
+    is literally labeled "fictional city" (`Q1964689`), which contains "city" and so passed the
+    keyword filter same as any real settlement class would — same root problem
+    `governor-history.mjs`'s Ray Sullivan fix already solved for people, just not yet ported to
+    cities. Fixed with a `FICTIONAL_CLASS_PATTERN` (`/\bfictional\b/i`) checked before the
+    settlement-keyword match in `filterToSettlementClasses()`. The one bad row was deleted by
+    hand; no other fictional entities were found live in a spot-check of the other 532 cities.
 - **House terms/races join on `district_number` (plain int)** — the map, `getCurrentRepsByDistrictKey()`,
   and every House `StateTabs.tsx` display all key off it; see the `districts` entry above for why
   the once-parallel `district_id` FK column was dropped rather than wired up.

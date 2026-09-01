@@ -110,8 +110,16 @@ export async function lookupCityFacts(name, stateQid) {
   // a real test run. Requiring population effectively filters to
   // populated places only, since a geographic feature like a bay never
   // has one.
+  // Matches an "en" OR "mul" label, not "en" alone — caught live: Tampa
+  // (Buccaneers/Lightning) and Jacksonville (Jaguars) both have no "en"
+  // rdfs:label at all despite being real cities with full English Wikipedia
+  // articles, so an "en"-only exact match silently returned zero rows and
+  // this function's null fallback let sports.mjs insert a population-less
+  // duplicate `cities` row rather than the real, already-fetched one from
+  // geography.mjs's own top-cities query. Same "mul" fallback
+  // geography.mjs's fetchCandidateCities now uses.
   const query = `SELECT ?population ?coord WHERE {
-  ?city rdfs:label "${escaped}"@en .
+  { ?city rdfs:label "${escaped}"@en } UNION { ?city rdfs:label "${escaped}"@mul }
   {
     ?city wdt:P131 wd:${stateQid} .
   } UNION {

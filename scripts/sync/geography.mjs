@@ -167,16 +167,36 @@ async function fetchCandidateCities(stateQid) {
   }
   ?city wdt:P1082 ?population .
   OPTIONAL { ?city wdt:P625 ?coord . }
-  SERVICE wikibase:label { bd:serviceParam wikibase:language "en". }
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "en,mul". }
 } ORDER BY DESC(?population) LIMIT 100`;
   return sparql(query);
 }
+
+// Wikidata's SPARQL label service falls back to emitting the bare entity id
+// (e.g. "Q49255") as if it were the label when a city has no "en" rdfs:label
+// — caught live: Tampa, Norfolk, and Jacksonville all lack an explicit "en"
+// label despite having full English Wikipedia articles, real cities, not a
+// fetch glitch (same class of gap governor-history.mjs already found for
+// people, see its BARE_QID_PATTERN). "en,mul" (Wikidata's language-
+// independent term) resolves all three real live cases, but isn't
+// guaranteed for every future entity — this pattern is a defensive
+// backstop, not the primary fix.
+const BARE_QID_PATTERN = /^Q\d+$/;
 
 // Matches "city", "cities", "town", "village", "municipality", "census-
 // designated place", "borough", "township" in a Wikidata class label —
 // see fetchTopCities' header comment for why this beats a QID allowlist.
 const SETTLEMENT_CLASS_PATTERN =
   /\b(cit(y|ies)|town|village|municipality|census-designated place|borough|township)\b/i;
+
+// A real, live false positive: GTA's "Vice City" (Q1172857) is `wdt:P31`
+// "fictional city" (Q1964689) — a real Wikidata class whose own label
+// contains "city", so it passed SETTLEMENT_CLASS_PATTERN and got synced
+// into FL with a fictional population (1,800,000) before this exclusion
+// was added. Same class of gap as governor-history.mjs's Ray Sullivan
+// fictional-governor fix — a positive keyword match on a class label can't
+// tell "real" from "fictional" without also checking for this word.
+const FICTIONAL_CLASS_PATTERN = /\bfictional\b/i;
 
 async function filterToSettlementClasses(candidateQids) {
   const good = new Set();
@@ -189,7 +209,9 @@ async function filterToSettlementClasses(candidateQids) {
 }`;
     const rows = await sparql(query);
     for (const row of rows) {
-      if (SETTLEMENT_CLASS_PATTERN.test(row.classLabel?.value ?? "")) {
+      const classLabel = row.classLabel?.value ?? "";
+      if (FICTIONAL_CLASS_PATTERN.test(classLabel)) continue;
+      if (SETTLEMENT_CLASS_PATTERN.test(classLabel)) {
         good.add(qidFromUri(row.city.value));
       }
     }
@@ -209,6 +231,10 @@ async function fetchTopCities(stateQid) {
     const qid = qidFromUri(row.city.value);
     if (!settlementQids.has(qid)) continue;
     const name = row.cityLabel.value;
+    if (BARE_QID_PATTERN.test(name)) {
+      console.warn(`  skipping ${qid}: no "en"/"mul" Wikidata label (bare QID fallback)`);
+      continue;
+    }
     if (seenNames.has(name)) continue;
     seenNames.add(name);
     const { latitude, longitude } = parsePoint(row.coord?.value);
