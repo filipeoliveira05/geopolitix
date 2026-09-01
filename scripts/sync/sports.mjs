@@ -10,18 +10,25 @@
 // every league's team list at 10 results (e.g. NFL's 32 teams truncated to
 // 10, alphabetically) with no pagination workaround — unusable for "every
 // team," which this app's Geography tab needs (a state with a real team
-// showing none would read as a bug). Run manually via `npm run sync:sports`,
-// AFTER `npm run sync:geography` — this script upserts a city (via Wikidata,
-// the same source geography.mjs already uses) when a team's home city isn't
-// already one of that state's top-10-by-population + capital rows.
+// showing none would read as a bug). Run manually via `npm run sync:sports`.
+//
+// `sports_teams.city_name`/`state_id` are plain columns, not a `cities` FK
+// (dropped 2026-09-01, same migration that removed Wikidata from this whole
+// subsystem) — the only thing that FK was ever used for was rendering a
+// team's home city as plain text next to its name ("New England Patriots
+// (Foxborough)"; no `/city/[id]` page exists or was ever planned), so
+// normalizing it through a join with a `cities` row (many of which existed
+// ONLY to be that join target, flagged `is_support_row` to keep them out of
+// the real "most populous cities" ranking) was solving a problem that plain
+// text already solved. This also means `sports.mjs` no longer needs to run
+// after `sync:geography` — it has no dependency on `cities` at all now.
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { feature } from "topojson-client";
 import { supabaseAdmin, logSync } from "./_supabase-admin.mjs";
 import { createChangeLog } from "./_change-log.mjs";
-import { fetchJson, lookupCityFacts } from "./_wikidata.mjs";
-import { resolveStateQids } from "./geography.mjs";
+import { fetchJson } from "./_wikidata.mjs";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const fipsToAbbr = JSON.parse(
@@ -125,29 +132,6 @@ function resolveLocation(location) {
   return { city, stateAbbr };
 }
 
-// A handful of teams' parsed Location text doesn't exactly match any
-// Wikidata-resolvable settlement — caught live via a full-database audit
-// (2026-09-01): the Yankees' "Bronx" (Wikidata's real entity is labeled
-// "The Bronx"), the White Sox's "South Side Chicago" and the Cubs' "North
-// Side Chicago" (informal Chicago community-area names, not their own
-// standalone Wikidata settlement), and the Braves' "Cumberland" (Truist
-// Park's unincorporated home community near Atlanta, itself not a
-// population-bearing Wikidata entity) all silently produced a phantom
-// `cities` row with name-only data (no population/coordinates) via the
-// exact-string cityByKey lookup below falling through to lookupCityFacts(),
-// which correctly found nothing. Curated one-off aliases to each team's
-// state's real, already-populated city row — same "explicit special case"
-// precedent as the Washington D.C. handling above, not a general fuzzy-name
-// heuristic (this codebase already tried and reverted heuristic name
-// matching elsewhere — see candidates' surname-fallback removal in
-// CLAUDE.md — after it produced wrong matches).
-const CITY_NAME_ALIASES = {
-  "NY:Bronx": "NY:The Bronx",
-  "IL:South Side Chicago": "IL:Chicago",
-  "IL:North Side Chicago": "IL:Chicago",
-  "GA:Cumberland": "GA:Atlanta",
-};
-
 /**
  * Every U.S. team across all 5 leagues, as { league, team, city, stateAbbr }.
  * `skipped` collects non-US/unparsed rows for the caller's change log.
@@ -188,54 +172,11 @@ async function main() {
   }
   for (const s of skipped) changeLog.record("skipped (non-US or unparsed)", s);
 
-  const stateQids = await resolveStateQids();
-
-  const { data: existingCities, error: citiesSelectError } = await supabase
-    .from("cities")
-    .select("id, name, state_id");
-  if (citiesSelectError) throw citiesSelectError;
-  const cityByKey = new Map(existingCities.map((c) => [`${c.state_id}:${c.name}`, c]));
-
-  const teamRows = [];
-  for (const t of teams) {
-    const key = `${t.stateAbbr}:${t.city}`;
-    const aliasKey = CITY_NAME_ALIASES[key] ?? key;
-    let city = cityByKey.get(aliasKey);
-    if (!city) {
-      const stateQid = stateQids.get(t.stateAbbr);
-      const cityFacts = stateQid ? await lookupCityFacts(t.city, stateQid) : null;
-      if (!cityFacts) {
-        changeLog.record(
-          "no city facts (from sports)",
-          `${t.team}: "${t.city}, ${t.stateAbbr}" not resolvable on Wikidata`,
-        );
-      }
-      const { data: inserted, error: insertError } = await supabase
-        .from("cities")
-        .upsert(
-          {
-            state_id: t.stateAbbr,
-            name: t.city,
-            population: cityFacts?.population ?? null,
-            latitude: cityFacts?.latitude ?? null,
-            longitude: cityFacts?.longitude ?? null,
-            is_capital: false,
-          },
-          { onConflict: "state_id,name" },
-        )
-        .select("id, name, state_id")
-        .single();
-      if (insertError) throw insertError;
-      city = inserted;
-      cityByKey.set(key, city);
-      changeLog.record("new city (from sports)", `${t.city}, ${t.stateAbbr}`);
-    }
-    teamRows.push({ league: t.league, name: t.team, city_id: city.id });
-  }
+  const teamRows = teams.map((t) => ({ league: t.league, name: t.team, city_name: t.city, state_id: t.stateAbbr }));
 
   const { data: existingTeams, error: existingTeamsError } = await supabase
     .from("sports_teams")
-    .select("league, name, city_id");
+    .select("league, name, city_name, state_id");
   if (existingTeamsError) throw existingTeamsError;
   const existingByKey = new Map(existingTeams.map((r) => [`${r.league}:${r.name}`, r]));
 
@@ -243,8 +184,9 @@ async function main() {
     const key = `${row.league}:${row.name}`;
     const previous = existingByKey.get(key);
     if (!previous) changeLog.record("new team", `${row.league} ${row.name}`);
-    else if (previous.city_id !== row.city_id) changeLog.record("updated (city changed)", `${row.league} ${row.name}`);
-    else changeLog.record("unchanged");
+    else if (previous.city_name !== row.city_name || previous.state_id !== row.state_id) {
+      changeLog.record("updated (city changed)", `${row.league} ${row.name}`);
+    } else changeLog.record("unchanged");
   }
 
   const { error } = await supabase.from("sports_teams").upsert(teamRows, { onConflict: "league,name" });

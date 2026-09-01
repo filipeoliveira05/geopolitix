@@ -2,7 +2,15 @@ import { supabase } from "./supabase";
 
 // Reads the Supabase `states`/`cities`/`sports_teams` tables (plan §4,
 // Phase 2), synced via `npm run sync:geography` / `npm run sync:sports`
-// (see scripts/sync/geography.mjs, scripts/sync/sports.mjs).
+// (see scripts/sync/geography.mjs, scripts/sync/sports.mjs). Both tables
+// are sourced entirely from World Population Review as of 2026-09-01 (no
+// Wikidata) — `cities` holds nothing but each state's real top 10 most
+// populous cities + its capital, and `sports_teams` stores its own city
+// name/state directly rather than through a `cities` FK (dropped in the
+// same revamp — the FK's only use was rendering plain text like "New
+// England Patriots (Foxborough)", no `/city/[id]` page exists or was ever
+// planned), so no filtering/reconciliation logic is needed in either query
+// below.
 
 export type StateGeography = {
   stateId: string;
@@ -19,15 +27,12 @@ export type City = {
   stateId: string;
   population: number | null;
   isCapital: boolean;
-  latitude: number | null;
-  longitude: number | null;
 };
 
 export type SportsTeam = {
   id: string;
   name: string;
   league: string;
-  cityId: string;
   cityName: string;
 };
 
@@ -45,8 +50,6 @@ type CityRow = {
   state_id: string;
   population: number | null;
   is_capital: boolean;
-  latitude: number | null;
-  longitude: number | null;
 };
 
 function cityFromRow(row: CityRow): City {
@@ -56,8 +59,6 @@ function cityFromRow(row: CityRow): City {
     stateId: row.state_id,
     population: row.population,
     isCapital: row.is_capital,
-    latitude: row.latitude,
-    longitude: row.longitude,
   };
 }
 
@@ -92,7 +93,7 @@ export async function getStateGeography(stateAbbr: string): Promise<StateGeograp
   };
 }
 
-/** All synced cities for a state (top 10 by population + capital), most populous first. */
+/** A state's top 10 most populous cities + its capital, most populous first. */
 export async function getCitiesForState(stateAbbr: string): Promise<City[]> {
   const { data, error } = await supabase.from("cities").select("*").eq("state_id", stateAbbr);
   if (error) throw error;
@@ -105,22 +106,20 @@ type SportsTeamRow = {
   id: string;
   name: string;
   league: string;
-  city_id: string;
-  cities: { name: string } | null;
+  city_name: string;
 };
 
 /** Every major-league sports team whose home city is in this state. */
 export async function getSportsTeamsForState(stateAbbr: string): Promise<SportsTeam[]> {
   const { data, error } = await supabase
     .from("sports_teams")
-    .select("id, name, league, city_id, cities!inner(name, state_id)")
-    .eq("cities.state_id", stateAbbr);
+    .select("id, name, league, city_name")
+    .eq("state_id", stateAbbr);
   if (error) throw error;
   return (data as unknown as SportsTeamRow[]).map((row) => ({
     id: row.id,
     name: row.name,
     league: row.league,
-    cityId: row.city_id,
-    cityName: row.cities?.name ?? "",
+    cityName: row.city_name,
   }));
 }

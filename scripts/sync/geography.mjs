@@ -1,306 +1,124 @@
-// Populates the Supabase `states` table's population/region/flag_url/
-// capital_city_id and the `cities` table (plan §4, Phase 2) from Wikidata —
-// no API key needed. Run manually via `npm run sync:geography`.
+// Populates the Supabase `states` table's population/region/flag_url/capital_city_id and the
+// `cities` table (top 10 most populous cities + capital per state) — entirely from World
+// Population Review, no API key needed. Run manually via `npm run sync:geography`.
+//
+// Rewritten from scratch 2026-09-01, replacing an earlier Wikidata-SPARQL-based version.
+// Wikidata's population figures are whatever a contributor last entered, with no guarantee of
+// ever being refreshed (confirmed live: Jacksonville, FL was pinned to the 2020 Census with no
+// newer statement on the entity at all) — and getting "is this a real city" right from Wikidata's
+// class labels alone (NECTA regions, fictional entities, civil townships, Alaska's organized
+// boroughs, county-seat/county-entity collisions) took many real, live-discovered iterations, each
+// documented in this project's CLAUDE.md history. WPR's own per-state `rank` field is already
+// exactly "top 10 most populous, full stop" with no re-derivation needed, and its state pages
+// carry population/capital/flag directly — one source for everything this script needs, at the
+// cost of accepting whatever WPR's own methodology is (a modeled current-year estimate, not a
+// census figure) rather than Wikidata's patchwork of contributor-entered numbers.
+import { supabaseAdmin, logSync } from "./_supabase-admin.mjs";
+import { createChangeLog } from "./_change-log.mjs";
+import { mapWithConcurrency, USER_AGENT } from "./_wikipedia.mjs";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { supabaseAdmin, logSync } from "./_supabase-admin.mjs";
-import { createChangeLog } from "./_change-log.mjs";
-import { mapWithConcurrency } from "./_wikipedia.mjs";
-import { sparql, qidFromUri, chunk, parsePoint } from "./_wikidata.mjs";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const regions = JSON.parse(
   readFileSync(path.join(root, "src", "data", "state-regions.json"), "utf-8"),
 );
 
-// Washington, D.C. isn't `instance of` Q35657 (U.S. state) — it's a federal
-// district — so its QID can't come from the same SPARQL filter every other
-// state resolves through below. Hardcoded one-off, same class of gap as
-// this app's other documented single-entity exceptions (e.g. governors.mjs's
-// DC exclusion). Confirmed live: this QID's label resolves to "Washington,
-// D.C." with a population figure in the ~670,000 range (see main()'s printed
-// DC label check on every run).
-const DC_QID = "Q61";
+function slugify(name) {
+  return name.toLowerCase().replace(/\s+/g, "-");
+}
 
-/**
- * All 50 states + DC's Wikidata QIDs, keyed by our `states.id` (2-letter
- * abbr) — resolved via ISO 3166-2 code (P300, e.g. "US-CA" -> "CA").
- * Exported for sports.mjs, which needs the identical state->QID mapping to
- * scope its own per-city Wikidata lookups.
- */
-export async function resolveStateQids() {
-  const query = `SELECT ?state ?iso WHERE {
-  ?state wdt:P31 wd:Q35657 .
-  ?state wdt:P300 ?iso .
-}`;
-  const rows = await sparql(query);
-  const map = new Map();
-  for (const row of rows) {
-    const iso = row.iso.value; // e.g. "US-CA"
-    if (!iso.startsWith("US-")) continue;
-    map.set(iso.slice(3), qidFromUri(row.state.value));
-  }
-  map.set("DC", DC_QID);
-  return map;
+async function fetchHtml(url) {
+  const res = await fetch(url, {
+    headers: { "User-Agent": USER_AGENT },
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText} (${url})`);
+  return res.text();
+}
+
+// worldpopulationreview.com/us-cities/<state> embeds a clean, already-ranked JSON array
+// (`const data = "[...]";` inside a page-local <script>, JS-string-escaped) rather than requiring
+// table-cell parsing — confirmed live across many states before trusting this. `JSON.parse('"' +
+// captured + '"')` undoes the JS-string escaping (valid here since every escape WPR emits, e.g.
+// \", \\, \n, <, is also valid JSON string syntax), leaving the raw JSON array TEXT, which a
+// second JSON.parse turns into the actual array.
+const DATA_BLOB_PATTERN = /const data = "((?:[^"\\]|\\.)*)";/;
+
+async function fetchCityRankings(stateName) {
+  const html = await fetchHtml(`https://worldpopulationreview.com/us-cities/${slugify(stateName)}`);
+  const match = DATA_BLOB_PATTERN.exec(html);
+  if (!match) throw new Error("no embedded data blob found on us-cities page");
+  const jsonText = JSON.parse(`"${match[1]}"`);
+  return JSON.parse(jsonText).sort((a, b) => a.rank - b.rank);
+}
+
+// worldpopulationreview.com/states/<state> has a readable population sentence ("Michigan ... has
+// a population of 10,155,806, making it the 10th most populated state") and a "Capital:"
+// definition-list entry, both confirmed live and stable across several states before trusting
+// this as a real extraction target, not brittle scraping of arbitrary prose.
+const STATE_POPULATION_PATTERN = /has a population of <span class="font-bold">([\d,]+)<\/span>/;
+const CAPITAL_PATTERN = /Capital:<\/dt><dd class="ml-1 inline"><a[^>]*>([^<]+)<\/a>/;
+
+async function fetchStateFacts(stateName) {
+  const html = await fetchHtml(`https://worldpopulationreview.com/states/${slugify(stateName)}`);
+  const popMatch = STATE_POPULATION_PATTERN.exec(html);
+  const capitalMatch = CAPITAL_PATTERN.exec(html);
+  return {
+    population: popMatch ? Number(popMatch[1].replace(/,/g, "")) : null,
+    capitalName: capitalMatch ? capitalMatch[1] : null,
+  };
+}
+
+// DC is not treated as "a state" on WPR's own site: worldpopulationreview.com/states/
+// district-of-columbia has no "has a population of" sentence (confirmed live — the page exists
+// but with different prose), and worldpopulationreview.com/us-cities/district-of-columbia
+// redirects straight to a single Washington city page rather than a ranked list (DC has no
+// sub-cities). Synthesized directly instead of forcing DC through the normal per-state path —
+// same one-off-exception precedent this codebase already has for DC elsewhere (governors.mjs,
+// the original geography.mjs).
+const DC_POPULATION_PATTERN = /has an? \d{4} population of <span class="font-bold">([\d,]+)<\/span>/;
+
+async function fetchDCFacts() {
+  const html = await fetchHtml("https://worldpopulationreview.com/us-cities/district-of-columbia/washington");
+  const match = DC_POPULATION_PATTERN.exec(html);
+  return { population: match ? Number(match[1].replace(/,/g, "")) : null };
+}
+
+// Predictable, confirmed-live URL pattern — no fetch needed to resolve it, unlike Wikidata's P41
+// flag statement (which didn't exist for every state and needed its own query).
+function flagUrl(abbr) {
+  return `https://worldpopulationreview.com/images/state-flags/w1280/${abbr.toLowerCase()}.png`;
 }
 
 /**
- * Per-state population/flag/capital, batched via VALUES (same reasoning as
- * governor-history.mjs's fetchPartyHistory chunking — avoids the query
- * service 502ing on one huge VALUES clause). Multiple OPTIONALs can each
- * independently multiply a state's row count if a property ever has more
- * than one value — the merge below keeps the FIRST non-null value seen per
- * state per field, which is enough unless a real run surfaces a state with
- * genuinely conflicting duplicate values (if that happens, switch to
- * picking by P585 qualifier date the way governor-history.mjs's
- * resolveParty() does for a person's party history).
+ * Matched with a trailing " City" stripped from both sides, not exact string equality — WPR is
+ * internally inconsistent about Idaho's capital: the state page's "Capital:" link reads "Boise",
+ * but the same city's row in the ranked us-cities list is named "Boise City" (its formal legal
+ * name) — confirmed live, not a hypothetical. Exact matching would treat these as two different
+ * places and produce a real duplicate. A full nationwide check found this is the only such
+ * collision (unlike the earlier Wikidata-vs-WPR design, WPR's own state-page capital name and its
+ * own ranked-list city name agree for every other state, including MN's "St. Paul" — the old
+ * "Saint Paul" spelling was purely a Wikidata artifact that no longer exists now that Wikidata is
+ * gone from this pipeline entirely).
  */
-async function fetchStateFacts(qids) {
-  const byQid = new Map();
-  for (const batch of chunk(qids, 25)) {
-    const values = batch.map((q) => `wd:${q}`).join(" ");
-    const query = `SELECT ?state ?stateLabel ?population ?flag ?capital ?capitalLabel WHERE {
-  VALUES ?state { ${values} }
-  OPTIONAL { ?state wdt:P1082 ?population . }
-  OPTIONAL { ?state wdt:P41 ?flag . }
-  OPTIONAL { ?state wdt:P36 ?capital . }
-  SERVICE wikibase:label { bd:serviceParam wikibase:language "en". }
-}`;
-    const rows = await sparql(query);
-    for (const row of rows) {
-      const qid = qidFromUri(row.state.value);
-      const existing = byQid.get(qid) ?? {};
-      byQid.set(qid, {
-        label: existing.label ?? row.stateLabel?.value ?? null,
-        population: existing.population ?? (row.population ? Number(row.population.value) : null),
-        flagUrl: existing.flagUrl ?? row.flag?.value ?? null,
-        capitalQid: existing.capitalQid ?? (row.capital ? qidFromUri(row.capital.value) : null),
-        capitalName: existing.capitalName ?? row.capitalLabel?.value ?? null,
-      });
-    }
-  }
-  return byQid;
+function stripCitySuffix(name) {
+  return name.replace(/ City$/i, "");
 }
 
-/**
- * Every capital's own population/coordinates, fetched unconditionally
- * (regardless of whether that capital turns out to already be in its
- * state's own top-10-by-population list) — cheap (~51 QIDs, one batched
- * query) and avoids a second conditional fetch path later.
- */
-async function fetchCapitalFacts(capitalQids) {
-  const byQid = new Map();
-  for (const batch of chunk(capitalQids, 25)) {
-    const values = batch.map((q) => `wd:${q}`).join(" ");
-    const query = `SELECT ?capital ?population ?coord WHERE {
-  VALUES ?capital { ${values} }
-  OPTIONAL { ?capital wdt:P1082 ?population . }
-  OPTIONAL { ?capital wdt:P625 ?coord . }
-}`;
-    const rows = await sparql(query);
-    for (const row of rows) {
-      const qid = qidFromUri(row.capital.value);
-      if (byQid.has(qid)) continue;
-      const { latitude, longitude } = parsePoint(row.coord?.value);
-      byQid.set(qid, {
-        population: row.population ? Number(row.population.value) : null,
-        latitude,
-        longitude,
-      });
-    }
+function buildCitiesForState(rankings, capitalName) {
+  const topTen = rankings.slice(0, 10).map((r) => ({ name: r.city, population: r.pop2026, isCapital: false }));
+  if (!capitalName) return topTen;
+  const capitalCore = stripCitySuffix(capitalName);
+  const already = topTen.find((c) => stripCitySuffix(c.name) === capitalCore);
+  if (already) {
+    already.isCapital = true;
+    return topTen;
   }
-  return byQid;
-}
-
-/**
- * A state's 10 most populous cities/towns — a real, multi-iteration spike
- * before landing on this shape (see the two functions below), because
- * Wikidata's US administrative-entity classification is genuinely messy in
- * ways that broke every simpler approach tried first:
- *
- * 1. `?city wdt:P131+ wd:${stateQid}` (unbounded transitive "located in")
- *    time out/502'd for a real state (California) during a live run —
- *    confirmed by isolating it: California alone has 83,625 entities
- *    transitively P131-linked to it (every neighborhood/precinct/district
- *    chains up eventually). Fixed by bounding to exactly city->county->
- *    state (2 hops, via UNION) — verified live against California (huge),
- *    Vermont (New England "town" form government), and Alaska (unusual
- *    borough structure) before trusting this shape.
- * 2. A curated allowlist of "real city" classes (`wd:Q1093829`/`wd:Q515`/
- *    etc.) worked for most states but missed Pennsylvania's largest city,
- *    Philadelphia — its actual classes are "consolidated city-county" and
- *    "city of Pennsylvania" (a PER-STATE class, "city of Texas"/"city of
- *    Ohio"/etc. would each need their own QID — not practical to
- *    enumerate for 50 states). Confirmed the same problem would recur
- *    state-by-state (PA/NJ both surfaced this live).
- * 3. Fetching the full 408-way `wdt:P31/wdt:P279* wd:Q515` subclass
- *    closure once and reusing it as a VALUES list still 502'd combined
- *    with the 2-hop UNION — too complex a query plan for WDQS.
- *
- * Landed on a two-stage, keyword-based approach instead: fetch a large
- * (100) population-ranked candidate pool with NO class filter at all
- * (fast, ~2-15s), then check only THOSE ~100 known entities' classes in a
- * second, bounded query (cheap, <1s, since it's a VALUES lookup over a
- * known small set, not a global closure) — keep a candidate only if ANY of
- * its classes' LABEL contains "city"/"town"/"village"/"municipality"/
- * "census-designated place"/"borough"/"township". A positive keyword
- * match on the class LABEL (not a QID allowlist, not an exclude-by-name
- * blocklist — both tried and abandoned live) generalizes correctly across
- * every real state-specific settlement class ("city of Pennsylvania",
- * "home rule municipality of Pennsylvania", "charter city", "consolidated
- * city-county" all contain "city"/"municipality") while naturally
- * rejecting the many aggregate/administrative types that otherwise
- * pollute a population-sorted candidate list (counties, metropolitan/
- * micropolitan/combined-statistical areas, congressional/state-legislative
- * districts, water districts, dioceses) — none of which happen to use
- * those words in their own class label. Verified live against California,
- * Pennsylvania, Vermont, and Alaska before trusting this.
- */
-async function fetchCandidateCities(stateQid) {
-  const query = `SELECT ?city ?cityLabel ?population ?coord WHERE {
-  {
-    ?city wdt:P131 wd:${stateQid} .
-  } UNION {
-    ?city wdt:P131 ?county .
-    ?county wdt:P131 wd:${stateQid} .
-  }
-  ?city wdt:P1082 ?population .
-  OPTIONAL { ?city wdt:P625 ?coord . }
-  SERVICE wikibase:label { bd:serviceParam wikibase:language "en,mul". }
-} ORDER BY DESC(?population) LIMIT 100`;
-  return sparql(query);
-}
-
-// Wikidata's SPARQL label service falls back to emitting the bare entity id
-// (e.g. "Q49255") as if it were the label when a city has no "en" rdfs:label
-// — caught live: Tampa, Norfolk, and Jacksonville all lack an explicit "en"
-// label despite having full English Wikipedia articles, real cities, not a
-// fetch glitch (same class of gap governor-history.mjs already found for
-// people, see its BARE_QID_PATTERN). "en,mul" (Wikidata's language-
-// independent term) resolves all three real live cases, but isn't
-// guaranteed for every future entity — this pattern is a defensive
-// backstop, not the primary fix.
-const BARE_QID_PATTERN = /^Q\d+$/;
-
-// Matches "city", "cities", "town", "village", "municipality", "census-
-// designated place", "borough", "township" in a Wikidata class label —
-// see fetchTopCities' header comment for why this beats a QID allowlist.
-const SETTLEMENT_CLASS_PATTERN =
-  /\b(cit(y|ies)|town|village|municipality|census-designated place|borough|township)\b/i;
-
-// Three real, live false positives caught via a full-database audit (2026-09-01), each a
-// Wikidata class whose LABEL contains a settlement keyword despite the entity not being a real
-// standalone city/town — the exact risk this keyword approach always carried (see the header
-// comment above). Any of these matching on ANY of a candidate's classes rejects it outright,
-// checked before the positive settlement match, since a multi-typed entity (see the county case)
-// can carry both a bad class and a plausible-looking one.
-//   - "fictional city"/"fictional town" (e.g. Q1964689): GTA's "Vice City" (Q1172857, FL) and
-//     Bully's "Bullworth" (Q56642125, NH) both slipped through this way, same class of gap
-//     governor-history.mjs's Ray Sullivan fix already solved for people, just not yet ported here.
-//   - New England's "city and town area"/"city and town area division" classes (NECTA — a Census
-//     statistical-area geography, not real settlements): confirmed live to have contaminated
-//     CT/MA/ME/NH/RI's top-10 lists — MA's real list of 10 was reduced to just 2 actual cities
-//     (Boston, Foxborough) crowded out by 8 NECTA regions, since these areas' aggregate
-//     population figures rank far above any single real town. "area"/"division" never appears in
-//     a genuine settlement class label.
-//   - "county of X" (e.g. Q13415368): Virginia's Spotsylvania County (Q506202) is, unusually,
-//     `wdt:P31`'d as BOTH "city" (Q515, likely a Wikidata tagging error given VA's independent-
-//     city legal quirk) AND "county of Virginia" — the county class alone is proof enough to
-//     reject it regardless of the coincidental "city" class also present.
-const REJECT_CLASS_PATTERN = /\b(fictional|area|division|county)\b/i;
-
-// "township" stays in SETTLEMENT_CLASS_PATTERN because in NJ/PA a township IS a real, governed
-// municipality equivalent to a city — but in these six states it's a plain civil/administrative
-// subdivision with no city-like government, and its own aggregate population regularly outranks
-// the state's actual cities. Confirmed live (2026-09-01 audit): IL's top-10 was half civil
-// townships (Rockford/Thornton/Wheeling/Worth/Proviso/Downers Grove) crowding out real cities
-// like Peoria and Elgin; the same shape hit IN/IA/MO/MI/AR. Exact-label match only (`^...$`), not
-// a bare "township" keyword reject, so it does NOT catch Michigan's distinct "charter township of
-// Michigan" class (a more city-like, more autonomous form some Michigan townships — e.g. Clinton
-// Township — actually hold) or any other state's township class not in this specific list.
-const CIVIL_TOWNSHIP_CLASS_PATTERN =
-  /^township of (illinois|indiana|iowa|missouri|michigan|arkansas|kansas|north dakota)$/i;
-
-async function filterToSettlementClasses(candidateQids) {
-  const classLabelsByQid = new Map();
-  for (const batch of chunk(candidateQids, 100)) {
-    const values = batch.map((q) => `wd:${q}`).join(" ");
-    const query = `SELECT ?city ?classLabel WHERE {
-  VALUES ?city { ${values} }
-  ?city wdt:P31 ?class .
-  SERVICE wikibase:label { bd:serviceParam wikibase:language "en". }
-}`;
-    const rows = await sparql(query);
-    for (const row of rows) {
-      const qid = qidFromUri(row.city.value);
-      const labels = classLabelsByQid.get(qid) ?? [];
-      labels.push(row.classLabel?.value ?? "");
-      classLabelsByQid.set(qid, labels);
-    }
-  }
-  const good = new Set();
-  for (const [qid, labels] of classLabelsByQid) {
-    if (labels.some((label) => REJECT_CLASS_PATTERN.test(label))) continue;
-    if (labels.some((label) => CIVIL_TOWNSHIP_CLASS_PATTERN.test(label))) continue;
-    if (labels.some((label) => SETTLEMENT_CLASS_PATTERN.test(label))) good.add(qid);
-  }
-  return good;
-}
-
-async function fetchTopCities(stateQid) {
-  const candidates = await fetchCandidateCities(stateQid);
-  const candidateQids = candidates.map((row) => qidFromUri(row.city.value));
-  const settlementQids = await filterToSettlementClasses(candidateQids);
-
-  const seenNames = new Set();
-  const top = [];
-  for (const row of candidates) {
-    if (top.length >= 10) break;
-    const qid = qidFromUri(row.city.value);
-    if (!settlementQids.has(qid)) continue;
-    const name = row.cityLabel.value;
-    if (BARE_QID_PATTERN.test(name)) {
-      console.warn(`  skipping ${qid}: no "en"/"mul" Wikidata label (bare QID fallback)`);
-      continue;
-    }
-    if (seenNames.has(name)) continue;
-    seenNames.add(name);
-    const { latitude, longitude } = parsePoint(row.coord?.value);
-    top.push({ name, population: Number(row.population.value), latitude, longitude });
-  }
-  return top;
-}
-
-/** Top-10 cities + the capital (added if not already present), each tagged is_capital. */
-function buildCitiesForState(topCities, capitalName, capitalFacts) {
-  // Dedupe by name — caught live: a real run produced two rows for the
-  // same city name in some states (Wikidata occasionally has more than one
-  // P625 coordinate statement for one entity at slightly different
-  // precision; `SELECT DISTINCT` operates on the whole result tuple, so
-  // two rows differing only in `coord` both survive it even though they're
-  // the same city). An undeduped duplicate name violates the
-  // `(state_id, name)` unique constraint (Task 1) and fails the whole
-  // batch upsert atomically — first-seen wins (highest population, since
-  // fetchTopCities orders by DESC(?population)).
-  const seen = new Set();
-  const deduped = [];
-  for (const c of topCities) {
-    if (seen.has(c.name)) continue;
-    seen.add(c.name);
-    deduped.push(c);
-  }
-  const cities = deduped.map((c) => ({ ...c, isCapital: c.name === capitalName }));
-  if (capitalName && !cities.some((c) => c.isCapital)) {
-    cities.push({
-      name: capitalName,
-      population: capitalFacts?.population ?? null,
-      latitude: capitalFacts?.latitude ?? null,
-      longitude: capitalFacts?.longitude ?? null,
-      isCapital: true,
-    });
-  }
-  return cities;
+  const match = rankings.find((r) => stripCitySuffix(r.city) === capitalCore);
+  topTen.push({ name: capitalName, population: match?.pop2026 ?? null, isCapital: true });
+  return topTen;
 }
 
 async function main() {
@@ -308,174 +126,166 @@ async function main() {
   const startedAt = new Date().toISOString();
   const changeLog = createChangeLog();
 
-  const stateQids = await resolveStateQids();
-  console.log(`Resolved ${stateQids.size} state QIDs (DC: ${stateQids.get("DC")}).`);
+  const { data: states, error: statesError } = await supabase.from("states").select("id, name");
+  if (statesError) throw statesError;
 
-  const facts = await fetchStateFacts([...stateQids.values()]);
-  const dcFacts = facts.get(DC_QID);
-  console.log(
-    `DC label check: "${dcFacts?.label}" (population ${dcFacts?.population}) — confirm this reads "Washington, D.C." with population near 670,000.`,
-  );
-
-  const capitalQids = [...facts.values()].map((f) => f.capitalQid).filter(Boolean);
-  const capitalFactsByQid = await fetchCapitalFacts(capitalQids);
-
-  console.log(`Fetching top-10 cities for ${stateQids.size} states (concurrency 2)...`);
-  // A single state's fetchTopCities failure must NOT abort the whole run —
-  // caught live: California's own query 502'd after retries exhausted
-  // (Wikidata's a big-state P131+ query for CA is genuinely heavy), which
-  // crashed the entire batch and lost every other state's already-fetched
-  // work, since nothing is upserted until this whole map completes. Same
-  // class of mistake governors.mjs already learned from (a single unretried
-  // PA 502 once lost all 50 states' progress there) — caught here via a
-  // real run, not anticipated in advance. Falls back to capital-only for
-  // that state (still correct, just missing the top-10 list) rather than
-  // losing the other 50 states' results.
+  console.log(`Fetching geography facts for ${states.length} states (concurrency 2)...`);
   const warnings = [];
-  const citiesByAbbr = await mapWithConcurrency([...stateQids.entries()], 2, async ([abbr, qid]) => {
-    const fact = facts.get(qid);
-    // DC is a city, not a state with a capital — P36 ("capital") has no
-    // value on Q61 itself (a state can't be its own capital), so
-    // fetchTopCities' whole city->county->state search doesn't apply.
-    // Bypassed entirely (not just "if it returns nothing") — caught live,
-    // in two stages: first, DC produced 0 cities (nothing to add a
-    // fallback for); after adding an empty-list fallback, a SECOND real
-    // run showed fetchTopCities for DC actually returns 1 real but WRONG
-    // result — "Logan Circle," a DC neighborhood matching the settlement
-    // keyword filter — since the length-0 check no longer applied,
-    // "Logan Circle" ended up wrongly stored as DC's only "city." DC's
-    // own population is already resolved at the state level (`fact`), so
-    // this reuses it directly instead of trusting a sub-city search that
-    // doesn't have a real target to search for in DC's case.
-    if (abbr === "DC") {
-      const cities = [
-        { name: "Washington", population: fact?.population ?? null, latitude: null, longitude: null, isCapital: true },
-      ];
-      console.log(`  ${abbr}: ${cities.length} cities`);
-      return [abbr, cities];
+  const results = await mapWithConcurrency(states, 2, async (state) => {
+    if (state.id === "DC") {
+      let dcFacts;
+      try {
+        dcFacts = await fetchDCFacts();
+      } catch (err) {
+        warnings.push(`DC: WPR fetch failed — ${err.message}`);
+        return { abbr: "DC", failed: true };
+      }
+      console.log(`  DC: 1 city (Washington)`);
+      return {
+        abbr: "DC",
+        population: dcFacts.population,
+        cities: [{ name: "Washington", population: dcFacts.population, isCapital: true }],
+      };
     }
-    let topCities;
+    let facts, rankings;
     try {
-      topCities = await fetchTopCities(qid);
+      [facts, rankings] = await Promise.all([fetchStateFacts(state.name), fetchCityRankings(state.name)]);
     } catch (err) {
-      warnings.push(`${abbr}: top-10 cities fetch failed — ${err.message}`);
-      topCities = [];
+      warnings.push(`${state.id}: WPR fetch failed — ${err.message}`);
+      console.log(`  ${state.id}: fetch failed, skipping`);
+      return { abbr: state.id, failed: true };
     }
-    const cities = buildCitiesForState(
-      topCities,
-      fact?.capitalName ?? null,
-      capitalFactsByQid.get(fact?.capitalQid),
-    );
-    console.log(`  ${abbr}: ${cities.length} cities`);
-    return [abbr, cities];
-  }).then((entries) => new Map(entries));
+    const cities = buildCitiesForState(rankings, facts.capitalName);
+    console.log(`  ${state.id}: ${cities.length} cities`);
+    return { abbr: state.id, population: facts.population, cities };
+  });
 
   const { data: existingCities, error: existingCitiesError } = await supabase
     .from("cities")
-    .select("id, state_id, name, population, is_capital, latitude, longitude");
+    .select("id, state_id, name, population, is_capital");
   if (existingCitiesError) throw existingCitiesError;
-  const existingCityByKey = new Map(existingCities.map((c) => [`${c.state_id}:${c.name}`, c]));
+  const existingByKey = new Map(existingCities.map((c) => [`${c.state_id}:${c.name}`, c]));
+  const existingCityById = new Map(existingCities.map((c) => [c.id, c]));
 
+  // Snapshotted BEFORE the capital_city_id-clearing/cities-delete steps below — those mutate
+  // `states`/`cities` as part of this same run, so fetching this AFTER them (an earlier version
+  // of this script did) would compare "after" against "after" and report every state as changed
+  // on every run, even a genuine no-op rerun (caught live).
+  const { data: existingStates, error: existingStatesError } = await supabase
+    .from("states")
+    .select("id, name, population, region, flag_url, capital_city_id");
+  if (existingStatesError) throw existingStatesError;
+  const existingStateById = new Map(existingStates.map((s) => [s.id, s]));
+
+  // A full delete-then-insert per successfully-fetched state, not an upsert-and-diff-cleanup —
+  // `cities` no longer needs to preserve any row across runs for a foreign key's sake (sports_teams
+  // dropped its city_id FK entirely in the same migration that removed Wikidata from this
+  // pipeline), so there's no "stale but still needed" case left to reconcile. A state whose fetch
+  // failed is left completely untouched (its existing rows neither deleted nor replaced).
   const cityRows = [];
-  for (const [abbr, cities] of citiesByAbbr) {
-    for (const city of cities) {
-      const key = `${abbr}:${city.name}`;
-      const previous = existingCityByKey.get(key);
-      const row = {
-        state_id: abbr,
+  const deleteStateIds = [];
+  for (const r of results) {
+    if (r.failed) continue;
+    deleteStateIds.push(r.abbr);
+    for (const city of r.cities) {
+      const key = `${r.abbr}:${city.name}`;
+      const previous = existingByKey.get(key);
+      if (!previous) changeLog.record("new city", `${r.abbr}: ${city.name}`);
+      else if (previous.population !== city.population || previous.is_capital !== city.isCapital) {
+        changeLog.record("updated city", `${r.abbr}: ${city.name}`);
+      } else changeLog.record("unchanged city");
+      cityRows.push({
+        state_id: r.abbr,
         name: city.name,
         population: city.population,
         is_capital: city.isCapital,
-        latitude: city.latitude,
-        longitude: city.longitude,
-      };
-      if (!previous) changeLog.record("new city", `${abbr}: ${city.name}`);
-      else if (previous.population !== row.population || previous.is_capital !== row.is_capital) {
-        changeLog.record("updated city", `${abbr}: ${city.name}`);
-      } else changeLog.record("unchanged city");
-      cityRows.push(row);
+      });
+    }
+  }
+  for (const c of existingCities) {
+    if (deleteStateIds.includes(c.state_id) && !cityRows.some((r) => r.state_id === c.state_id && r.name === c.name)) {
+      changeLog.record("removed city", `${c.state_id}: ${c.name}`);
     }
   }
 
-  const { data: upsertedCities, error: citiesUpsertError } = await supabase
-    .from("cities")
-    .upsert(cityRows, { onConflict: "state_id,name" })
-    .select("id, state_id, name, is_capital");
-  if (citiesUpsertError) throw citiesUpsertError;
+  if (deleteStateIds.length > 0) {
+    // Break states.capital_city_id's FK into the rows about to be deleted first — otherwise a
+    // state whose capital city id survives to be re-linked below would briefly dangle, and one
+    // whose capital comes back with a different row (a genuine name/rank change) would fail the
+    // delete outright.
+    const { error: clearCapitalsError } = await supabase
+      .from("states")
+      .update({ capital_city_id: null })
+      .in("id", deleteStateIds);
+    if (clearCapitalsError) throw clearCapitalsError;
+    const { error: deleteError } = await supabase.from("cities").delete().in("state_id", deleteStateIds);
+    if (deleteError) throw deleteError;
+  }
 
+  const { data: insertedCities, error: insertError } = await supabase
+    .from("cities")
+    .insert(cityRows)
+    .select("id, state_id, name, is_capital");
+  if (insertError) throw insertError;
   const capitalCityIdByAbbr = new Map(
-    upsertedCities.filter((c) => c.is_capital).map((c) => [c.state_id, c.id]),
+    insertedCities.filter((c) => c.is_capital).map((c) => [c.state_id, c.id]),
   );
 
-  // `name` is included in every row's select AND upsert payload — caught
-  // live: `states.name` is NOT NULL (seeded by states.mjs), and Postgres
-  // rejects the WHOLE batch upsert if any proposed row is missing it, even
-  // for rows that will resolve as an UPDATE via ON CONFLICT (Postgres
-  // still has to construct the full candidate row, defaults and all,
-  // before conflict resolution even runs). Prefers the already-seeded
-  // name over Wikidata's own label to avoid drifting from states.mjs's
-  // us-atlas-sourced name for an existing row.
-  const { data: existing, error: existingError } = await supabase
-    .from("states")
-    .select("id, name, population, region, flag_url, capital_city_id");
-  if (existingError) throw existingError;
-  const existingById = new Map(existing.map((s) => [s.id, s]));
+  // `cities` is deleted-and-reinserted every run (see above), so `capital_city_id` gets a fresh
+  // uuid on every single run even when the underlying capital city is unchanged — comparing the
+  // raw id would make every state look "updated" every run, defeating the point of this change
+  // log (caught live: a rerun with genuinely zero real changes still reported all 51 states
+  // updated). Compares the capital's NAME instead, resolved from the pre-mutation snapshots
+  // (`existingStateById`/`existingCityById`) fetched above, before this run touched anything.
+  const capitalNameByAbbr = new Map(
+    [...capitalCityIdByAbbr.keys()].map((abbr) => [abbr, cityRows.find((c) => c.state_id === abbr && c.is_capital)?.name]),
+  );
 
-  const updates = [];
-  for (const [abbr, qid] of stateQids) {
-    const fact = facts.get(qid);
-    const region = regions[abbr] ?? null;
-    const previous = existingById.get(abbr);
+  const stateUpdates = [];
+  for (const r of results) {
+    if (r.failed) continue;
+    const previous = existingStateById.get(r.abbr);
+    const previousCapitalName = previous?.capital_city_id
+      ? existingCityById.get(previous.capital_city_id)?.name
+      : null;
     const row = {
-      id: abbr,
-      name: previous?.name ?? fact?.label ?? abbr,
-      population: fact?.population ?? null,
-      region,
-      flag_url: fact?.flagUrl ?? null,
-      capital_city_id: capitalCityIdByAbbr.get(abbr) ?? null,
+      id: r.abbr,
+      name: previous?.name ?? r.abbr,
+      population: r.population,
+      region: regions[r.abbr] ?? null,
+      flag_url: flagUrl(r.abbr),
+      capital_city_id: capitalCityIdByAbbr.get(r.abbr) ?? null,
     };
-    if (!previous) {
-      changeLog.record("new", abbr);
-    } else if (
-      previous.population !== row.population ||
-      previous.region !== row.region ||
-      previous.flag_url !== row.flag_url ||
-      previous.capital_city_id !== row.capital_city_id
+    if (
+      previous &&
+      previous.population === row.population &&
+      previous.region === row.region &&
+      previous.flag_url === row.flag_url &&
+      previousCapitalName === capitalNameByAbbr.get(r.abbr)
     ) {
-      changeLog.record("updated", abbr);
-    } else {
-      changeLog.record("unchanged");
-    }
-    updates.push(row);
+      changeLog.record("unchanged state");
+    } else changeLog.record("updated state", r.abbr);
+    stateUpdates.push(row);
   }
+  const { error: statesUpsertError } = await supabase.from("states").upsert(stateUpdates, { onConflict: "id" });
+  if (statesUpsertError) throw statesUpsertError;
 
-  const { error } = await supabase.from("states").upsert(updates, { onConflict: "id" });
   await logSync(supabase, {
-    source: "Wikidata (state population/region/flag/cities)",
+    source: "World Population Review (state facts + top-10 cities)",
     startedAt,
-    error,
+    error: null,
     warnings,
     job: "geography",
   });
-  if (error) throw error;
 
-  console.log(
-    `Synced geography facts for ${updates.length} states, ${cityRows.length} cities — ${changeLog.summary()}.`,
-  );
+  console.log(`Synced geography facts for ${stateUpdates.length} states, ${cityRows.length} cities — ${changeLog.summary()}.`);
   if (warnings.length > 0) {
     console.log(`${warnings.length} warning(s):`);
     for (const w of warnings) console.log(`  ${w}`);
   }
 }
 
-// Guarded so importing resolveStateQids() from sports.mjs doesn't also
-// trigger this script's own full sync as a side effect of the import —
-// caught live: an unguarded top-level main() call ran a full geography
-// sync (and burned real Wikidata/API calls, tripping a Wikipedia rate
-// limit) the moment sports.mjs merely imported this file for one function.
-if (import.meta.url === `file://${process.argv[1]}`) {
-  main().catch((err) => {
-    console.error(err);
-    process.exit(1);
-  });
-}
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

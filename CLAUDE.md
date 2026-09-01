@@ -293,192 +293,104 @@ Build order: **Phase 1 politics → Phase 2 geography → Phase 3 quiz.** Don't 
   (`GOVERNOR_HISTORY_SCOPE=current`) all correctly reported "unchanged" on a clean rerun, and
   `races-2026.mjs`'s `CANDIDATES_BACKFILL_ONLY` path correctly itemized 7 "no wikipedia match"
   candidates by name (MA/RI, pending-primary states) where the old log only said "Backfilled 0".
-- **`geography.mjs`/`sports.mjs` (Phase 2, added 2026-08-31)** — populate the `cities`/
-  `sports_teams` schema that had existed empty since early scaffolding (see the adoption-migration
-  note this entry used to carry; both tables are now real, live data: 533 cities, 142 teams,
-  confirmed live). Both are **manual-only** (`npm run sync:geography` / `sync:sports`, no GitHub
-  Actions wiring) — this data changes on the order of years to decades, same reasoning `districts`
-  already established. `sports.mjs` must run AFTER `geography.mjs` (FK dependency on `cities`).
-  **Wikidata only** for geography (population/region/flag/capital/cities), not the plan's original
-  Census+Wikidata+GeoNames sketch — reuses the no-key SPARQL pattern already proven in
-  `governor-history.mjs`, now extracted into a shared `scripts/sync/_wikidata.mjs` (`sparql`,
-  `fetchJson`, `qidFromUri`, `toDateOnly`, `chunk`, `parsePoint`, `lookupCityFacts`) — pure
-  extraction, `governor-history.mjs`'s own behavior unchanged (verified live: a `GOVERNOR_HISTORY_SCOPE=current`
-  rerun after the extraction reported "50 unchanged" as expected). `region` is a static
-  `src/data/state-regions.json` lookup (the 4-region Census classification never changes), not
-  sourced from any API, same idea as `fips-to-abbr.json`.
-  **Real, live-discovered gotchas, several full iterations each:**
-  - **`?city wdt:P131+ wd:${stateQid}` (unbounded transitive "located in") times out/502s for a
-    real state** — isolated live: California alone has 83,625 entities transitively P131-linked to
-    it (every neighborhood/precinct chains up eventually), which WDQS can't resolve in its query
-    timeout. Fixed by bounding to exactly city->county->state (2 hops, via a `UNION`) — verified
-    live against California (huge), Vermont (New England "town"-form government), and Alaska
-    (unusual borough structure) before trusting the shape.
-  - **Classifying "is this a real city" took three real attempts.** A curated Wikidata-class
-    allowlist (`wd:Q1093829`/`wd:Q515`/etc.) worked for most states but missed Pennsylvania's
-    largest city, Philadelphia (its actual classes are "consolidated city-county" and a
-    PER-STATE class, "city of Pennsylvania" — not practical to enumerate "city of X" for 50
-    states). Fetching the full ~408-entry subclass-of-`Q515` closure once and reusing it as a
-    `VALUES` allowlist still 502'd combined with the 2-hop `UNION`. Landed on a two-stage,
-    keyword-based approach instead: fetch a large (100) population-ranked candidate pool with NO
-    class filter (fast), then check only those ~100 known entities' classes in a second, cheap
-    bounded query, keeping a candidate only if ANY of its classes' LABEL contains "city"/"town"/
-    "village"/"municipality"/"census-designated place"/"borough"/"township" — a positive keyword
-    match on the class label (not a QID allowlist, not an exclude-by-name blocklist — both tried
-    and abandoned live, since the leaking non-city entities kept changing shape: counties,
-    metropolitan/micropolitan/combined-statistical areas, congressional/state-legislative
-    districts, water districts, dioceses) generalizes correctly across every real state-specific
-    settlement class. Verified live against California, Pennsylvania, Vermont, and Alaska.
-  - **A single state's city-fetch failure must not crash the whole run** — caught live: after the
-    P131+ fix above, a persistent failure on one state's query still crashed `mapWithConcurrency`'s
-    `Promise.all`, losing every other state's already-fetched work (same class of mistake
-    `governors.mjs` already learned from — a single unretried PA 502 once lost all 50 states'
-    progress there). Fixed with a per-state try/catch, falling back to capital-only for that one
-    state and logging a warning instead.
-  - **DC bypasses the whole top-10 mechanism entirely**, not just an empty-result fallback — P36
-    ("capital") has no value on DC's own Wikidata entity (a state can't be its own capital), and
-    the city->county->state search finds nothing (DC has no county substructure). A first fix
-    (fallback only when the result list was empty) still let through a real but wrong result on a
-    second live run — DC's search actually returns "Logan Circle" (a real DC neighborhood matching
-    the settlement-keyword filter), which got wrongly stored as DC's only "city." Fixed by
-    skipping the search for DC entirely and synthesizing its one row directly from the population
-    already resolved at the state level (DC's state-level and city-level population are the same
-    figure, since it's one entity).
-  - **A city name can legitimately duplicate within one state's fetched list** — Wikidata
-    occasionally carries more than one `P625` coordinate statement for the same entity at
-    different precision, and `SELECT DISTINCT` operates on the whole result tuple, so two rows
-    differing only in `coord` both survive it. An undeduped duplicate violates the `(state_id,
-    name)` unique constraint (below) and fails the whole batch upsert atomically — fixed by
-    deduping by name (first-seen wins, since results are population-sorted) before upserting.
-  - **`states.upsert()` needs `name` in every row, even for existing states** — caught live:
-    Postgres rejects an entire `INSERT ... ON CONFLICT DO UPDATE` batch if any proposed row is
-    missing a `NOT NULL` column, even for a row that will resolve as an UPDATE (Postgres has to
-    construct the full candidate row, defaults and all, before conflict resolution even runs).
-    `states.name` (seeded by `states.mjs`) was never included in `geography.mjs`'s upsert payload
-    — fixed by selecting and reusing each state's already-seeded name.
-  - **`cities`/`sports_teams` needed real unique constraints before any of this worked** —
-    `20260831190000_cities_sports_unique_constraints.sql` adds `unique (state_id, name)` on
-    `cities` and `unique (league, name)` on `sports_teams` (both tables previously had only a
-    surrogate uuid PK from their original empty-scaffolding migration). Verified live: reruns of
-    both scripts correctly report "unchanged"/no new rows, not duplicates.
-  - **TheSportsDB (the plan's original §3 suggestion) turned out to be unusable**: confirmed live
-    that its free key hard-caps every league's team list at 10 results (e.g. NFL's 32 teams
-    truncated to 10, alphabetically) with no pagination workaround — a state with a real team
-    showing none would read as a bug on the Geography tab. `sports.mjs` instead parses Wikipedia's
-    own "List of professional sports teams in the United States and Canada" article — one page,
-    one wikitable per league (NFL/NBA/MLB/NHL/MLS), each league's table located by heading TEXT at
-    runtime (not a hardcoded section index, which drifts as the page is edited) via MediaWiki's
-    own `action=parse&prop=sections`. NFL/NBA/MLB/NHL tables have 5 columns (Conference, Division,
-    Team, Location, Venue) with `rowspan` header cells; MLS has 4 (no Division) — one parser
-    handles both shapes by taking, from each row's own wikitext block, every `"|"`-prefixed
-    (non-`"!"`) line joined together before splitting on `"||"`, then keeping the LAST 3 resulting
-    cells (Team, Location, Venue) — robust to the column-count difference and to `rowspan` cells
-    (always `"!"`-prefixed, never counted). **A genuine parser edge case, caught live**: the NHL's
-    Seattle Kraken and Vancouver Canucks rows put Team on its own line with Location/Venue on a
-    SEPARATE following line (unlike every other row, all three on one line) — an earlier version
-    of the parser picked only the single line that already contained `"||"`, silently
-    mis-assigning Location+Venue as [team, location] and losing Seattle Kraken (a real US team)
-    into the "skipped" list under a garbage name. Fixed by joining ALL of a row's `"|"`-lines
-    before splitting, which handles both row shapes uniformly. Canadian teams (Toronto/Montreal/
-    Ottawa/Winnipeg/Calgary/Edmonton/Vancouver) are filtered out for free: their location's
-    province name simply doesn't match any entry in the US state name->abbr map built the same way
-    `states.mjs` seeds `states` from (`us-atlas` + `fips-to-abbr.json`). Washington D.C. teams use
-    the literal `"[[Washington, D.C.]]"` wikilink (no comma-separated "state" the normal parser
-    extracts), handled as an explicit special case. **Verified live, exact real-world counts**:
-    NFL 32, NBA 29 (30 minus Toronto), MLB 29 (30 minus Toronto), NHL 25 (32 minus 7 Canadian
-    teams), MLS 27 (30 minus 3 Canadian teams) — 142 total, 12 correctly skipped as Canadian, 0
-    incorrectly skipped. A team whose home city isn't already one of that state's top-10-by-
-    population + capital rows (e.g. Green Bay for the Packers) gets a new `cities` row upserted
-    via `_wikidata.mjs`'s `lookupCityFacts()` — itself needed a fix live: "Green Bay" is
-    genuinely ambiguous on Wikidata (the city AND the actual bay/lake both carry that exact label
-    and both link into Wisconsin's P131 hierarchy), and an unconstrained `LIMIT 1` with no `ORDER
-    BY` non-deterministically picked the bay (no population) over the city on one real test —
-    fixed by making `?city wdt:P1082 ?population` a REQUIRED triple, not optional, which
-    effectively filters to populated places only.
-  - **Missing "en" labels produced bare-QID city names and duplicate rows — caught live 2026-09-01**,
-    reported by the user off three literal `"Q49255"`/`"Q49231"`/`"Q16568"` names in `cities`.
-    Wikidata's SPARQL label service falls back to emitting the bare entity id as if it were the
-    label when an entity has no `"en"` `rdfs:label` at all — same underlying gap
-    `governor-history.mjs`'s `BARE_QID_PATTERN` already handles for people, just never ported to
-    cities. Confirmed live: Tampa, Norfolk, and Jacksonville (all real, major US cities with full
-    English Wikipedia articles) genuinely have no `"en"` label on Wikidata, only a `"mul"`
-    (language-independent) one — `fetchCandidateCities()`'s label service now requests
-    `"en,mul"`, which resolves all three real cases; `fetchTopCities()` also keeps a
-    `BARE_QID_PATTERN` skip-with-warning as a defensive backstop for any future entity lacking
-    both. The same gap hit `lookupCityFacts()` (`_wikidata.mjs`, used by `sports.mjs` for a team's
-    home city outside its state's top 10) a second, worse way: its exact `rdfs:label "X"@en`
-    triple match returned zero rows for Tampa/Jacksonville, and the `null` fallback let
-    `sports.mjs` insert a SECOND `cities` row for each — same name, `population: null` — rather
-    than reusing the real row `geography.mjs` had already fetched (undetected because the bare-QID
-    name meant the two rows never looked like duplicates); fixed the same way, an `en`/`mul`
-    `UNION`. Recovery for the 3 already-bad rows plus the 2 accidental duplicates was a manual
-    one-off (merge: repoint the affected `sports_teams.city_id` rows onto the real, populated row,
-    delete the stale null-population duplicate, rename the real row) — no backfill script needed,
-    since this can't recur going forward with the query fix in place.
-  - **A separate, unrelated `lookupCityFacts()` gap the same follow-up audit found**: a team's
-    parsed Location text can legitimately be an informal name with no exactly-matching Wikidata
-    settlement at all, not just a missing-label case — confirmed live for 4 teams: the Yankees'
-    "Bronx" (the real Wikidata entity is labeled "The Bronx"), the White Sox's "South Side
-    Chicago" and the Cubs' "North Side Chicago" (informal Chicago community-area names, not their
-    own standalone settlement), and the Braves' "Cumberland" (Truist Park's unincorporated home
-    community near Atlanta, itself not a population-bearing entity). Each produced the same
-    name-only phantom `cities` row `lookupCityFacts()` returning `null` always did before this
-    audit. Fixed with `CITY_NAME_ALIASES`, a curated one-off map (`sports.mjs`) from each team's
-    parsed `state:city` key to its state's real, already-resolved city row — same "explicit
-    special case" precedent as the script's existing Washington D.C. handling, not a general
-    fuzzy-name heuristic (this codebase already tried and reverted heuristic name matching
-    elsewhere — see candidates' surname-fallback removal above — after it produced wrong
-    matches). `main()`'s insert branch also now `changeLog.record()`s a distinct "no city facts
-    (from sports)" category whenever `lookupCityFacts()` genuinely returns null, so a *future*
-    unaliased case shows up in the sync's own log instead of silently creating another phantom
-    row. Recovery for the 4 already-bad rows was a manual one-off, same merge shape as the
-    Tampa/Jacksonville case above (repoint the linked `sports_teams.city_id`, delete the stale
-    null-population duplicate).
-  - **A real Wikidata false positive slipped through `SETTLEMENT_CLASS_PATTERN`, which a
-    follow-up full-database audit (same day, user-requested) showed was one instance of a wider
-    pattern, not an isolated bug**: FL had a `cities` row named "Vice City" with population
-    1,800,000 — the fictional Grand Theft Auto city, not a real place. Its Wikidata class (`P31`)
-    is literally labeled "fictional city" (`Q1964689`), which contains "city" and so passed the
-    keyword filter same as any real settlement class would — same root problem
-    `governor-history.mjs`'s Ray Sullivan fix already solved for people, just not yet ported to
-    cities. The audit found two more classes with the identical shape (a class LABEL containing a
-    settlement keyword despite not being a real standalone settlement): NH's "Bullworth" — the
-    fictional town from Rockstar's *Bully*, same "fictional X" class pattern as Vice City, not
-    caught by the original spot-check; and New England's own Census statistical geography, "\_\_\_
-    city and town area"/"\_\_\_ city and town area division" (NECTA) — confirmed to have
-    contaminated CT/MA/ME/NH/RI's top-10 lists, reducing MA's real list to just 2 actual cities
-    (Boston, Foxborough) crowded out by 8 NECTA regions whose aggregate populations rank far above
-    any single real town. Separately, VA's "Spotsylvania County" is unusually `wdt:P31`'d as BOTH
-    "city" (`Q515`, likely a Wikidata tagging error given VA's independent-city legal quirk) AND
-    "county of Virginia" — proof the reject check must run over ALL of a multi-typed candidate's
-    classes, not just whichever one a single SPARQL row happens to pair with the settlement match.
-    All four fixed with one `REJECT_CLASS_PATTERN` (`/\b(fictional|area|division|county)\b/i`,
-    replacing the narrower `FICTIONAL_CLASS_PATTERN`) checked against every class label a
-    candidate carries before the settlement-keyword match in `filterToSettlementClasses()` (which
-    now aggregates a candidate's classes by QID first, rather than deciding per SPARQL row, so a
-    multi-typed entity can't slip through via whichever row happens to pair a bad class with a
-    plausible one). Two more binational/combined-metro entities of the same shape — TX's
-    "El Paso–Juárez" (class "metropolitan area") and MN's "Minneapolis–Saint Paul" (class
-    "metropolitan statistical area") — were found as PRE-EXISTING stale rows the code fix alone
-    couldn't remove (the `cities` upsert is purely additive, never deletes a row that falls out of
-    a fresh top-10 selection) and were deleted by hand; found via a `[–—]` en/em-dash-in-name
-    sweep, since compound-place entities of this shape reliably use one and a real single city
-    name never does.
-  - **Separately, "township" is deliberately still IN `SETTLEMENT_CLASS_PATTERN`** (NJ/PA
-    townships ARE real, governed municipalities equivalent to a city) **but is a plain
-    civil/administrative subdivision with no city-like government in several other states**,
-    confirmed live: IL's top-10 was half civil townships (Rockford/Thornton/Wheeling/Worth/
-    Proviso/Downers Grove) crowding out real cities like Peoria and Elgin, with the identical
-    shape in IN/IA/MO/AR/KS/ND. Fixed with a second, narrower exact-label reject,
-    `CIVIL_TOWNSHIP_CLASS_PATTERN` (`/^township of (illinois|indiana|iowa|missouri|michigan|
-    arkansas|kansas|north dakota)$/i`) — deliberately anchored to the EXACT plain "township of X"
-    label per state, not a bare "township" keyword reject, so it does NOT catch Michigan's
-    distinct "charter township of Michigan" class (a more autonomous, more city-like form some
-    Michigan townships — e.g. Clinton Township, Shelby Charter Township — actually hold, confirmed
-    live both correctly stayed after the fix). All bad rows across all six original + two
-    follow-up states were deleted by hand, then backfilled by a full `sync:geography` rerun (safe
-    given the additive-only upsert) — real cities correctly filled every gap (e.g. IL: Rockford,
-    Elgin, Peoria, Cicero; IN: Hammond, Gary, Greenwood).
+- **`geography.mjs`/`sports.mjs` (Phase 2, added 2026-08-31; fully rewritten 2026-09-01)** —
+  populate `states.population`/`region`/`flag_url`/`capital_city_id` and the `cities`
+  (top 10 most populous cities + capital per state) / `sports_teams` tables. **Sourced entirely
+  from World Population Review, no Wikidata, no coordinates, no API key.** This is a full rewrite,
+  not an incremental patch — the original Wikidata-SPARQL version (city discovery via a
+  settlement-class-filtered candidate search) and its later population-freshness patch
+  (`population-overlay.mjs`, a second script overlaying WPR data on top) both existed for one day
+  before being replaced outright, at the user's explicit request, once the two-source design
+  turned out to need real bug-fixing (name collisions, a `\bcounty\b`/`\bborough\b` classification
+  trap, an `is_support_row` schema flag) just to compensate for problems a single WPR-only source
+  never has in the first place. **If a past commit or your own memory describes a Wikidata-based
+  `fetchTopCities`/`resolveStateQids`/`SETTLEMENT_CLASS_PATTERN`/`is_support_row`/
+  `population-overlay.mjs` — that entire design is gone; don't resurrect it.**
+  - **`geography.mjs`**: for each state, fetches `worldpopulationreview.com/states/<state>` (state
+    population, from a readable "has a population of `<span class="font-bold">N</span>`" sentence;
+    capital name, from a `Capital:</dt><dd ...><a ...>Name</a>` definition-list entry) and
+    `worldpopulationreview.com/us-cities/<state>` (top 10 cities by WPR's own `rank` field — see
+    below for why no city-type filtering is needed). Flag URL is a predictable, confirmed-live
+    pattern needing no fetch: `worldpopulationreview.com/images/state-flags/w1280/<abbr>.png`
+    (works for DC too). Region stays a static `src/data/state-regions.json` lookup (never changes,
+    same as before). Both WPR page types embed a clean, already-parsed JSON array
+    (`const data = "[...]";` inside a page-local `<script>`, JS-string-escaped —
+    `JSON.parse('"' + captured + '"')` undoes the JS-string escaping, leaving raw JSON text a
+    second `JSON.parse` turns into the real array) — not brittle HTML-table-cell scraping.
+  - **Why no city-type filtering is needed, unlike the old Wikidata pipeline**: WPR's `rank` field
+    already ranks by real population regardless of governance form, so Hawaii's Honolulu (a CDP —
+    the state has no incorporated municipalities at all) and Alaska's Anchorage (typed
+    "Township") land at the top of their states' lists for free, with no settlement-class
+    heuristic required. The old pipeline needed several real, live-discovered iterations
+    (NECTA regions, fictional entities, civil townships, Alaska's organized boroughs, a
+    `\bcounty\b`/"county seat" collision) purely to approximate what `rank` already gives for
+    free — using WPR's `type` field the same way was tried and abandoned too (it's inconsistent
+    for the exact same governance-form reasons Wikidata's classes were).
+  - **DC is a one-off, synthesized directly**: WPR's `/states/district-of-columbia` page has no
+    "has a population of" sentence (different prose shape, confirmed live), and
+    `/us-cities/district-of-columbia` redirects straight to a single Washington city page rather
+    than a ranked list (DC has no sub-cities to rank). Its population is read from that single
+    Washington page's own equivalent sentence (`has an? \d{4} population of ...` — anchored to a
+    4-digit year specifically, since that page lists TWO such sentences, current estimate first
+    and the 2020 Census second; matching the year-qualified form picks the current one).
+  - **The one real naming quirk, confirmed live nationwide**: WPR is internally inconsistent about
+    Idaho's capital — the state page's "Capital:" link says "Boise", but that same city's row in
+    the ranked `us-cities` list is named "Boise City" (its formal legal name). A trailing " City"
+    is stripped from both sides when matching the capital against the ranked list
+    (`stripCitySuffix()`) — narrow, single-purpose, confirmed to be the ONLY such collision
+    nationwide via a full duplicate-name sweep (Minnesota's old "Saint Paul"/"St. Paul" mismatch
+    was purely a Wikidata-vs-WPR artifact from the prior design and no longer exists now that both
+    the capital name and the ranked list come from the same source and agree).
+  - **`cities` is fully delete-then-reinsert per state on every run**, not an upsert-and-diff —
+    unlike the old design, nothing needs to survive across runs for a foreign key's sake anymore
+    (see the `sports_teams` entry below), so there's no "stale but still needed" row to reconcile,
+    no cleanup-pass exceptions, no schema flag. `states.capital_city_id`'s FK into the rows about
+    to be deleted is nulled first, then re-linked after the fresh rows are inserted and their real
+    ids are known. A state whose WPR fetch fails is left completely untouched (caught live: an
+    earlier version cleared `capital_city_id` for every state up front, unconditionally, before
+    checking which fetches actually succeeded — fixed to only touch a state once its fetch is
+    confirmed successful).
+  - **A real bug in the sync's own change-log accuracy, caught and fixed before trusting this
+    design**: because `cities` rows are deleted-and-reinserted every run, `capital_city_id` gets a
+    brand-new uuid every single time even when the underlying capital city is completely
+    unchanged — comparing that raw id made every rerun report all 51 states as "updated", even a
+    genuine no-op rerun. Fixed by comparing the capital's NAME instead (resolved from a snapshot of
+    `states`/`cities` taken BEFORE this run's own mutations — an even earlier attempt at this fix
+    took the snapshot AFTER the FK-clearing step, which had already nulled every `capital_city_id`
+    by that point, so the comparison was comparing "after" against "after" and still always
+    reported "updated"; caught by rerunning and actually checking the log, not just checking that
+    it ran without error). Verified live: a genuine rerun now reports "51 unchanged state."
+  - **`sports.mjs`**: unchanged Wikipedia-team-list parsing (see below), but no longer touches
+    `cities` at all — `sports_teams.city_name`/`state_id` are plain columns storing the team's
+    parsed home city/state directly, not a FK into `cities`. This FK (and the `cities.
+    is_support_row` flag, `CITY_NAME_ALIASES`, and a Wikidata `lookupCityFacts()` lookup for a
+    team's home city outside its state's top 10) were all removed in the same 2026-09-01 revamp,
+    at the user's explicit prompt ("i don't even understand the need to have a city page link") —
+    the FK's only actual use was rendering a team's home city as plain text next to its name ("New
+    England Patriots (Foxborough)"); no `/city/[id]` page exists or was ever planned, so
+    normalizing that relationship through a join (and everything needed to keep a
+    Foxborough/Sunrise/NYC-borough-shaped row alive for it without polluting the "most populous
+    cities" ranking) was solving a problem plain text already solved. `sports.mjs` has no
+    dependency on `sync:geography` having already run.
+  - **Schema migration `20260901130000_cities_sports_wpr_revamp.sql`** drops `cities.latitude`/
+    `longitude` (confirmed via a full `src/` grep that nothing ever rendered them) and
+    `cities.is_support_row` (no longer needed — see above), and replaces `sports_teams.city_id`
+    with `city_name text`/`state_id text references states(id)`. **Wiped both tables' existing
+    data outright** rather than migrating it — an explicit user decision ("i don't mind dropping
+    all values in the database for this cities table, and start over"), since the whole point of
+    the revamp was that WPR replaces the old Wikidata-sourced rows, not that they get preserved in
+    a new shape. Does NOT use `truncate ... cascade` on `cities` — `states.capital_city_id`
+    references it, and a cascading truncate would have wiped `states` too, taking down
+    legislators/governors/districts/races with it (every one of those FKs onto `states.id`);
+    caught before applying, not after. Uses explicit FK-safe deletes instead (`update states set
+    capital_city_id = null` before `delete from cities`).
+  - **Full nationwide verification, run against the final live design**: every state's Geography
+    tab loaded in a real browser with zero console errors (MA and HI spot-checked with actual
+    screenshots — HI in particular confirmed Honolulu correctly ranked #1 despite being a CDP, and
+    a state with no synced teams — HI has none — renders "No major-league sports teams synced for
+    this state" rather than an empty/broken section). Both `sync:geography` and `sync:sports`
+    confirmed idempotent (a rerun against the fully-synced state reports zero changes for every
+    city/state/team).
 - **House terms/races join on `district_number` (plain int)** — the map, `getCurrentRepsByDistrictKey()`,
   and every House `StateTabs.tsx` display all key off it; see the `districts` entry above for why
   the once-parallel `district_id` FK column was dropped rather than wired up.
@@ -1012,11 +924,14 @@ everyone else links here.
 - `fips-to-abbr.json` — static FIPS↔abbreviation table, shared by multiple scripts and
   `src/lib/state-fips.ts`.
 - `geography` (`cities` + `states.population`/`region`/`flag_url`/`capital_city_id`) — top 10
-  most populous cities + capital per state, from Wikidata (533 cities across 51 states/DC,
-  confirmed live, no key). See the Data conventions gotchas above before re-running or modifying
-  this one — several real, non-obvious query-performance and correctness fixes went into it.
+  most populous cities + capital/population/flag/region per state, from World Population Review,
+  no key. Fully rewritten 2026-09-01, replacing an earlier Wikidata-based version — no
+  `population-overlay` companion script anymore (it existed briefly, then got folded into this
+  one). See the Data conventions entry above for the full writeup.
 - `sports` (`sports_teams`) — NFL/NBA/MLB/NHL/MLS teams, from Wikipedia's team-list page (142
-  teams, confirmed live, no key). Must run after `sync:geography`. See the Data conventions entry
-  above — includes why this isn't TheSportsDB despite the plan's original suggestion.
+  teams, confirmed live, no key). No dependency on `sync:geography` having run first (dropped its
+  `cities` FK in the same 2026-09-01 revamp — stores its own city name/state directly). See the
+  Data conventions entry above — includes why this isn't TheSportsDB despite the plan's original
+  suggestion.
 
 Not started: quiz (Phase 3).
