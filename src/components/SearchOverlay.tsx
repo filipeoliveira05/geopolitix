@@ -140,8 +140,8 @@ export function SearchOverlay({ onClose, entries, isLoading }: SearchOverlayProp
 }
 
 // A fixed-size slot so rows stay aligned whether or not a given entry has a
-// photo — states never do, and a real person's photo can still be missing
-// (see the coverage caveats documented in CLAUDE.md). `unoptimized` matches
+// photo — a state always has its flag, but a real person's photo can still
+// be missing (see the coverage caveats documented in CLAUDE.md). `unoptimized` matches
 // how /legislator/[id] etc. already render these same external URLs (no
 // remotePatterns configured — this app never proxies photos through Next's
 // image optimizer). `fill`, not width/height props — see

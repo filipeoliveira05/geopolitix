@@ -173,7 +173,9 @@ async function fetchCandidateEntries(): Promise<SearchEntry[]> {
 }
 
 // Free — getAllStates() is derived from the map's own local geometry data
-// (us-atlas), no Supabase round trip needed.
+// (us-atlas), no Supabase round trip needed. Flag URL follows the same
+// predictable WPR pattern geography.mjs syncs from, so it needs no fetch
+// either.
 function buildStateEntries(): SearchEntry[] {
   return getAllStates().map((s) => ({
     id: s.abbr,
@@ -181,7 +183,7 @@ function buildStateEntries(): SearchEntry[] {
     type: "state" as const,
     subtitle: "State",
     href: `/state/${s.abbr}`,
-    photoUrl: null,
+    photoUrl: `https://worldpopulationreview.com/images/state-flags/w1280/${s.abbr.toLowerCase()}.png`,
   }));
 }
 
