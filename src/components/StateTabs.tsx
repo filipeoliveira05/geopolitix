@@ -474,7 +474,7 @@ function GeographyTab({
       <Section title="Most populous cities">
         {cities.length > 0 ? (
           <div className="overflow-x-auto overflow-y-hidden">
-            <table className="w-full min-w-[24rem] border-collapse text-sm">
+            <table className="w-full border-collapse text-sm">
               <tbody>
                 {cities.map((city) => (
                   <tr key={city.id} className="border-b border-rule last:border-0">
