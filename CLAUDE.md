@@ -449,6 +449,46 @@ Build order: **Phase 1 politics → Phase 2 geography → Phase 3 quiz.** Don't 
   — nothing here needed deferring the way House's 435-race listing page did. Every group defaults
   **expanded**, not collapsed — collapsing exists for tidiness/scannability here, not to hide
   overwhelming volume.
+- **`college-basketball.mjs` (Phase 2 extension, added shortly after college football)** — NCAA
+  Division I men's basketball programs, joined from **two** Wikipedia pages rather than one:
+  "List of NCAA Division I men's basketball programs" (School/Nickname/Home arena/Conference/
+  Tournament stats, no city/state at all) and "List of NCAA Division I institutions"
+  (School/Common name/Nickname/City/State/Type/Subdivision/Primary conference — covers
+  basketball-only schools with no football program too, confirmed live for DePaul/Xavier/
+  Butler/Marquette/Georgetown). Same separate-table reasoning as `college_football_programs`
+  (own migration, own comment) — shares its exact row shape, unified as one `CollegeProgram`
+  TypeScript type and one `getCollegeProgramsForState()` query helper in `geography-data.ts`
+  rather than duplicating the type twice.
+  **The join is keyed on each school's wikilink TARGET, not display text** — the two pages are
+  independently maintained and don't always agree (e.g. the basketball page's ASCII
+  "University of Hawaii at Manoa" vs. the institutions page's diacritic "University of
+  Hawaiʻi at Mānoa"). A direct target match resolves most schools, but not all — the remaining
+  misses are resolved through MediaWiki's own `action=query&redirects=1` (confirmed live: it
+  canonicalizes the ASCII form straight to the diacritic form, same pageid), bounded to just the
+  actual mismatches via a batched (50-per-request) lookup, not one API call per school. **Verified
+  live: 365/365 programs resolved, zero true gaps.** Two real bugs caught and fixed along the
+  way, not assumed away: the institutions page has **three** separate City/State tables (a main
+  "full members" table, a small "reclassifying members" table for schools moving up from D-II,
+  and an empty collapsible header-only template artifact) — an earlier version only checked the
+  first and silently missed 4 real reclassifying-member schools (Mercyhurst, New Haven, West
+  Florida, West Georgia); and the stored `school` name is sourced from the institutions page's
+  **Common name** column, not the basketball page's own School cell — that page's editors
+  consistently use full institutional names ("University of North Carolina at Charlotte") where
+  football's source page uses short common names ("Charlotte"), which needed two of its own
+  fixes (a `{{sort|SortKey|Display}}` template wraps some Common name cells and would have been
+  fully stripped by a blanket `{{...}}` removal; the common-name lookup needs the identical
+  redirect-resolution fallback the city/state lookup already has). `extractLinkText()`/
+  `extractLinkTarget()` were pulled out of their duplicated homes in `sports.mjs` and
+  `college-football.mjs` into a shared `scripts/sync/_wikilinks.mjs` once this third script
+  needed the identical logic. UI: a second `CollapsibleGroup`, "NCAA Basketball (D1)", appended
+  after "NCAA Football (FBS)" in the same merged "Sports teams" section — each program's
+  nickname rendered bold (`CollegeProgramGroup`, shared by both college groups) to stand out
+  from the school name; pro-league teams were deliberately left unbolded (no separate nickname
+  field exists for `sports_teams` — the pro-league source table's Team column is one combined
+  string, never split into city + mascot the way the college pages are, so a "bold the last
+  word" heuristic would visibly mis-bold real multi-word nicknames like the NBA's Trail Blazers
+  or MLB's Red Sox/White Sox, and do nothing sensible for MLS/NWSL names that aren't
+  city+mascot shaped at all).
 - **House terms/races join on `district_number` (plain int)** — the map, `getCurrentRepsByDistrictKey()`,
   and every House `StateTabs.tsx` display all key off it; see the `districts` entry above for why
   the once-parallel `district_id` FK column was dropped rather than wired up.
@@ -593,14 +633,24 @@ Build order: **Phase 1 politics → Phase 2 geography → Phase 3 quiz.** Don't 
   pulsing emerald for synced within the last day (the one tier where "live" is an honest claim),
   static amber for 1-7 days, static neutral gray beyond that — same pulse-means-something
   discipline as `RaceRow`'s not-yet-decided dot elsewhere in the app.
-  **Two kinds of note, not shown together:** `/state/[abbr]` shows three separate items via
-  `SyncFreshnessRow` — Legislators/Governor/Governor history, each its own dot and timestamp
-  (wraps via `flex-wrap` on narrow viewports, no per-breakpoint branching needed) — rather than
-  one combined number. An earlier version used a single `getJobFreshness(["legislators",
-  "governors", "governor_history"])` call, which takes the MOST RECENT of the three — caught live
-  as dishonest in the opposite direction from the global figure's own fix below: it could read
-  "synced 1 hour ago" while one of the three jobs was actually days stale, silently hiding it
-  behind whichever job happened to run most recently. `/midterms-2026` still shows one item
+  **Two kinds of note, not shown together:** `/state/[abbr]` shows seven separate items via
+  `SyncFreshnessRow` — Legislators/Governor/Governor history/Geography/Sports/College football/
+  College basketball, each its own dot and timestamp — rather than one combined number. An
+  earlier version used a single `getJobFreshness([...])` call across the first three, which takes
+  the MOST RECENT of the group — caught live as dishonest in the opposite direction from the
+  global figure's own fix below: it could read "synced 1 hour ago" while one of the jobs was
+  actually days stale, silently hiding it behind whichever job happened to run most recently.
+  **Collapses behind a toggle above 3 items (added once the row grew to 7)** — showing every job
+  inline via `flex-wrap` ate a disproportionate amount of vertical space right under the page's
+  H1 on mobile, where it wrapped across several lines. `SyncFreshnessRow` now renders a persistent
+  one-line trigger (a dot colored by the STALEST item's own tier — an honest at-a-glance signal,
+  not a fabricated combined status — plus a "Data freshness" label and a rotating chevron, same
+  interaction `CollapsibleGroup` already uses) once `known.length` exceeds 3, toggling the
+  identical full per-item row beneath it rather than replacing the trigger with it — an earlier
+  version did the latter, which meant there was no way back to collapsed once expanded, fixed by
+  keeping the trigger persistently visible in both states. A page with 3 or fewer items (e.g.
+  `/midterms-2026`'s single race-sync note) renders exactly as it always did — no toggle added,
+  since it already fits on one line. `/midterms-2026` still shows one item
   (`SyncFreshnessNote`, a thin wrapper over `SyncFreshnessRow` for the single-item case) since
   races is one atomic sync covering Senate/Governor/House together — nothing to split.
   `GlobalFooter` — the "oldest of every core job's latest run" figure, deliberately excluding
@@ -652,9 +702,15 @@ Build order: **Phase 1 politics → Phase 2 geography → Phase 3 quiz.** Don't 
   straight through from the same `photo_url` column each profile page already reads, rendered via
   `next/image`'s `unoptimized` (same convention `/legislator/[id]` etc. already use for these
   external URLs — no `remotePatterns` configured, this app never proxies photos through Next's
-  image optimizer). States have no photo; a person can legitimately lack one too (see the
-  coverage caveats elsewhere in this doc) — either case falls back to a fixed-size placeholder
-  circle (a generic person icon) so rows stay aligned rather than being pushed left.
+  image optimizer). A person can legitimately lack a photo (see the coverage caveats elsewhere in
+  this doc), which falls back to a fixed-size placeholder circle (a generic person icon) so rows
+  stay aligned rather than being pushed left. **A state entry isn't a real gap the same way** —
+  fixed shortly after launch: `buildStateEntries()` originally hardcoded `photoUrl: null` for
+  every state (states have no `photo_url` column to read), but a state's flag is exactly the
+  right image for this slot and needs no fetch to source — same predictable World Population
+  Review URL pattern `geography.mjs` already constructs (`.../state-flags/w1280/<abbr>.png`), so
+  `buildStateEntries()` builds it directly from `s.abbr`. Verified live: searching a state name
+  now shows its real flag thumbnail, not the generic placeholder.
 
 ## Open decisions
 
@@ -878,13 +934,23 @@ tally rather than counted as anything, so the total can legitimately read a litt
 plan §5 — current representation (real, including governor); history (real Senate, House, AND
 governor history back to statehood as aligned tables, current officeholder marked with a dot
 rather than "(current)" text — see UI conventions; `getHouseHistory()` mirrors
-`getSenateHistory()`); geography (real, added 2026-08-31 — capital/population/region/flag in an
-Overview line, a "Most populous cities" table with a capital badge, a "Sports teams" section
-grouped into collapsible per-league sections (pro leagues from `sports_teams` plus a trailing
-"NCAA Football (FBS)" group from `college_football_programs`, added 2026-09-02 — see the
-`college-football.mjs` entry in Data conventions above), all from `src/lib/geography-data.ts`; see
-the `geography.mjs`/`sports.mjs` entry in Data conventions above for the pro-league sync itself);
-2026 midterms
+`getSenateHistory()`); geography (real, added 2026-08-31, Overview section redesigned shortly
+after — a taller "letterhead"-style flag banner above three labeled stats (Capital/Population/
+Region, each value set in `font-display` per CLAUDE.md's Fraunces-for-big-numbers convention)
+instead of the original small inline flag + one middot-joined sentence; plain `gap-x-6 gap-y-2`
+spacing between the three stats rather than `divide-x` dividers, since dividers are drawn from DOM
+adjacency and don't degrade gracefully once an item wraps to its own line — caught live on
+Missouri/Utah, the two longest capital names in the dataset (Jefferson City/Salt Lake City, both
+14 characters), where the wrapped "Region" stat was left with an orphaned indent and no divider
+before it; a "Most populous cities" table with a capital badge (its own `min-w-[24rem]`, copied
+from the unrelated multi-column History table, was removed after being caught clipping the
+population column on mobile — the table has only 2 columns and never needed a fixed minimum
+width), a "Sports teams" section grouped into collapsible per-league sections (pro leagues from
+`sports_teams` plus trailing "NCAA Football (FBS)"/"NCAA Basketball (D1)" groups from
+`college_football_programs`/`college_basketball_programs`, added 2026-09-02 — see the
+`college-football.mjs`/`college-basketball.mjs` entries in Data conventions above), all from
+`src/lib/geography-data.ts`; see the `geography.mjs`/`sports.mjs` entry in Data conventions above
+for the pro-league sync itself); 2026 midterms
 (real — Senate, Governor, AND House races for this state, per-candidate party + incumbent flag;
 a House race's `Section` title includes its district number/"At-large" since a state can have
 dozens of them, sorted by district — see `raceSectionTitle()`/`OFFICE_ORDER` in `StateTabs.tsx`;
@@ -998,5 +1064,10 @@ everyone else links here.
   Wikipedia's "List of NCAA Division I FBS football programs" (138 schools, confirmed live, no
   key). Added 2026-09-02. A deliberately separate table from `sports_teams`, not a shared one —
   see the Data conventions entry above for the full writeup.
+- `college_basketball` (`college_basketball_programs`) — NCAA Division I men's basketball
+  programs, joined from two Wikipedia pages (365 schools, confirmed live, no key). Added shortly
+  after college football. Shares `college_football_programs`' exact row shape but is its own
+  table/sync job — see the Data conventions entry above for the two-page join and the two real
+  bugs caught while building it.
 
 Not started: quiz (Phase 3).
