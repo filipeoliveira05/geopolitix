@@ -96,11 +96,12 @@ No hardcoded data in the codebase.
 ### Geography (Phase 2, shipped 2026-08-31; fully rewritten onto World Population Review 2026-09-01)
 - **World Population Review only, no Wikidata, no API key** — state population/capital/flag and each state's top 10 most populous cities all come from `worldpopulationreview.com`'s state and per-state city-ranking pages (a clean embedded JSON blob, not table-cell scraping). Replaces an original Wikidata-SPARQL design (city discovery via settlement-class filtering) and a short-lived WPR-population-overlay-on-top-of-Wikidata intermediate step — both existed for about a day before being fully replaced at the user's request, once it became clear a single WPR-only source doesn't need the several bug fixes (name-collision heuristics, classification traps, a schema flag) the two-source design required just to compensate for Wikidata's staleness. Full writeup, including why WPR's own `rank` field needs no city-type filtering (unlike Wikidata's classes), is in `CLAUDE.md`'s Data conventions section — don't re-derive here.
 
-### Sports (Phase 2, shipped 2026-08-31; extended to WNBA/NWSL and college football/basketball 2026-09-02)
+### Sports (Phase 2, shipped 2026-08-31; extended to WNBA/NWSL and college football/basketball, then logos/bios/individual pages, all 2026-09-02)
 - **Not TheSportsDB** — its free key turned out to hard-cap every league's team list at 10 results (confirmed live), unusable for full rosters. Sourced instead by parsing Wikipedia's own "List of professional sports teams in the United States and Canada" article. Full parsing detail and a real row-format edge case (the NHL's Seattle Kraken/Vancouver Canucks rows) are in `CLAUDE.md`'s Data conventions section.
 - **WNBA and NWSL added on top of the original NFL/NBA/MLB/NHL/MLS five** — same page, same table shape, but each needed its own real fix once checked against live wikitext rather than assumed safe from the shape alone: the WNBA's table lists 4 not-yet-playing expansion franchises under a "Future teams" heading (needed an explicit stop-parsing guard), and NWSL has one team split across two rows via rowspan for a mid-season venue move (already handled correctly by the existing minimum-cell-count check). `sports_teams` also got its first real stale-row cleanup in the same pass — full detail in `CLAUDE.md`'s Data conventions section.
 - **College football (NCAA Division I FBS) is a separate table (`college_football_programs`), not a `sports_teams` league value** — a college program carries a conference (no pro-team equivalent) and is amateur/institutional, not "major-league" the way `sports_teams` itself is framed. Sourced from Wikipedia's "List of NCAA Division I FBS football programs" (138 schools, one wikitable). Full writeup — including the fixed-position-from-the-front parsing strategy (the inverse of the pro-league parser's from-the-back approach) and a real `{{okina}}` template bug caught live on Hawaii's row — is in `CLAUDE.md`'s Data conventions section.
 - **College basketball (NCAA Division I men's) needed a two-page join, unlike football** — its source page has no city/state column at all, so `college-basketball.mjs` joins it against a second page ("List of NCAA Division I institutions") keyed by wikilink target, with MediaWiki's own redirect-resolution API as a fallback for the schools whose target doesn't match directly across the two independently-maintained pages. Verified live: 365/365 programs resolved. Shares `college_football_programs`' exact row shape (own table, `college_basketball_programs`) — full writeup, including two real bugs caught while building it (a missed second "reclassifying members" table on the institutions page, and a `{{sort|}}` template mishandled while sourcing the short common name used for display), is in `CLAUDE.md`'s Data conventions section.
+- **Logos and bios, plus individual `/team/[id]`/`/college-football/[id]`/`/college-basketball/[id]` pages, added 2026-09-02** — `logo_url`/`bio_summary` on all three tables above, backfilled from the same Wikipedia REST endpoint `legislators.mjs`/`governor-history.mjs` already use for people, plus a new infobox-wikitext-parsing fallback for when that endpoint's own thumbnail heuristic misses a real logo (confirmed live for several wordmark-shaped college logos). Needed several real reliability fixes along the way — a malformed school name from an under-stripped nested template, a stale-row-cleanup bug (deleting by name instead of by id), a fallback error-swallowing bug, and two rounds of retry-budget tuning against real sustained Wikipedia rate-limiting. Full writeup, including every bug and its fix, is in `CLAUDE.md`'s Data conventions section — don't re-derive here. A handful of programs confirmed to have no logo anywhere Wikipedia exposes one got a manual, one-off fix instead of a scripted one (also documented there).
 
 ### `unitedstates` GitHub org — other repos worth knowing about
 The org (`github.com/unitedstates`) has ~40 repos total; most haven't been touched since
@@ -260,7 +261,11 @@ involved).
 
 ### `sports_teams`
 - `id` (PK) · `name` · `league` (text, no enum constraint — currently NFL/NBA/MLB/NHL/MLS/WNBA/NWSL)
-  · `city_name` (text) · `state_id` (FK). Stores its own home city/state directly rather than
+  · `city_name` (text) · `state_id` (FK) · `wikipedia_title` (added 2026-09-02 — the team's own
+  article, sourced from the Team cell's link target) · `logo_url`, `bio_summary` (both nullable,
+  added 2026-09-02 — backfilled from the same Wikipedia REST call, with an infobox-parsing
+  fallback for `logo_url` when the REST thumbnail alone misses a real logo; **100% coverage
+  confirmed live, 172/172**). Stores its own home city/state directly rather than
   joining through `cities` (that FK was dropped in the same 2026-09-01 revamp — its only actual use
   was rendering plain text like "New England Patriots (Foxborough)" next to a team's name; no
   `/city/[id]` page exists or was ever planned, so a `cities` join — and everything needed to keep a
@@ -270,13 +275,18 @@ involved).
 ### `college_football_programs`
 - `id` (PK) · `school` (unique) · `nickname` · `city_name` (text) · `state_id` (FK) · `conference`
   · `wikipedia_title` (the program's own article, e.g. `Alabama_Crimson_Tide_football` — sourced
-  from the Nickname cell's link target, not the School cell's general-university one). Added
-  2026-09-02, deliberately separate from `sports_teams` rather than a shared table — see the Sports
+  from the Nickname cell's link target, not the School cell's general-university one) · `logo_url`,
+  `bio_summary` (both nullable, added 2026-09-02, same backfill mechanism as `sports_teams` above;
+  **100% coverage confirmed live, 138/138** — one genuine no-Wikipedia-logo gap, Georgia Southern,
+  closed by hand). Added 2026-09-02, deliberately separate from `sports_teams` rather than a shared table — see the Sports
   section above and `CLAUDE.md`'s Data conventions for why.
 
 ### `college_basketball_programs`
 - Identical shape to `college_football_programs` — `id` (PK) · `school` (unique) · `nickname` ·
-  `city_name` (text) · `state_id` (FK) · `conference` · `wikipedia_title`. A separate table, not a
+  `city_name` (text) · `state_id` (FK) · `conference` · `wikipedia_title` · `logo_url`,
+  `bio_summary` (both nullable, added 2026-09-02, same backfill mechanism; **100% bio coverage,
+  361/365 logo coverage confirmed live** — 4 genuine no-Wikipedia-logo gaps closed by hand). A
+  separate table, not a
   shared one, even though the row shape is the same — each is a distinct, independently re-synced
   source, not two views of one underlying entity. `school` is sourced from a second Wikipedia page
   (the basketball programs page itself has no city/state at all) — see the Sports section above.
@@ -311,6 +321,11 @@ Photo, bio, current party, term history.
 
 ### `/governor/[id]` — Governor Profile
 Same shape, adapted to the state executive office.
+
+### `/team/[id]`, `/college-football/[id]`, `/college-basketball/[id]` — Team/Program Profile (added 2026-09-02)
+Logo, name (plus nickname/conference for the college pages), home city (linked to `/state/[abbr]`),
+and a Wikipedia-sourced bio for one `sports_teams`/`college_football_programs`/
+`college_basketball_programs` row. Linked from the state page's Sports teams section.
 
 ### `/midterms-2026` — 2026 Midterms Preview
 Scoreboard (confirmed vs. contested, by House/Senate/Governors), list/map of featured races.

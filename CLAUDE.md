@@ -170,6 +170,14 @@ Build order: **Phase 1 politics → Phase 2 geography → Phase 3 quiz.** Don't 
   an existing `/legislator`/`/governor` page, see above) had its own surname-fallback copy of the
   same bug, missed in that pass and caught later via 7 user-reported wrong links (all confirmed
   same-surname-different-person) — fixed the same way, exact match only, no surname fallback.
+  **One confirmed exception to exact-match-only, added 2026-09-02**: MA-9's Wikipedia race page
+  lists the incumbent by his nickname ("Bill Keating"), which `matchOfficeholder()` correctly
+  refused to guess against his real name (William Keating) — rather than loosening the match
+  (the exact class of change that already produced wrong-person links twice above), a tiny
+  human-curated `NICKNAME_ALIASES` map in `races-2026.mjs` holds just this one manually-confirmed
+  case. Not a general nickname-resolution heuristic — same "a human decided this, not an
+  algorithm" discipline as `wikipedia_verified` — so a future nickname mismatch needs the same
+  by-hand confirmation and addition, not an automatic fallback.
   A `RACES_SCOPE=pending` run can't propagate a matching fix to already-decided races (see
   below), so any future matching change needs a manual full-scope resync to actually apply.
   Every accepted bio is still an unconditional best-effort guess — no reliable ID like
@@ -413,6 +421,13 @@ Build order: **Phase 1 politics → Phase 2 geography → Phase 3 quiz.** Don't 
     id-diff pattern `governors.mjs` uses for a departed governor. Verified live: 172 total US
     teams across 7 leagues (156 unchanged pro + 14 WNBA + 16 NWSL, both real full rosters), zero
     unexpected skips.
+  - **`sports_teams.wikipedia_title` (added 2026-09-02)** — mirrors what
+    `college_football_programs`/`college_basketball_programs` already had: `sports.mjs` captures
+    each team's wikilink target alongside the display text it already extracts (same
+    `extractLinkTarget()` helper). Initially used to link a pro-league team's name straight to its
+    Wikipedia article on `/state/[abbr]`, same as the college groups already did — superseded
+    later the same day once `/team/[id]` existed (see the logo/bio/individual-page entry below),
+    at which point the state page's team names were repointed to link internally instead.
 - **`college-football.mjs` (Phase 2 extension, added 2026-09-02)** — NCAA Division I FBS programs
   (School/Nickname/City/State/Conference), from Wikipedia's "List of NCAA Division I FBS football
   programs," a single wikitable (138 schools, confirmed live — exactly the real total), no key.
@@ -489,6 +504,94 @@ Build order: **Phase 1 politics → Phase 2 geography → Phase 3 quiz.** Don't 
   word" heuristic would visibly mis-bold real multi-word nicknames like the NBA's Trail Blazers
   or MLB's Red Sox/White Sox, and do nothing sensible for MLS/NWSL names that aren't
   city+mascot shaped at all).
+- **`logo_url`/`bio_summary` on `sports_teams`/`college_football_programs`/
+  `college_basketball_programs` (added 2026-09-02, migrations `20260902150000`/`20260902160000`)**
+  — powers the new individual `/team/[id]`/`/college-football/[id]`/`/college-basketball/[id]`
+  pages (see the Status entry below). Both columns are backfilled together by one shared
+  `backfillLogoAndBio()` (`scripts/sync/_wikipedia.mjs`), reusing the exact
+  `fetchWikipediaSummary()` REST call `legislators.mjs`/`governor-history.mjs` already use for
+  people — a team/program's summary thumbnail IS its logo (confirmed live across real samples from
+  all 7 pro leagues plus college football/basketball), so this carries none of the
+  candidates table's name-search wrong-match risk (a direct lookup against an already-resolved
+  title, not a search). The backfill trigger is keyed on `bio_summary`, not `logo_url` — a real
+  Wikipedia article's REST extract is present far more reliably than its infobox thumbnail (some
+  smaller college basketball programs' articles genuinely have neither), so using `logo_url` as
+  the "already handled" signal would either re-fetch a confirmed-logo-less row forever or (worse,
+  hit live) leave a row whose `logo_url` was fetched under the pre-`bio_summary` migration
+  permanently stuck without ever getting a bio.
+  - **Infobox-parsing fallback (`fetchInfoboxLogoUrl`)** — added the same day after a user-reported
+    case proved the REST summary thumbnail alone under-counts real logos: Binghamton Bearcats
+    men's basketball's real infobox logo is a 1050×197px wordmark, and MediaWiki's PageImages
+    heuristic (which powers that thumbnail field) systematically misses this image shape even
+    though the file and the infobox reference are both completely real. When the summary has no
+    thumbnail but the article resolved (a real `bio_summary`), this fallback parses the article's
+    own lead-section wikitext for its infobox's logo parameter directly and resolves that filename
+    to a real file URL, bypassing PageImages entirely. The parameter name isn't universal —
+    confirmed live it varies by infobox template: `logo` (NFL/MLB/NBA/WNBA/college basketball),
+    `image`/`Image` (MLS/NWSL's `{{Infobox football club}}`, college football's
+    `{{Infobox college football team}}`), `logo_image` (`{{Infobox NHL team}}`) — matched via a
+    single regex trying all three key names. Two real parsing bugs caught and fixed live while
+    building this, not assumed away: a value can be `[[File:X.png|200px]]`-wikilinked or carry a
+    `File:`/`Image:` prefix (stripped by `cleanInfoboxFilename()`); and Boston College's `logo`
+    value has an inline HTML comment trailing the filename
+    (`Boston College Eagles wordmark.svg <!-- Please do not remove... -->`, a real Wikipedia
+    editorial convention for non-free files) that was originally left unstripped, corrupting the
+    lookup and making a real logo look like another "genuinely missing" case until the comment-strip
+    fix landed.
+  - **The fallback's own error handling had a real bug, caught only after a full production run**:
+    a network failure/exhausted-retry from `fetchInfoboxLogoUrl` was originally swallowed via
+    `.catch(() => null)`, collapsing "confirmed no logo" and "the fallback attempt itself failed"
+    into the same outcome — since the retry trigger only re-attempts a row with no `bio_summary`,
+    a row whose bio succeeded but whose logo fallback merely errored once got permanently stuck at
+    `logo_url = null`, confirmed live for Maine and Boston College (both have a real, recoverable
+    infobox logo). Fixed by letting the error propagate to the function's existing outer catch
+    instead, which clears `bio_summary` too — a deliberate trade (an already-fetched bio gets
+    re-fetched) in exchange for the row becoming retry-eligible again. The ~50 rows already stuck
+    under the old behavior needed a one-time manual `bio_summary` clear (not committed to the
+    repo) to re-enter the backfill queue, since the fix only changes behavior for fetches going
+    forward, not rows that already "successfully" (per the bug) recorded a bio.
+  - **`sports.mjs` hit its own sustained-429 problem independent of the above**, reproduced
+    identically across 3 separate manual runs: its very first Wikipedia request (the team-list
+    page's section lookup) died to a 429 lasting its full ~45s retry budget every time, regardless
+    of how long a gap preceded the run — ruling out "just wait longer between triggers" as the
+    fix. `fetchJson`'s (`_wikidata.mjs`) default 5-attempt/`3000ms*attempt` budget wasn't enough to
+    ride it out, unlike `fetchWikipediaSummary`'s 8-attempt/`2000ms*attempt` budget (~72s), which
+    reliably survived the same kind of pressure later in these same runs. `fetchJson` gained an
+    optional `retry` override (defaulting to its exact original behavior for every existing
+    caller — `governor-history.mjs` alone calls it roughly 140 times/run, so a global change here
+    risked multiplying its worst-case sustained-429 runtime by over an hour) that only
+    `sports.mjs`'s two page-fetch calls opt into. Relatedly, `backfillLogoAndBio`'s own per-row
+    hard timeout was raised from 30s to a `BACKFILL_HARD_TIMEOUT_MS` constant of 90s (matching
+    `legislators.mjs`'s own bio-backfill precedent) once a real run showed 30s was cutting
+    `fetchWikipediaSummary`'s ~72s worst-case retry off early — confirmed live via 104/365 college
+    basketball programs failing with "hard timeout" specifically in one run, not a genuine data gap.
+  - **Stale-row cleanup in all three scripts deleted by name, not by id — a real, separate bug**
+    confirmed live: `college-basketball.mjs`'s cleanup silently failed to remove a genuinely stale
+    row (the malformed pre-`cleanCommonName`-fix "Bakersfield" name, full of quotes/braces/angle
+    brackets from an unstripped nested template — see below) because that name broke PostgREST's
+    `in.()` filter syntax, with no error surfaced. All three scripts' own doc comments already
+    claimed to use "the same id-diff pattern `governors.mjs` uses," but none of them actually
+    selected or deleted by `id` — fixed by adding `id` to each existing-rows query and deleting by
+    `id` instead, which sidesteps this whole class of bug regardless of what characters a name
+    contains (`sports.mjs`'s per-league grouping, only needed to scope the old name-based filter,
+    was removable too).
+  - **`cleanCommonName` (`college-basketball.mjs`) only stripped one level of `{{...}}` template
+    nesting per pass** — confirmed live via California State University, Bakersfield's
+    institutions-page cell: a `{{refn|...}}` footnote wrapping a further-nested `{{cite web}}`
+    citation. A single-pass strip regex correctly removes the innermost `{{cite web}}` but never
+    re-scans to notice the now-unnested `{{refn}}` wrapper became strippable too, leaving raw
+    template markup in the stored `school` name. Fixed by looping the strip until the string stops
+    changing, handling arbitrary nesting depth; verified live against both this case and the two
+    the function already handled (Albany's single-level footnote, St. John's `{{sort|}}`) with no
+    regression.
+  - **A handful of genuine "no logo anywhere" gaps got a manual, one-off fix, not a scripted
+    one** — Georgia Southern (football) and Purdue Fort Wayne/Morgan State/East Texas A&M/Campbell
+    (basketball) confirmed to have no logo via either method after the fixes above, each with a
+    real image found by hand (mostly ESPN's team-logo CDN) and set directly in Supabase. Same
+    class of manual, unscripted gap-fill as bioguide `G000607`'s hand-patched `wikipedia_title`
+    above — `logo_url` set this way is safe from being overwritten by a future sync as long as
+    `bio_summary`/`wikipedia_title` stay unchanged for that row, since the backfill only re-fetches
+    when `bio_summary` is null.
 - **House terms/races join on `district_number` (plain int)** — the map, `getCurrentRepsByDistrictKey()`,
   and every House `StateTabs.tsx` display all key off it; see the `districts` entry above for why
   the once-parallel `district_id` FK column was dropped rather than wired up.
@@ -526,7 +629,10 @@ Build order: **Phase 1 politics → Phase 2 geography → Phase 3 quiz.** Don't 
   once all four have passed. Used by both `RaceRow.tsx` (`/midterms-2026`'s Senate/Governor/
   House rows) and `StateTabs.tsx` (`/state/[abbr]`'s Midterms tab), so an affected race shows
   "Primary not yet held (Sep 1, 2026)." instead of a presumed candidate name, on every page that
-  renders it.
+  renders it. **First real self-expiry, 2026-09-02**: MA's Sep 1 primary happened and results were
+  verified correct, so its entry was dropped per the file's own documented convention — exactly 3
+  states now remain (NH/RI/DE). `export-unreviewed-candidates.mjs`'s own duplicate cutoff map (see
+  the candidates section above) was kept in sync with the removal, same as when entries were added.
 
 ## UI conventions
 
@@ -776,7 +882,11 @@ BackToMapLink primitives — see UI conventions' Design system entry) shipped 20
 the original default-Next.js look app-wide; the app's actual pages/data/routing are unchanged by
 it. **Phase 2 (geography/sports) is also complete**, shipped 2026-08-31 — see the
 `geography.mjs`/`sports.mjs` entry in Data conventions above for the full sync writeup and its
-several real live-discovered gotchas. Next up per the build order is Phase 3 (quiz), unless told
+several real live-discovered gotchas. A follow-on pass (2026-09-02) added team/program logos and
+bios plus individual `/team/[id]`/`/college-football/[id]`/`/college-basketball/[id]` pages on
+top of the already-complete Phase 2 tables — see the `logo_url`/`bio_summary` entry in Data
+conventions above for the full writeup (several real reliability bugs caught and fixed along the
+way, not just the feature itself). Next up per the build order is Phase 3 (quiz), unless told
 otherwise.
 
 **Profile data coverage (name/photo/bio/term history), verified live — a living snapshot, not a
@@ -960,7 +1070,11 @@ for the pro-league sync itself); 2026 midterms
 a House race's `Section` title includes its district number/"At-large" since a state can have
 dozens of them, sorted by district — see `raceSectionTitle()`/`OFFICE_ORDER` in `StateTabs.tsx`;
 a race with an unresolved primary shows a disclaimer instead of raw candidate text —
-see `isPrimaryPending()` above).
+see `isPrimaryPending()` above). **The selected tab is mirrored into the URL** (`?tab=`, added
+2026-09-02) via `router.replace`, same pattern `page.tsx` already uses for
+`?state=`/`?year=` — tab selection previously lived only in local `useState`, so clicking a
+candidate/legislator/governor link from a non-default tab and hitting the browser's back button
+always landed back on "Current representation" instead of the tab the user was actually on.
 
 **`/midterms-2026`** (plan §5): aligned per-office race tables (state | candidates) for Senate
 and Governor, linked from the map's top-right corner. House (435 races) gets a Scoreboard card
@@ -1025,9 +1139,30 @@ browser verification, not assumed). Linked from senator/rep/governor names acros
 above): photo, party, office/state, incumbent flag, and a best-effort Wikipedia bio (with a fixed
 disclaimer) for a 2026 race candidate with no existing `/legislator`/`/governor` profile. `id`
 is a stable slug computed at sync time, not a uuid — survives `race_candidates`' weekly
-delete-and-reinsert churn. `RaceRow.tsx`'s `candidateHref()` decides per candidate: a matched
-current officeholder's name links straight to their existing profile (no duplicate content);
-everyone else links here.
+delete-and-reinsert churn. `candidateHref()` decides per candidate: a matched current
+officeholder's name links straight to their existing profile (no duplicate content); everyone
+else links here. Originally lived inline in `RaceRow.tsx`; extracted into `races-data.ts`
+2026-09-02 once `StateTabs.tsx`'s own Midterms tab was caught rendering candidate names as plain
+text instead of linking them the same way `/midterms-2026`'s `RaceRow` already did — both
+consumers now share the one function rather than `StateTabs.tsx` growing its own copy.
+
+**`/team/[id]`, `/college-football/[id]`, `/college-basketball/[id]`** (added 2026-09-02, see the
+`logo_url`/`bio_summary` entry in Data conventions above): individual pages for a
+`sports_teams`/`college_football_programs`/`college_basketball_programs` row — logo, name (plus
+nickname/conference for the college tables), home city linked to `/state/[abbr]`, and a
+Wikipedia-sourced bio. All three routes render one shared `TeamProfile` component
+(`src/components/TeamProfile.tsx`) rather than tripling the layout, since the three tables' shapes
+differ only in field names (`league` vs. `conference`, no `nickname` on pro teams). Bios here get
+a new `WikipediaSourcedBadge` source variant, `"wikipedia-list"` — sourced by matching the
+wikilink TARGET on Wikipedia's own team/program list page directly (`extractLinkTarget()`), not a
+name search, so like the `"congress-legislators"`/`"wikidata"` variants it carries none of the
+candidates table's wrong-person risk, just without an equivalent ID lookup to point to. `/state/
+[abbr]`'s Sports teams section links team/program names to these pages now instead of straight
+out to Wikipedia (the external link moved onto the detail page itself, as the badge) — same
+pattern `RepresentativesList.tsx` already uses for `/legislator/[id]` over a direct Wikipedia
+link. No page-specific `SyncFreshnessRow` here, matching `/legislator/[id]`/`/governor/[id]`/
+`/candidate/[id]`'s own convention of relying on `GlobalFooter`'s fallback instead — these are
+detail pages, not hub pages.
 
 **Synced data**, via `npm run sync:<name>`:
 - `states` — minimal id/name seed (`us-atlas` + `fips-to-abbr.json`), 50 states + DC.
@@ -1064,15 +1199,27 @@ everyone else links here.
   (172 US teams across 7 leagues, confirmed live, no key — WNBA/NWSL added 2026-09-02). No
   dependency on `sync:geography` having run first (dropped its `cities` FK in the same 2026-09-01
   revamp — stores its own city name/state directly). See the Data conventions entry above —
-  includes why this isn't TheSportsDB despite the plan's original suggestion.
+  includes why this isn't TheSportsDB despite the plan's original suggestion. `logo_url`/
+  `bio_summary` (added 2026-09-02) backfilled from Wikipedia the same run, powering `/team/[id]`
+  — **100% coverage (172/172) confirmed live** as of 2026-09-02, after several real
+  reliability fixes (see the Data conventions entry above).
 - `college_football` (`college_football_programs`) — NCAA Division I FBS programs, from
   Wikipedia's "List of NCAA Division I FBS football programs" (138 schools, confirmed live, no
   key). Added 2026-09-02. A deliberately separate table from `sports_teams`, not a shared one —
-  see the Data conventions entry above for the full writeup.
+  see the Data conventions entry above for the full writeup. `logo_url`/`bio_summary` (added
+  2026-09-02) — **100% coverage (138/138) confirmed live**, powering `/college-football/[id]`
+  (Georgia Southern's confirmed-no-Wikipedia-logo gap closed by hand, same as the basketball
+  entry below).
 - `college_basketball` (`college_basketball_programs`) — NCAA Division I men's basketball
   programs, joined from two Wikipedia pages (365 schools, confirmed live, no key). Added shortly
   after college football. Shares `college_football_programs`' exact row shape but is its own
   table/sync job — see the Data conventions entry above for the two-page join and the two real
-  bugs caught while building it.
+  bugs caught while building it. `logo_url`/`bio_summary` (added 2026-09-02) — **100% bio
+  coverage (365/365), 361/365 logo coverage confirmed live** as of 2026-09-02; the 4 remaining
+  gaps (Purdue Fort Wayne, Morgan State, East Texas A&M, Campbell) are confirmed genuine
+  no-Wikipedia-logo cases, closed by hand the same way as Georgia Southern above. Needed several
+  real fixes along the way — a malformed `school` name, a stale-row cleanup bug, a fallback
+  error-swallowing bug, and two rounds of retry-budget tuning — all documented in the
+  `logo_url`/`bio_summary` entry in Data conventions above.
 
 Not started: quiz (Phase 3).
