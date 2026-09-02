@@ -278,11 +278,23 @@ async function loadCurrentOfficeholders(supabase) {
  * only, unmatched candidates fall through to their own `/candidate/[id]`
  * page instead of a guessed link.
  */
+// Deliberately tiny and human-curated — NOT a general nickname-resolution
+// heuristic (see matchOfficeholder's own comment above on why guessing
+// heuristics here keep producing wrong-person matches). Add an entry only
+// after manually confirming the candidate and the officeholder are the same
+// real person (same district/state, no ambiguity) — same "a human decided
+// this, not an algorithm" discipline as wikipedia_verified elsewhere in this
+// codebase. Keyed/valued by normalizeExactName's own output.
+const NICKNAME_ALIASES = {
+  "bill keating": "william keating", // MA-9 Rep. William "Bill" Keating — confirmed 2026-09-02
+};
+
 function matchOfficeholder(candidateName, stateId, officeholdersByState) {
   const officials = officeholdersByState.get(stateId);
   if (!officials || officials.length === 0) return null;
   const nameNormalized = normalizeExactName(candidateName);
-  return officials.find((o) => o.fullName === nameNormalized) ?? null;
+  const aliased = NICKNAME_ALIASES[nameNormalized] ?? nameNormalized;
+  return officials.find((o) => o.fullName === aliased) ?? null;
 }
 
 /** "John Q. Smith" + "CA" -> "ca-john-q-smith". See the design spec's normalization rule. */
