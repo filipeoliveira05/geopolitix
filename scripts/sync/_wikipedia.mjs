@@ -21,6 +21,13 @@ const RETRYABLE_STATUSES = new Set([429, 502, 503, 504]);
 // retryable error instead.
 const FETCH_TIMEOUT_MS = 30_000;
 
+// Per-row ceiling for backfillLogoAndBio's two withHardTimeout calls (main summary fetch + infobox
+// fallback) — 90s, not 30s, since fetchWikipediaSummary's own internal retry (8 attempts,
+// 2000ms*attempt backoff) can legitimately need up to ~72s to ride out sustained 429 pressure late
+// in a large run. Matches legislators.mjs's own bio-backfill hard-timeout, which hit this identical
+// problem first.
+const BACKFILL_HARD_TIMEOUT_MS = 90_000;
+
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -238,16 +245,9 @@ export async function mapWithConcurrency(items, limit, fn, { shouldStop } = {}) 
 export async function backfillLogoAndBio(rows, changeLog, labelFor) {
   await mapWithConcurrency(rows, 2, async (row) => {
     try {
-      // 90s, not 30s — fetchWikipediaSummary's own internal retry (8 attempts, 2000ms*attempt
-      // backoff) can legitimately need up to ~72s to ride out sustained 429 pressure late in a
-      // large run; a shorter outer ceiling was cutting that retry loop off before it got a fair
-      // chance to succeed, confirmed live via a real run where 104/365 college basketball
-      // programs failed with "hard timeout" specifically (not a genuine absence). Matches
-      // legislators.mjs's own bio-backfill hard-timeout, which hit and fixed this identical
-      // problem first.
       const { photoUrl, bioSummary } = await withHardTimeout(
         (signal) => fetchWikipediaSummary(row.wikipedia_title, signal),
-        90_000,
+        BACKFILL_HARD_TIMEOUT_MS,
         `logo/bio fetch (${labelFor(row)})`,
       );
       let logoUrl = photoUrl;
@@ -255,7 +255,7 @@ export async function backfillLogoAndBio(rows, changeLog, labelFor) {
       if (!logoUrl && bioSummary) {
         logoUrl = await withHardTimeout(
           () => fetchInfoboxLogoUrl(row.wikipedia_title),
-          90_000,
+          BACKFILL_HARD_TIMEOUT_MS,
           `infobox logo fetch (${labelFor(row)})`,
         ).catch(() => null);
         fallbackUsed = logoUrl !== null;
