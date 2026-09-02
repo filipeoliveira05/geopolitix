@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { Suspense, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { PartyBadge } from "@/components/PartyBadge";
 import { SectionHeading } from "@/components/SectionHeading";
 import {
@@ -23,6 +24,10 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: "midterms", label: "2026 Midterms" },
 ];
 
+function isTabKey(value: string | null): value is TabKey {
+  return value !== null && TABS.some((t) => t.key === value);
+}
+
 export type StateTabsProps = {
   abbr: string;
   name: string;
@@ -43,8 +48,27 @@ export type StateTabsProps = {
   races: Race[];
 };
 
-export function StateTabs(props: StateTabsProps) {
-  const [tab, setTab] = useState<TabKey>("current");
+function StateTabsInner(props: StateTabsProps) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const urlTab = searchParams.get("tab");
+
+  const [tab, setTab] = useState<TabKey>(isTabKey(urlTab) ? urlTab : "current");
+
+  // Mirror the selected tab into the URL (replace, not push) so following a
+  // candidate/legislator/governor link from a non-default tab and hitting
+  // the native back button restores that tab instead of landing back on
+  // "Current representation" — same reasoning/pattern as page.tsx's
+  // selectedAbbr/year mirroring. Omitted entirely when "current" (the
+  // default), so an ordinary visit still gets a bare `/state/[abbr]`.
+  useEffect(() => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (tab !== "current") params.set("tab", tab);
+    else params.delete("tab");
+    const query = params.size > 0 ? `?${params.toString()}` : "";
+    router.replace(`${window.location.pathname}${query}`, { scroll: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
 
   return (
     <div>
@@ -69,6 +93,14 @@ export function StateTabs(props: StateTabsProps) {
         {tab === "midterms" && <MidtermsTab {...props} />}
       </div>
     </div>
+  );
+}
+
+export function StateTabs(props: StateTabsProps) {
+  return (
+    <Suspense fallback={null}>
+      <StateTabsInner {...props} />
+    </Suspense>
   );
 }
 
