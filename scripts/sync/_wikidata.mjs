@@ -23,7 +23,18 @@ const RETRYABLE_STATUSES = new Set([429, 502, 503, 504]);
 // retryable error instead.
 const FETCH_TIMEOUT_MS = 30_000;
 
-export async function fetchJson(url, headers = {}, attempt = 1) {
+// Defaults match this function's original, unchanged behavior — every existing caller
+// (governor-history.mjs's ~140 calls/run, college-basketball.mjs's resolveRedirects, etc.) keeps
+// its exact prior retry timing. `retry` is an opt-in override for a caller whose specific call
+// site has demonstrated it needs more room — see sports.mjs's use of it, and DON'T change these
+// defaults globally: a caller with many call sites (governor-history.mjs in particular) would see
+// its worst-case sustained-429 runtime multiply well beyond what these defaults were tuned for.
+export async function fetchJson(
+  url,
+  headers = {},
+  attempt = 1,
+  retry = { maxAttempts: 5, backoffMs: 3000 },
+) {
   let res;
   try {
     res = await fetch(url, {
@@ -31,22 +42,22 @@ export async function fetchJson(url, headers = {}, attempt = 1) {
       signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     });
   } catch (err) {
-    if (attempt <= 5) {
-      await sleep(3000 * attempt);
-      return fetchJson(url, headers, attempt + 1);
+    if (attempt <= retry.maxAttempts) {
+      await sleep(retry.backoffMs * attempt);
+      return fetchJson(url, headers, attempt + 1, retry);
     }
     throw err;
   }
-  if (RETRYABLE_STATUSES.has(res.status) && attempt <= 5) {
-    await sleep(3000 * attempt);
-    return fetchJson(url, headers, attempt + 1);
+  if (RETRYABLE_STATUSES.has(res.status) && attempt <= retry.maxAttempts) {
+    await sleep(retry.backoffMs * attempt);
+    return fetchJson(url, headers, attempt + 1, retry);
   }
   if (!res.ok) throw new Error(`Request failed: ${res.status} ${res.statusText} (${url})`);
   const text = await res.text();
   if (!text) {
-    if (attempt <= 5) {
-      await sleep(3000 * attempt);
-      return fetchJson(url, headers, attempt + 1);
+    if (attempt <= retry.maxAttempts) {
+      await sleep(retry.backoffMs * attempt);
+      return fetchJson(url, headers, attempt + 1, retry);
     }
     throw new Error(`Empty response after ${attempt} attempts (${url})`);
   }

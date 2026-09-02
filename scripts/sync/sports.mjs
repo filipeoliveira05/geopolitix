@@ -61,16 +61,27 @@ const LEAGUES = [
   { key: "NWSL", heading: "National Women's Soccer League" },
 ];
 
+// A stronger retry override than fetchJson's default (5 attempts, 3000ms*attempt ≈ 45s worst
+// case) — confirmed live, 3 runs in a row, that this exact call (the very first Wikipedia request
+// this whole workflow makes) hits a sustained 429 window lasting at least that long every time,
+// regardless of how long a gap preceded the run. college-football.mjs/college-basketball.mjs's
+// own first calls, made moments later in the same job, consistently survive on the default
+// budget — this override is scoped to sports.mjs's two call sites specifically (not fetchJson's
+// default) so it doesn't affect governor-history.mjs's much higher call volume elsewhere. 8
+// attempts at 2000ms*attempt matches fetchWikipediaSummary's own budget (~72s), which has
+// reliably ridden out the same kind of sustained pressure later in these same runs.
+const SPORTS_PAGE_FETCH_RETRY = { maxAttempts: 8, backoffMs: 2000 };
+
 async function findSectionIndex(heading) {
   const url = `https://en.wikipedia.org/w/api.php?action=parse&page=${encodeURIComponent(PAGE_TITLE)}&prop=sections&format=json`;
-  const data = await fetchJson(url);
+  const data = await fetchJson(url, {}, 1, SPORTS_PAGE_FETCH_RETRY);
   const section = data.parse.sections.find((s) => s.line === heading);
   return section ? section.index : null;
 }
 
 async function fetchSectionWikitext(sectionIndex) {
   const url = `https://en.wikipedia.org/w/api.php?action=parse&page=${encodeURIComponent(PAGE_TITLE)}&prop=wikitext&section=${sectionIndex}&format=json`;
-  const data = await fetchJson(url);
+  const data = await fetchJson(url, {}, 1, SPORTS_PAGE_FETCH_RETRY);
   return data.parse.wikitext["*"];
 }
 
