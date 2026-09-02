@@ -24,6 +24,7 @@
 import { supabaseAdmin, logSync } from "./_supabase-admin.mjs";
 import { createChangeLog } from "./_change-log.mjs";
 import { fetchJson } from "./_wikidata.mjs";
+import { extractLinkText, extractLinkTarget } from "./_wikilinks.mjs";
 
 const PAGE_TITLE = "List of NCAA Division I FBS football programs";
 
@@ -37,19 +38,6 @@ export async function fetchPageWikitext() {
   // front (rather than a full template resolver) is enough since this is the one template used
   // anywhere in this page's data rows.
   return wikitext.replace(/\{\{okina\}\}/gi, "ʻ");
-}
-
-/** First [[wikilink]]'s DISPLAY text ("[[A|B]]" -> "B", "[[A]]" -> "A"). */
-function extractLinkText(cell) {
-  const match = /\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/.exec(cell ?? "");
-  if (!match) return null;
-  return (match[2] ?? match[1]).trim();
-}
-
-/** First [[wikilink]]'s TARGET page name ("[[A|B]]" -> "A", "[[A]]" -> "A") — for wikipedia_title. */
-function extractLinkTarget(cell) {
-  const match = /\[\[([^\]|]+)/.exec(cell ?? "");
-  return match ? match[1].trim() : null;
 }
 
 /**

@@ -29,6 +29,7 @@ import { feature } from "topojson-client";
 import { supabaseAdmin, logSync } from "./_supabase-admin.mjs";
 import { createChangeLog } from "./_change-log.mjs";
 import { fetchJson } from "./_wikidata.mjs";
+import { extractLinkText } from "./_wikilinks.mjs";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const fipsToAbbr = JSON.parse(
@@ -70,13 +71,6 @@ async function fetchSectionWikitext(sectionIndex) {
   const url = `https://en.wikipedia.org/w/api.php?action=parse&page=${encodeURIComponent(PAGE_TITLE)}&prop=wikitext&section=${sectionIndex}&format=json`;
   const data = await fetchJson(url);
   return data.parse.wikitext["*"];
-}
-
-/** First [[wikilink]]'s display text ("[[A|B]]" -> "B", "[[A]]" -> "A"), ignoring anything after it. */
-function extractLinkText(cell) {
-  const match = /\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/.exec(cell ?? "");
-  if (!match) return null;
-  return (match[2] ?? match[1]).trim();
 }
 
 /**

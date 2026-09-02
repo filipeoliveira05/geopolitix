@@ -10,7 +10,7 @@ import {
 } from "@/lib/legislators-data";
 import type { GovernorTerm } from "@/lib/governors-data";
 import { primaryPendingMessage, type Race } from "@/lib/races-data";
-import type { City, SportsTeam, CollegeFootballProgram } from "@/lib/geography-data";
+import type { City, SportsTeam, CollegeProgram } from "@/lib/geography-data";
 import { wikipediaUrl } from "@/lib/wikipedia";
 import { CollapsibleGroup } from "@/components/CollapsibleGroup";
 
@@ -33,7 +33,8 @@ export type StateTabsProps = {
   flagUrl: string | null;
   cities: City[];
   sportsTeams: SportsTeam[];
-  collegeFootball: CollegeFootballProgram[];
+  collegeFootball: CollegeProgram[];
+  collegeBasketball: CollegeProgram[];
   senators: TermWithLegislator[];
   representatives: TermWithLegislator[];
   senateHistory: TermWithLegislator[];
@@ -380,10 +381,59 @@ function HistoryTab({ senateHistory, houseHistory, governorHistory }: StateTabsP
   );
 }
 
-// Fixed display order for the pro-league groups (NCAA-FBS always renders last, after every pro
-// league) — same reasoning OFFICE_ORDER below gets: insertion/alphabetical order would otherwise
-// drift with whatever order sports_teams happens to return rows in.
+// Fixed display order for the pro-league groups (college groups always render last, after every
+// pro league) — same reasoning OFFICE_ORDER below gets: insertion/alphabetical order would
+// otherwise drift with whatever order sports_teams happens to return rows in.
 const LEAGUE_ORDER = ["NFL", "NBA", "MLB", "NHL", "MLS", "WNBA", "NWSL"];
+
+// Shared row rendering for both college_football_programs and college_basketball_programs — same
+// CollegeProgram shape, same display line (name + nickname, linked to Wikipedia when sourced;
+// conference badge; home city).
+function CollegeProgramGroup({ title, programs }: { title: string; programs: CollegeProgram[] }) {
+  if (programs.length === 0) return null;
+  return (
+    <CollapsibleGroup title={title} count={programs.length}>
+      <ul className="flex flex-col gap-1">
+        {programs.map((program) => (
+          <li key={program.id}>
+            {program.wikipediaTitle ? (
+              <a
+                href={wikipediaUrl(program.wikipediaTitle)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="link-accent"
+              >
+                {program.school}
+                {program.nickname && (
+                  <>
+                    {" "}
+                    <strong className="font-semibold">{program.nickname}</strong>
+                  </>
+                )}
+              </a>
+            ) : (
+              <>
+                {program.school}
+                {program.nickname && (
+                  <>
+                    {" "}
+                    <strong className="font-semibold">{program.nickname}</strong>
+                  </>
+                )}
+              </>
+            )}{" "}
+            {program.conference && (
+              <span className="text-xs font-medium uppercase tracking-wide text-muted">
+                {program.conference}
+              </span>
+            )}{" "}
+            <span className="text-muted">({program.cityName})</span>
+          </li>
+        ))}
+      </ul>
+    </CollapsibleGroup>
+  );
+}
 
 function GeographyTab({
   capital,
@@ -393,6 +443,7 @@ function GeographyTab({
   cities,
   sportsTeams,
   collegeFootball,
+  collegeBasketball,
 }: StateTabsProps) {
   const proLeagueGroups = LEAGUE_ORDER.map((league) => ({
     league,
@@ -449,7 +500,7 @@ function GeographyTab({
       </Section>
 
       <Section title="Sports teams">
-        {proLeagueGroups.length > 0 || collegeFootball.length > 0 ? (
+        {proLeagueGroups.length > 0 || collegeFootball.length > 0 || collegeBasketball.length > 0 ? (
           <div>
             {proLeagueGroups.map((group) => (
               <CollapsibleGroup key={group.league} title={group.league} count={group.teams.length}>
@@ -462,38 +513,8 @@ function GeographyTab({
                 </ul>
               </CollapsibleGroup>
             ))}
-            {collegeFootball.length > 0 && (
-              <CollapsibleGroup title="NCAA Football (FBS)" count={collegeFootball.length}>
-                <ul className="flex flex-col gap-1">
-                  {collegeFootball.map((program) => (
-                    <li key={program.id}>
-                      {program.wikipediaTitle ? (
-                        <a
-                          href={wikipediaUrl(program.wikipediaTitle)}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="link-accent"
-                        >
-                          {program.school}
-                          {program.nickname && <> {program.nickname}</>}
-                        </a>
-                      ) : (
-                        <>
-                          {program.school}
-                          {program.nickname && <> {program.nickname}</>}
-                        </>
-                      )}{" "}
-                      {program.conference && (
-                        <span className="text-xs font-medium uppercase tracking-wide text-muted">
-                          {program.conference}
-                        </span>
-                      )}{" "}
-                      <span className="text-muted">({program.cityName})</span>
-                    </li>
-                  ))}
-                </ul>
-              </CollapsibleGroup>
-            )}
+            <CollegeProgramGroup title="NCAA Football (FBS)" programs={collegeFootball} />
+            <CollegeProgramGroup title="NCAA Basketball (D1)" programs={collegeBasketball} />
           </div>
         ) : (
           <Empty>No sports teams synced for this state.</Empty>

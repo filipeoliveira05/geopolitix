@@ -17,7 +17,8 @@
     "sync:districts": "node --env-file=.env.local scripts/sync/districts.mjs",
     "sync:geography": "node --env-file=.env.local scripts/sync/geography.mjs",
     "sync:sports": "node --env-file=.env.local scripts/sync/sports.mjs",
-    "sync:college-football": "node --env-file=.env.local scripts/sync/college-football.mjs"
+    "sync:college-football": "node --env-file=.env.local scripts/sync/college-football.mjs",
+    "sync:college-basketball": "node --env-file=.env.local scripts/sync/college-basketball.mjs"
   },
   "dependencies": {
     "@supabase/postgrest-js": "^2.109.0",

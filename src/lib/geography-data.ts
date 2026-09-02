@@ -1,17 +1,20 @@
 import { supabase } from "./supabase";
 
-// Reads the Supabase `states`/`cities`/`sports_teams`/`college_football_programs` tables
-// (plan §4, Phase 2), synced via `npm run sync:geography` / `npm run sync:sports` /
-// `npm run sync:college-football` (see scripts/sync/geography.mjs, scripts/sync/sports.mjs,
-// scripts/sync/college-football.mjs). `states`/`cities`/`sports_teams` are sourced entirely from
-// World Population Review as of 2026-09-01 (no Wikidata) — `cities` holds nothing but each
+// Reads the Supabase `states`/`cities`/`sports_teams`/`college_football_programs`/
+// `college_basketball_programs` tables (plan §4, Phase 2), synced via `npm run sync:geography` /
+// `npm run sync:sports` / `npm run sync:college-football` / `npm run sync:college-basketball`
+// (see scripts/sync/geography.mjs, scripts/sync/sports.mjs, scripts/sync/college-football.mjs,
+// scripts/sync/college-basketball.mjs). `states`/`cities`/`sports_teams` are sourced entirely
+// from World Population Review as of 2026-09-01 (no Wikidata) — `cities` holds nothing but each
 // state's real top 10 most populous cities + its capital, and `sports_teams` stores its own city
 // name/state directly rather than through a `cities` FK (dropped in the same revamp — the FK's
 // only use was rendering plain text like "New England Patriots (Foxborough)", no `/city/[id]`
 // page exists or was ever planned), so no filtering/reconciliation logic is needed in either
-// query below. `college_football_programs` (added 2026-09-02, from Wikipedia) is a deliberately
-// separate table from `sports_teams` rather than a new league value on it — see that table's own
-// migration comment.
+// query below. The two `college_*_programs` tables (college football added 2026-09-02, college
+// basketball added shortly after) are deliberately separate tables from `sports_teams` rather
+// than new league values on it — see college_football_programs' migration comment — but share
+// one identical row shape (`CollegeProgram`) and one query helper between themselves, since
+// unlike sports_teams' many different leagues, these two really are the same shape twice.
 
 export type StateGeography = {
   stateId: string;
@@ -37,7 +40,11 @@ export type SportsTeam = {
   cityName: string;
 };
 
-export type CollegeFootballProgram = {
+// Shared shape for both college_football_programs and college_basketball_programs — identical
+// columns in both tables (see college_basketball_programs' migration comment for why this is a
+// second table rather than a sport column on one shared table: each is a separate, independently
+// re-synced source, not different rows of the same underlying entity).
+export type CollegeProgram = {
   id: string;
   school: string;
   nickname: string | null;
@@ -134,7 +141,7 @@ export async function getSportsTeamsForState(stateAbbr: string): Promise<SportsT
   }));
 }
 
-type CollegeFootballProgramRow = {
+type CollegeProgramRow = {
   id: string;
   school: string;
   nickname: string | null;
@@ -143,16 +150,16 @@ type CollegeFootballProgramRow = {
   wikipedia_title: string | null;
 };
 
-/** Every NCAA Division I FBS college football program in this state. */
-export async function getCollegeFootballForState(
+async function getCollegeProgramsForState(
+  table: "college_football_programs" | "college_basketball_programs",
   stateAbbr: string,
-): Promise<CollegeFootballProgram[]> {
+): Promise<CollegeProgram[]> {
   const { data, error } = await supabase
-    .from("college_football_programs")
+    .from(table)
     .select("id, school, nickname, city_name, conference, wikipedia_title")
     .eq("state_id", stateAbbr);
   if (error) throw error;
-  return (data as unknown as CollegeFootballProgramRow[]).map((row) => ({
+  return (data as unknown as CollegeProgramRow[]).map((row) => ({
     id: row.id,
     school: row.school,
     nickname: row.nickname,
@@ -160,4 +167,14 @@ export async function getCollegeFootballForState(
     conference: row.conference,
     wikipediaTitle: row.wikipedia_title,
   }));
+}
+
+/** Every NCAA Division I FBS college football program in this state. */
+export function getCollegeFootballForState(stateAbbr: string): Promise<CollegeProgram[]> {
+  return getCollegeProgramsForState("college_football_programs", stateAbbr);
+}
+
+/** Every NCAA Division I men's basketball program in this state. */
+export function getCollegeBasketballForState(stateAbbr: string): Promise<CollegeProgram[]> {
+  return getCollegeProgramsForState("college_basketball_programs", stateAbbr);
 }

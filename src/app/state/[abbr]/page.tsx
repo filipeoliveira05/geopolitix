@@ -14,6 +14,7 @@ import {
   getCitiesForState,
   getSportsTeamsForState,
   getCollegeFootballForState,
+  getCollegeBasketballForState,
 } from "@/lib/geography-data";
 import { StateTabs } from "@/components/StateTabs";
 import { SyncFreshnessRow } from "@/components/SyncFreshnessNote";
@@ -50,6 +51,7 @@ export default async function StatePage(props: PageProps<"/state/[abbr]">) {
     cities,
     sportsTeams,
     collegeFootball,
+    collegeBasketball,
   ] = await Promise.all([
     getGovernor(abbr),
     getCurrentSenators(abbr),
@@ -62,6 +64,7 @@ export default async function StatePage(props: PageProps<"/state/[abbr]">) {
     getCitiesForState(abbr),
     getSportsTeamsForState(abbr),
     getCollegeFootballForState(abbr),
+    getCollegeBasketballForState(abbr),
   ]);
   const [
     legislatorsSyncedAt,
@@ -70,6 +73,7 @@ export default async function StatePage(props: PageProps<"/state/[abbr]">) {
     geographySyncedAt,
     sportsSyncedAt,
     collegeFootballSyncedAt,
+    collegeBasketballSyncedAt,
   ] = await Promise.all([
     getJobFreshness(["legislators"]),
     getJobFreshness(["governors"]),
@@ -77,6 +81,7 @@ export default async function StatePage(props: PageProps<"/state/[abbr]">) {
     getJobFreshness(["geography"]),
     getJobFreshness(["sports"]),
     getJobFreshness(["college_football"]),
+    getJobFreshness(["college_basketball"]),
   ]);
 
   return (
@@ -94,6 +99,7 @@ export default async function StatePage(props: PageProps<"/state/[abbr]">) {
           { label: "Geography", syncedAt: geographySyncedAt },
           { label: "Sports", syncedAt: sportsSyncedAt },
           { label: "College football", syncedAt: collegeFootballSyncedAt },
+          { label: "College basketball", syncedAt: collegeBasketballSyncedAt },
         ]}
         className="mt-1"
       />
@@ -114,6 +120,7 @@ export default async function StatePage(props: PageProps<"/state/[abbr]">) {
           cities={cities}
           sportsTeams={sportsTeams}
           collegeFootball={collegeFootball}
+          collegeBasketball={collegeBasketball}
           senators={senators}
           representatives={representatives}
           senateHistory={senateHistory}
