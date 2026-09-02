@@ -453,18 +453,31 @@ function GeographyTab({
     <div className="flex flex-col gap-6">
       <Section title="Overview">
         {capital || population || region || flagUrl ? (
-          <div className="flex items-center gap-3">
+          <div className="flex flex-col gap-3">
             {flagUrl && (
               // eslint-disable-next-line @next/next/no-img-element -- external Commons URL, same convention as photo_url elsewhere
-              <img src={flagUrl} alt="" className="h-8 w-auto shrink-0 rounded-sm" />
+              <img src={flagUrl} alt="" className="h-20 w-auto self-start rounded-sm border border-rule" />
             )}
-            <p>
-              {capital && <>Capital: {capital}</>}
-              {capital && population && " · "}
-              {population && <>Population: {population.toLocaleString()}</>}
-              {(capital || population) && region && " · "}
-              {region && <>Region: {region}</>}
-            </p>
+            <div className="flex flex-wrap divide-x divide-rule">
+              {capital && (
+                <div className="pr-4">
+                  <div className="text-[10px] font-medium uppercase tracking-wide text-muted">Capital</div>
+                  <div className="font-display text-lg">{capital}</div>
+                </div>
+              )}
+              {population && (
+                <div className="px-4">
+                  <div className="text-[10px] font-medium uppercase tracking-wide text-muted">Population</div>
+                  <div className="font-display text-lg">{population.toLocaleString()}</div>
+                </div>
+              )}
+              {region && (
+                <div className="pl-4">
+                  <div className="text-[10px] font-medium uppercase tracking-wide text-muted">Region</div>
+                  <div className="font-display text-lg">{region}</div>
+                </div>
+              )}
+            </div>
           </div>
         ) : (
           <Empty>No geography data yet — not synced for this state.</Empty>
