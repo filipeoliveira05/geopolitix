@@ -253,11 +253,25 @@ export async function backfillLogoAndBio(rows, changeLog, labelFor) {
       let logoUrl = photoUrl;
       let fallbackUsed = false;
       if (!logoUrl && bioSummary) {
+        // Deliberately NOT wrapped in .catch(() => null) — fetchInfoboxLogoUrl only ever
+        // resolves to null for a genuine "checked, nothing there" outcome (no wikitext, no
+        // matching infobox param, no resolvable file); a real fetch failure (network error,
+        // exhausted retries) THROWS instead, and is meant to propagate to this function's own
+        // outer catch below. Swallowing it here was a real bug, caught live: it collapsed
+        // "confirmed no logo" and "the fallback attempt itself failed" into the same outcome,
+        // permanently losing a recoverable logo (confirmed for Maine/Boston College — both have
+        // a real infobox logo, but a failed fallback attempt left them stuck at logo_url=null
+        // forever, since the bio_summary-keyed retry trigger saw a real bio and never retried).
+        // Letting the error propagate clears bio_summary too (see the catch block), which is a
+        // deliberate trade — re-fetching an already-known bio is wasted work, but it's the only
+        // way this row becomes eligible for retry again under the current bio_summary-keyed
+        // trigger, and losing one already-fetched bio temporarily beats permanently losing a
+        // real, recoverable logo.
         logoUrl = await withHardTimeout(
           () => fetchInfoboxLogoUrl(row.wikipedia_title),
           BACKFILL_HARD_TIMEOUT_MS,
           `infobox logo fetch (${labelFor(row)})`,
-        ).catch(() => null);
+        );
         fallbackUsed = logoUrl !== null;
       }
       row.logo_url = logoUrl;

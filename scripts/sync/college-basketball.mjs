@@ -70,11 +70,27 @@ function extractTables(wikitext) {
  * basketball page's School column wraps names in {{sort|}}, see below) — here a blanket strip
  * would delete the ENTIRE cell, including the actual name, not just noise. cleanCommonName()
  * below handles {{sort|}} by keeping its second argument; anything else {{...}} is assumed to be
- * pure noise (a footnote, etc.) and stripped entirely. */
+ * pure noise (a footnote, etc.) and stripped entirely.
+ *
+ * The strip itself has to LOOP, not run once — caught live via California State University,
+ * Bakersfield's cell: `Bakersfield{{refn|group=N|...text...<ref>{{cite web |url=...}}</ref>...
+ * more text...}}`, a footnote template with a further-nested {{cite web}} template inside its own
+ * <ref> tag. The strip regex only matches a `{{...}}` span with no braces inside it, so a single
+ * pass finds and removes just the innermost {{cite web}}, leaving the now-unnested {{refn}}
+ * wrapper (and all its noise text) sitting in the output untouched — a single non-loop `.replace`
+ * has no way to notice the outer template became strippable only after the inner one was gone.
+ * Looping until the string stops changing removes one level of nesting per pass, however deep it
+ * goes, and converged live to the correct plain "Bakersfield" for this exact case. */
 function cleanCommonName(text) {
   const sortMatch = /\{\{sort\|[^|{}]*\|([^{}]*)\}\}/i.exec(text);
   if (sortMatch) return sortMatch[1].trim();
-  return text.replace(/\{\{[^{}]*\}\}/g, "").trim();
+  let cleaned = text;
+  let previous;
+  do {
+    previous = cleaned;
+    cleaned = cleaned.replace(/\{\{[^{}]*\}\}/g, "");
+  } while (cleaned !== previous);
+  return cleaned.trim();
 }
 export function parseInstitutionsTable(wikitext) {
   const tables = extractTables(wikitext).filter((t) => /!\s*City\b/.test(t) && /!\s*State\b/.test(t));
