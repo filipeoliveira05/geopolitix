@@ -190,13 +190,44 @@ async function main() {
   }
 
   const { error } = await supabase.from("sports_teams").upsert(teamRows, { onConflict: "league,name" });
+  if (error) {
+    await logSync(supabase, {
+      source: "Wikipedia (List of professional sports teams in the US and Canada)",
+      startedAt,
+      error,
+      job: "sports",
+    });
+    throw error;
+  }
+
+  // A relocated/renamed/folded team disappears from Wikipedia's list entirely, so upsert alone
+  // never removes it — unlike geography.mjs's cities (full delete-then-reinsert per state) or
+  // races_2026.mjs's terms (last_synced_at cutover), sports_teams had no cleanup step at all
+  // until this pass. Diffs the pre-upsert snapshot against this run's fresh key set and deletes
+  // whatever's left over — same id-diff pattern governors.mjs uses for a departed governor,
+  // simpler than a timestamp-cutover here since there's no per-row insert loop to guard a
+  // partial failure against (the upsert above is one all-or-nothing call).
+  const freshKeys = new Set(teamRows.map((r) => `${r.league}:${r.name}`));
+  const staleTeams = existingTeams.filter((r) => !freshKeys.has(`${r.league}:${r.name}`));
+  for (const t of staleTeams) changeLog.record("removed (no longer listed)", `${t.league} ${t.name}`);
+  if (staleTeams.length > 0) {
+    for (const league of new Set(staleTeams.map((t) => t.league))) {
+      const names = staleTeams.filter((t) => t.league === league).map((t) => t.name);
+      const { error: deleteError } = await supabase
+        .from("sports_teams")
+        .delete()
+        .eq("league", league)
+        .in("name", names);
+      if (deleteError) throw deleteError;
+    }
+  }
+
   await logSync(supabase, {
     source: "Wikipedia (List of professional sports teams in the US and Canada)",
     startedAt,
-    error,
+    error: null,
     job: "sports",
   });
-  if (error) throw error;
 
   console.log(`Synced ${teamRows.length} teams — ${changeLog.summary()}.`);
 }
