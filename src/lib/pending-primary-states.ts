@@ -14,7 +14,6 @@
 // entry (or the whole file, once all 4 have passed) rather than leaving it
 // around as dead code.
 export const PENDING_PRIMARIES: Record<string, { label: string; cutoff: string }> = {
-  MA: { label: "Sep 1, 2026", cutoff: "2026-09-02" },
   NH: { label: "Sep 8, 2026", cutoff: "2026-09-09" },
   RI: { label: "Sep 9, 2026", cutoff: "2026-09-10" },
   DE: { label: "Sep 15, 2026", cutoff: "2026-09-16" },

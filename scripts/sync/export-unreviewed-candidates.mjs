@@ -59,7 +59,6 @@ function wikipediaUrl(title) {
 // change, so excluding them here keeps them from nagging for review
 // every export until it's actually settled.
 const PENDING_PRIMARY_CUTOFFS = {
-  MA: "2026-09-02",
   NH: "2026-09-09",
   RI: "2026-09-10",
   DE: "2026-09-16",
