@@ -206,7 +206,7 @@ async function main() {
 
   const { data: existingTeams, error: existingTeamsError } = await supabase
     .from("sports_teams")
-    .select("league, name, city_name, state_id, wikipedia_title, logo_url, bio_summary");
+    .select("id, league, name, city_name, state_id, wikipedia_title, logo_url, bio_summary");
   if (existingTeamsError) throw existingTeamsError;
   const existingByKey = new Map(existingTeams.map((r) => [`${r.league}:${r.name}`, r]));
 
@@ -253,20 +253,20 @@ async function main() {
   // until this pass. Diffs the pre-upsert snapshot against this run's fresh key set and deletes
   // whatever's left over — same id-diff pattern governors.mjs uses for a departed governor,
   // simpler than a timestamp-cutover here since there's no per-row insert loop to guard a
-  // partial failure against (the upsert above is one all-or-nothing call).
+  // partial failure against (the upsert above is one all-or-nothing call). Deletes by id, not by
+  // name (and no longer needs the per-league grouping a name-based delete required) — a name
+  // containing quotes/braces/etc. can break PostgREST's in.() filter syntax and silently leave a
+  // stale row behind with no error surfaced; deleting by primary key sidesteps that entirely (see
+  // college-basketball.mjs's identical fix for a real case this hit live).
   const freshKeys = new Set(teamRows.map((r) => `${r.league}:${r.name}`));
   const staleTeams = existingTeams.filter((r) => !freshKeys.has(`${r.league}:${r.name}`));
   for (const t of staleTeams) changeLog.record("removed (no longer listed)", `${t.league} ${t.name}`);
   if (staleTeams.length > 0) {
-    for (const league of new Set(staleTeams.map((t) => t.league))) {
-      const names = staleTeams.filter((t) => t.league === league).map((t) => t.name);
-      const { error: deleteError } = await supabase
-        .from("sports_teams")
-        .delete()
-        .eq("league", league)
-        .in("name", names);
-      if (deleteError) throw deleteError;
-    }
+    const { error: deleteError } = await supabase
+      .from("sports_teams")
+      .delete()
+      .in("id", staleTeams.map((t) => t.id));
+    if (deleteError) throw deleteError;
   }
 
   await logSync(supabase, {

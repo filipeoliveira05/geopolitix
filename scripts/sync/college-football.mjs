@@ -106,7 +106,7 @@ async function main() {
 
   const { data: existingPrograms, error: existingError } = await supabase
     .from("college_football_programs")
-    .select("school, nickname, city_name, state_id, conference, wikipedia_title, logo_url, bio_summary");
+    .select("id, school, nickname, city_name, state_id, conference, wikipedia_title, logo_url, bio_summary");
   if (existingError) throw existingError;
   const existingBySchool = new Map(existingPrograms.map((r) => [r.school, r]));
 
@@ -144,6 +144,9 @@ async function main() {
 
   // Same stale-row cleanup pattern just added to sports.mjs — a school that closes its program or
   // gets renamed on Wikipedia would otherwise sit here forever since upsert alone never removes it.
+  // Deletes by id, not by school name — see college-basketball.mjs's identical comment for why a
+  // name-filtered delete is unsafe (a malformed name full of quotes/braces broke PostgREST's
+  // in.() filter syntax, silently leaving a real stale row behind with no error surfaced).
   const freshSchools = new Set(rows.map((r) => r.school));
   const staleSchools = existingPrograms.filter((r) => !freshSchools.has(r.school));
   for (const p of staleSchools) changeLog.record("removed (no longer listed)", p.school);
@@ -151,7 +154,7 @@ async function main() {
     const { error: deleteError } = await supabase
       .from("college_football_programs")
       .delete()
-      .in("school", staleSchools.map((p) => p.school));
+      .in("id", staleSchools.map((p) => p.id));
     if (deleteError) throw deleteError;
   }
 

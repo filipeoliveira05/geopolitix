@@ -218,7 +218,7 @@ async function main() {
 
   const { data: existingPrograms, error: existingError } = await supabase
     .from("college_basketball_programs")
-    .select("school, nickname, city_name, state_id, conference, wikipedia_title, logo_url, bio_summary");
+    .select("id, school, nickname, city_name, state_id, conference, wikipedia_title, logo_url, bio_summary");
   if (existingError) throw existingError;
   const existingBySchool = new Map(existingPrograms.map((r) => [r.school, r]));
 
@@ -255,7 +255,12 @@ async function main() {
     throw upsertError;
   }
 
-  // Same stale-row cleanup pattern as sports.mjs/college-football.mjs.
+  // Same stale-row cleanup pattern as sports.mjs/college-football.mjs — deletes by id, not by
+  // school name. A delete filtered by name silently failed to remove a real stale row live: a
+  // malformed school name (the pre-cleanCommonName-fix "Bakersfield{{refn|...}}" garbage, full of
+  // quotes/braces/angle brackets) broke PostgREST's `in.()` filter syntax, leaving the row behind
+  // with no error surfaced. Deleting by the primary key sidesteps this whole class of bug — no
+  // value from the name column ever needs to survive being embedded in a filter string.
   const freshSchools = new Set(rows.map((r) => r.school));
   const staleSchools = existingPrograms.filter((r) => !freshSchools.has(r.school));
   for (const p of staleSchools) changeLog.record("removed (no longer listed)", p.school);
@@ -263,7 +268,7 @@ async function main() {
     const { error: deleteError } = await supabase
       .from("college_basketball_programs")
       .delete()
-      .in("school", staleSchools.map((p) => p.school));
+      .in("id", staleSchools.map((p) => p.id));
     if (deleteError) throw deleteError;
   }
 
