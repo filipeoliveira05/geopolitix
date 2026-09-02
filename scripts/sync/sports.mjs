@@ -56,6 +56,7 @@ const LEAGUES = [
   { key: "NHL", heading: "National Hockey League" },
   { key: "MLS", heading: "Major League Soccer" },
   { key: "WNBA", heading: "Women's National Basketball Association" },
+  { key: "NWSL", heading: "National Women's Soccer League" },
 ];
 
 async function findSectionIndex(heading) {
@@ -79,14 +80,19 @@ function extractLinkText(cell) {
 }
 
 /**
- * Verified live against all 6 target leagues' real wikitext (NFL/NBA/MLB/
- * NHL/MLS/WNBA, "List of professional sports teams in the United States and
- * Canada") — every data row's cells always end with exactly 3 plain
+ * Verified live against all 7 target leagues' real wikitext (NFL/NBA/MLB/
+ * NHL/MLS/WNBA/NWSL, "List of professional sports teams in the United States
+ * and Canada") — every data row's cells always end with exactly 3 plain
  * "|"-prefixed cells (Team, Location, Venue), regardless of how many
  * "!"-prefixed rowspan Conference/Division header cells a row also
  * carries — taking the trailing "|"-line containing "||" is robust to the
  * column-count difference between leagues (NFL/NBA/MLB/NHL/WNBA have 5
- * columns, MLS has 4) without needing per-league column mapping.
+ * columns, MLS has 4, NWSL has 3 with no Conference column at all) without
+ * needing per-league column mapping. NWSL also has one team (Boston Legacy
+ * FC, playing interim seasons in two cities) split across two rows via a
+ * rowspan'd Team cell — the second row has only 2 "|"-cells (Location,
+ * Venue) and gets dropped by the cells.length < 3 check below, so the team
+ * is kept once under its first-listed city rather than duplicated or lost.
  */
 function parseTeamsTable(wikitext) {
   const tableMatch = /\{\|[\s\S]*?\n\|\}/.exec(wikitext);
