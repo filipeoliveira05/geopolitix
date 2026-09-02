@@ -30,6 +30,7 @@ import { supabaseAdmin, logSync } from "./_supabase-admin.mjs";
 import { createChangeLog } from "./_change-log.mjs";
 import { fetchJson } from "./_wikidata.mjs";
 import { extractLinkText, extractLinkTarget } from "./_wikilinks.mjs";
+import { backfillLogos } from "./_wikipedia.mjs";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const fipsToAbbr = JSON.parse(
@@ -194,13 +195,17 @@ async function main() {
 
   const { data: existingTeams, error: existingTeamsError } = await supabase
     .from("sports_teams")
-    .select("league, name, city_name, state_id, wikipedia_title");
+    .select("league, name, city_name, state_id, wikipedia_title, logo_url");
   if (existingTeamsError) throw existingTeamsError;
   const existingByKey = new Map(existingTeams.map((r) => [`${r.league}:${r.name}`, r]));
 
   for (const row of teamRows) {
     const key = `${row.league}:${row.name}`;
     const previous = existingByKey.get(key);
+    // Carry the existing logo forward unless this row is new or its wikipedia_title changed —
+    // see backfillLogos' comment for why re-fetching an already-known-good logo every run would
+    // be pure waste against a small (172-team) population.
+    row.logo_url = previous?.wikipedia_title === row.wikipedia_title ? previous.logo_url : null;
     if (!previous) changeLog.record("new team", `${row.league} ${row.name}`);
     else if (previous.city_name !== row.city_name || previous.state_id !== row.state_id) {
       changeLog.record("updated (city changed)", `${row.league} ${row.name}`);
@@ -208,6 +213,9 @@ async function main() {
       changeLog.record("updated (wikipedia title changed)", `${row.league} ${row.name}`);
     } else changeLog.record("unchanged");
   }
+
+  const needsLogo = teamRows.filter((r) => r.wikipedia_title && !r.logo_url);
+  await backfillLogos(needsLogo, changeLog, (r) => `${r.league} ${r.name}`);
 
   const { error } = await supabase.from("sports_teams").upsert(teamRows, { onConflict: "league,name" });
   if (error) {

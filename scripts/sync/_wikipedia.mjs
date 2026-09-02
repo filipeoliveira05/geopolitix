@@ -119,3 +119,37 @@ export async function mapWithConcurrency(items, limit, fn, { shouldStop } = {}) 
   await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
   return results;
 }
+
+/**
+ * Backfills `row.logo_url` (mutated in place) from each row's `wikipedia_title`, shared by
+ * sports.mjs/college-football.mjs/college-basketball.mjs. A team/program's Wikipedia REST summary
+ * thumbnail IS its logo — confirmed live across real samples from all 7 pro leagues (NFL/NBA/MLB/
+ * NHL/MLS/WNBA/NWSL) plus college football/basketball before building this, so unlike the
+ * candidates table's name-search bio matching (real wrong-person risk documented elsewhere), this
+ * carries no wrong-image risk — it's a direct lookup against an already-resolved article title,
+ * not a search. Not every article has one, though: a real spot-check found a ~35-40% null rate for
+ * smaller college basketball programs specifically (their Wikipedia pages simply have no infobox
+ * image) — an expected coverage gap, same class as the ~30 governors with no photo elsewhere in
+ * this app, not a bug to chase. Callers should only pass rows that actually need fetching (a new
+ * row, or an existing one with no logo_url/a changed wikipedia_title) — these populations are
+ * small enough (low hundreds each) to backfill inline during every sync run rather than needing
+ * legislators.mjs's BACKFILL_BUDGET_MS splitting, but re-fetching a logo this sync already has
+ * would still be pure waste. Same concurrency-2 ceiling and hard-timeout wrapping every other
+ * Wikipedia REST consumer in this codebase already needed against real sustained 429s.
+ */
+export async function backfillLogos(rows, changeLog, labelFor) {
+  await mapWithConcurrency(rows, 2, async (row) => {
+    try {
+      const { photoUrl } = await withHardTimeout(
+        (signal) => fetchWikipediaSummary(row.wikipedia_title, signal),
+        30_000,
+        `logo fetch (${labelFor(row)})`,
+      );
+      row.logo_url = photoUrl;
+      changeLog.record(photoUrl ? "logo fetched" : "no logo on Wikipedia", labelFor(row));
+    } catch (err) {
+      row.logo_url = null;
+      changeLog.record("logo fetch failed", `${labelFor(row)} — ${err.message}`);
+    }
+  });
+}

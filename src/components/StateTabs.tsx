@@ -427,7 +427,16 @@ function CollegeProgramGroup({ title, programs }: { title: string; programs: Col
     <CollapsibleGroup title={title} count={programs.length}>
       <ul className="flex flex-col gap-1">
         {programs.map((program) => (
-          <li key={program.id}>
+          <li key={program.id} className="flex items-center gap-2">
+            {/* Fixed-width slot even when a program has no logo (a real, expected gap for some
+                smaller schools — see backfillLogos' comment in _wikipedia.mjs) so rows stay
+                aligned, same reasoning SearchOverlay's photo placeholder already established. */}
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center">
+              {program.logoUrl && (
+                // eslint-disable-next-line @next/next/no-img-element -- external Wikimedia URL, same convention as photo_url elsewhere
+                <img src={program.logoUrl} alt="" className="max-h-5 max-w-5 object-contain" />
+              )}
+            </span>
             {program.wikipediaTitle ? (
               <a
                 href={wikipediaUrl(program.wikipediaTitle)}
@@ -551,7 +560,13 @@ function GeographyTab({
               <CollapsibleGroup key={group.league} title={group.league} count={group.teams.length}>
                 <ul className="flex flex-col gap-1">
                   {group.teams.map((team) => (
-                    <li key={team.id}>
+                    <li key={team.id} className="flex items-center gap-2">
+                      <span className="flex h-5 w-5 shrink-0 items-center justify-center">
+                        {team.logoUrl && (
+                          // eslint-disable-next-line @next/next/no-img-element -- external Wikimedia URL, same convention as photo_url elsewhere
+                          <img src={team.logoUrl} alt="" className="max-h-5 max-w-5 object-contain" />
+                        )}
+                      </span>
                       {team.wikipediaTitle ? (
                         <a
                           href={wikipediaUrl(team.wikipediaTitle)}

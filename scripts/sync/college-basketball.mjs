@@ -25,6 +25,7 @@ import { supabaseAdmin, logSync } from "./_supabase-admin.mjs";
 import { createChangeLog } from "./_change-log.mjs";
 import { fetchJson, chunk } from "./_wikidata.mjs";
 import { extractLinkText, extractLinkTarget } from "./_wikilinks.mjs";
+import { backfillLogos } from "./_wikipedia.mjs";
 
 const INSTITUTIONS_PAGE = "List of NCAA Division I institutions";
 const BASKETBALL_PAGE = "List of NCAA Division I men's basketball programs";
@@ -201,12 +202,16 @@ async function main() {
 
   const { data: existingPrograms, error: existingError } = await supabase
     .from("college_basketball_programs")
-    .select("school, nickname, city_name, state_id, conference, wikipedia_title");
+    .select("school, nickname, city_name, state_id, conference, wikipedia_title, logo_url");
   if (existingError) throw existingError;
   const existingBySchool = new Map(existingPrograms.map((r) => [r.school, r]));
 
   for (const row of rows) {
     const previous = existingBySchool.get(row.school);
+    // See sports.mjs's identical comment — carry the existing logo forward unless this row is
+    // new or its wikipedia_title changed, so a normal rerun doesn't re-fetch all 365 logos (a
+    // real ~35-40% of which come back null anyway, per backfillLogos' own comment).
+    row.logo_url = previous?.wikipedia_title === row.wikipedia_title ? previous.logo_url : null;
     if (!previous) changeLog.record("new program", row.school);
     else if (
       previous.nickname !== row.nickname ||
@@ -218,6 +223,9 @@ async function main() {
       changeLog.record("updated", row.school);
     } else changeLog.record("unchanged");
   }
+
+  const needsLogo = rows.filter((r) => r.wikipedia_title && !r.logo_url);
+  await backfillLogos(needsLogo, changeLog, (r) => r.school);
 
   const { error: upsertError } = await supabase
     .from("college_basketball_programs")

@@ -39,6 +39,7 @@ export type SportsTeam = {
   league: string;
   cityName: string;
   wikipediaTitle: string | null;
+  logoUrl: string | null;
 };
 
 // Shared shape for both college_football_programs and college_basketball_programs — identical
@@ -52,6 +53,7 @@ export type CollegeProgram = {
   cityName: string;
   conference: string | null;
   wikipediaTitle: string | null;
+  logoUrl: string | null;
 };
 
 type StateRow = {
@@ -126,13 +128,14 @@ type SportsTeamRow = {
   league: string;
   city_name: string;
   wikipedia_title: string | null;
+  logo_url: string | null;
 };
 
 /** Every major-league sports team whose home city is in this state. */
 export async function getSportsTeamsForState(stateAbbr: string): Promise<SportsTeam[]> {
   const { data, error } = await supabase
     .from("sports_teams")
-    .select("id, name, league, city_name, wikipedia_title")
+    .select("id, name, league, city_name, wikipedia_title, logo_url")
     .eq("state_id", stateAbbr);
   if (error) throw error;
   return (data as unknown as SportsTeamRow[]).map((row) => ({
@@ -141,6 +144,7 @@ export async function getSportsTeamsForState(stateAbbr: string): Promise<SportsT
     league: row.league,
     cityName: row.city_name,
     wikipediaTitle: row.wikipedia_title,
+    logoUrl: row.logo_url,
   }));
 }
 
@@ -151,6 +155,7 @@ type CollegeProgramRow = {
   city_name: string;
   conference: string | null;
   wikipedia_title: string | null;
+  logo_url: string | null;
 };
 
 async function getCollegeProgramsForState(
@@ -159,7 +164,7 @@ async function getCollegeProgramsForState(
 ): Promise<CollegeProgram[]> {
   const { data, error } = await supabase
     .from(table)
-    .select("id, school, nickname, city_name, conference, wikipedia_title")
+    .select("id, school, nickname, city_name, conference, wikipedia_title, logo_url")
     .eq("state_id", stateAbbr);
   if (error) throw error;
   return (data as unknown as CollegeProgramRow[]).map((row) => ({
@@ -169,6 +174,7 @@ async function getCollegeProgramsForState(
     cityName: row.city_name,
     conference: row.conference,
     wikipediaTitle: row.wikipedia_title,
+    logoUrl: row.logo_url,
   }));
 }
 
