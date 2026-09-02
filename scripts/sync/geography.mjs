@@ -29,6 +29,11 @@ function slugify(name) {
   return name.toLowerCase().replace(/\s+/g, "-");
 }
 
+// How many of each state's most populous cities to keep (before the capital,
+// if not already among them, is appended as one extra row) — change this to
+// adjust the "top N" cutoff everywhere in one place.
+const TOP_CITIES_COUNT = 10;
+
 async function fetchHtml(url) {
   const res = await fetch(url, {
     headers: { "User-Agent": USER_AGENT },
@@ -108,7 +113,7 @@ function stripCitySuffix(name) {
 }
 
 function buildCitiesForState(rankings, capitalName) {
-  const topTen = rankings.slice(0, 10).map((r) => ({ name: r.city, population: r.pop2026, isCapital: false }));
+  const topTen = rankings.slice(0, TOP_CITIES_COUNT).map((r) => ({ name: r.city, population: r.pop2026, isCapital: false }));
   if (!capitalName) return topTen;
   const capitalCore = stripCitySuffix(capitalName);
   const already = topTen.find((c) => stripCitySuffix(c.name) === capitalCore);
