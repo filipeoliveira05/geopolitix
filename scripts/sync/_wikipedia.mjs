@@ -91,6 +91,100 @@ export async function fetchWikipediaSummary(title, signal, attempt = 1) {
   };
 }
 
+const MEDIAWIKI_API = "https://en.wikipedia.org/w/api.php";
+
+/** Same retry/backoff shape as fetchWikipediaSummary, generalized for the plain MediaWiki
+ * action API (used by fetchInfoboxLogoUrl below) rather than the REST summary endpoint. */
+async function fetchMediaWikiApiJson(params, attempt = 1) {
+  const url = `${MEDIAWIKI_API}?${new URLSearchParams({ ...params, format: "json" })}`;
+  let res;
+  try {
+    res = await fetch(url, {
+      headers: { "User-Agent": USER_AGENT, Accept: "application/json" },
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    });
+  } catch (err) {
+    if (attempt <= 5) {
+      await sleep(2000 * attempt);
+      return fetchMediaWikiApiJson(params, attempt + 1);
+    }
+    throw err;
+  }
+  if (RETRYABLE_STATUSES.has(res.status) && attempt <= 5) {
+    await sleep(2000 * attempt);
+    return fetchMediaWikiApiJson(params, attempt + 1);
+  }
+  if (!res.ok) throw new Error(`MediaWiki API request failed: ${res.status} ${res.statusText}`);
+  return res.json();
+}
+
+// Matches the infobox parameter that actually holds a team/program's logo filename — confirmed
+// live to vary by infobox template, not a single universal name: {{Infobox NFL team}}/
+// {{Infobox MLB}}/{{Infobox basketball club}}/college basketball's {{Infobox CBB Team}} all use
+// `logo`; {{Infobox football club}} (MLS/NWSL) and {{Infobox college football team}} use `image`/
+// `Image`; {{Infobox NHL team}} uses `logo_image`. Anchored so a same-prefixed-but-different field
+// (e.g. `imagesize`/`logo_size`, a pixel width, not a filename) can't match — the key must be
+// followed immediately by `=` (whitespace aside).
+const INFOBOX_IMAGE_PARAM = /^\s*\|\s*(?:logo|logo_image|image)\s*=\s*(.+?)\s*$/im;
+
+/** Cleans an infobox image parameter's raw value down to a bare filename — handles a plain
+ * "Team logo.svg", a wikilinked "[[File:Team logo.svg|200px]]", a "File:"/"Image:" prefix, and an
+ * inline HTML comment trailing the filename (confirmed live: Boston College Eagles men's
+ * basketball's `logo` value is "Boston College Eagles wordmark.svg <!-- Please do not remove...
+ * -->", a real Wikipedia editorial convention warning against removing non-free logo files —
+ * left unstripped, the comment text got treated as part of the filename and the file lookup
+ * silently failed, making a real logo look like another "genuinely missing" case). */
+function cleanInfoboxFilename(raw) {
+  let value = raw.replace(/<!--.*?-->/g, "").trim();
+  const wikilink = /^\[\[(.+)\]\]$/.exec(value);
+  if (wikilink) value = wikilink[1];
+  value = value.split("|")[0].trim();
+  value = value.replace(/^(File|Image):/i, "").trim();
+  return value || null;
+}
+
+/** Resolves a bare filename (no "File:" prefix) to its real upload.wikimedia.org URL. */
+async function resolveInfoboxFileUrl(filename) {
+  const data = await fetchMediaWikiApiJson({
+    action: "query",
+    titles: `File:${filename}`,
+    prop: "imageinfo",
+    iiprop: "url",
+  });
+  const page = Object.values(data.query?.pages ?? {})[0];
+  return page?.imageinfo?.[0]?.url ?? null;
+}
+
+/**
+ * Fallback logo source for when fetchWikipediaSummary's REST thumbnail comes back empty despite
+ * the article existing — confirmed live (Binghamton Bearcats men's basketball) that this is a
+ * real, demonstrable gap in the REST endpoint's own PageImages-derived thumbnail, not evidence the
+ * team/program genuinely has no logo: Binghamton's real infobox logo is a 1050x197px wordmark,
+ * and MediaWiki's PageImages heuristic (which powers that thumbnail field) systematically misses
+ * this shape of image, even though the file itself is real and the infobox references it directly.
+ * Parses the article's own lead-section wikitext for its infobox's logo/image parameter (see
+ * INFOBOX_IMAGE_PARAM above) and resolves that filename to a real URL directly, bypassing
+ * PageImages' heuristic entirely. Returns null (not a throw) for a page with no matching
+ * parameter or an unresolvable filename — same "we tried, this one genuinely has nothing usable"
+ * semantics as fetchWikipediaSummary's own null thumbnail, just after actually checking the
+ * infobox instead of trusting a heuristic that can miss it.
+ */
+export async function fetchInfoboxLogoUrl(title) {
+  const data = await fetchMediaWikiApiJson({
+    action: "parse",
+    page: title,
+    prop: "wikitext",
+    section: "0",
+  });
+  const wikitext = data.parse?.wikitext?.["*"];
+  if (!wikitext) return null;
+  const match = INFOBOX_IMAGE_PARAM.exec(wikitext);
+  if (!match) return null;
+  const filename = cleanInfoboxFilename(match[1]);
+  if (!filename) return null;
+  return resolveInfoboxFileUrl(filename);
+}
+
 /**
  * A short concurrency pool — many distinct people, one Wikipedia REST call
  * each, would take too long fully sequential and is unnecessary load fully
@@ -121,35 +215,54 @@ export async function mapWithConcurrency(items, limit, fn, { shouldStop } = {}) 
 }
 
 /**
- * Backfills `row.logo_url` (mutated in place) from each row's `wikipedia_title`, shared by
- * sports.mjs/college-football.mjs/college-basketball.mjs. A team/program's Wikipedia REST summary
- * thumbnail IS its logo — confirmed live across real samples from all 7 pro leagues (NFL/NBA/MLB/
- * NHL/MLS/WNBA/NWSL) plus college football/basketball before building this, so unlike the
- * candidates table's name-search bio matching (real wrong-person risk documented elsewhere), this
- * carries no wrong-image risk — it's a direct lookup against an already-resolved article title,
- * not a search. Not every article has one, though: a real spot-check found a ~35-40% null rate for
- * smaller college basketball programs specifically (their Wikipedia pages simply have no infobox
- * image) — an expected coverage gap, same class as the ~30 governors with no photo elsewhere in
- * this app, not a bug to chase. Callers should only pass rows that actually need fetching (a new
- * row, or an existing one with no logo_url/a changed wikipedia_title) — these populations are
- * small enough (low hundreds each) to backfill inline during every sync run rather than needing
- * legislators.mjs's BACKFILL_BUDGET_MS splitting, but re-fetching a logo this sync already has
- * would still be pure waste. Same concurrency-2 ceiling and hard-timeout wrapping every other
- * Wikipedia REST consumer in this codebase already needed against real sustained 429s.
+ * Backfills `row.logo_url`/`row.bio_summary` (mutated in place) from each row's
+ * `wikipedia_title`, shared by sports.mjs/college-football.mjs/college-basketball.mjs. The primary
+ * source is the Wikipedia REST summary's thumbnail — a direct lookup against an already-resolved
+ * article title, not a search, so unlike the candidates table's name-search bio matching (real
+ * wrong-person risk documented elsewhere) it carries no wrong-image risk. When that thumbnail comes
+ * back empty despite the article resolving (bioSummary present), falls back to fetchInfoboxLogoUrl
+ * — see that function's own comment for why the REST thumbnail alone under-counts real logos
+ * (confirmed live via Binghamton Bearcats men's basketball: a real, existing 1050x197px wordmark
+ * logo that PageImages' heuristic simply never surfaces). Even with that fallback, a small residual
+ * null rate is expected and real — some smaller college basketball programs' articles genuinely
+ * have no infobox image at all — same class of gap as the ~30 governors with no photo elsewhere in
+ * this app, not a bug to chase. `bioSummary` (the same REST fetch's text extract, added for the
+ * individual team/program pages) rides along for free — no extra request beyond the one fallback
+ * lookup. Callers should only pass rows that actually need fetching (a new row, or an existing one
+ * with no bio_summary/a changed wikipedia_title) — these populations are small enough (low hundreds
+ * each) to backfill inline during every sync run rather than needing legislators.mjs's
+ * BACKFILL_BUDGET_MS splitting, but re-fetching data this sync already has would still be pure
+ * waste. Same concurrency-2 ceiling and hard-timeout wrapping every other Wikipedia REST consumer
+ * in this codebase already needed against real sustained 429s.
  */
-export async function backfillLogos(rows, changeLog, labelFor) {
+export async function backfillLogoAndBio(rows, changeLog, labelFor) {
   await mapWithConcurrency(rows, 2, async (row) => {
     try {
-      const { photoUrl } = await withHardTimeout(
+      const { photoUrl, bioSummary } = await withHardTimeout(
         (signal) => fetchWikipediaSummary(row.wikipedia_title, signal),
         30_000,
-        `logo fetch (${labelFor(row)})`,
+        `logo/bio fetch (${labelFor(row)})`,
       );
-      row.logo_url = photoUrl;
-      changeLog.record(photoUrl ? "logo fetched" : "no logo on Wikipedia", labelFor(row));
+      let logoUrl = photoUrl;
+      let fallbackUsed = false;
+      if (!logoUrl && bioSummary) {
+        logoUrl = await withHardTimeout(
+          () => fetchInfoboxLogoUrl(row.wikipedia_title),
+          30_000,
+          `infobox logo fetch (${labelFor(row)})`,
+        ).catch(() => null);
+        fallbackUsed = logoUrl !== null;
+      }
+      row.logo_url = logoUrl;
+      row.bio_summary = bioSummary;
+      changeLog.record(
+        logoUrl ? (fallbackUsed ? "logo/bio fetched (infobox fallback)" : "logo/bio fetched") : "no logo/bio on Wikipedia",
+        labelFor(row),
+      );
     } catch (err) {
       row.logo_url = null;
-      changeLog.record("logo fetch failed", `${labelFor(row)} — ${err.message}`);
+      row.bio_summary = null;
+      changeLog.record("logo/bio fetch failed", `${labelFor(row)} — ${err.message}`);
     }
   });
 }

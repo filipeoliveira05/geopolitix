@@ -12,7 +12,6 @@ import {
 import type { GovernorTerm } from "@/lib/governors-data";
 import { candidateHref, primaryPendingMessage, type Race } from "@/lib/races-data";
 import type { City, SportsTeam, CollegeProgram } from "@/lib/geography-data";
-import { wikipediaUrl } from "@/lib/wikipedia";
 import { CollapsibleGroup } from "@/components/CollapsibleGroup";
 
 type TabKey = "current" | "history" | "geography" | "midterms";
@@ -421,7 +420,15 @@ const LEAGUE_ORDER = ["NFL", "NBA", "MLB", "NHL", "MLS", "WNBA", "NWSL"];
 // Shared row rendering for both college_football_programs and college_basketball_programs — same
 // CollegeProgram shape, same display line (name + nickname, linked to Wikipedia when sourced;
 // conference badge; home city).
-function CollegeProgramGroup({ title, programs }: { title: string; programs: CollegeProgram[] }) {
+function CollegeProgramGroup({
+  title,
+  programs,
+  hrefBase,
+}: {
+  title: string;
+  programs: CollegeProgram[];
+  hrefBase: "/college-football" | "/college-basketball";
+}) {
   if (programs.length === 0) return null;
   return (
     <CollapsibleGroup title={title} count={programs.length}>
@@ -429,7 +436,7 @@ function CollegeProgramGroup({ title, programs }: { title: string; programs: Col
         {programs.map((program) => (
           <li key={program.id} className="flex items-center gap-2">
             {/* Fixed-width slot even when a program has no logo (a real, expected gap for some
-                smaller schools — see backfillLogos' comment in _wikipedia.mjs) so rows stay
+                smaller schools — see backfillLogoAndBio's comment in _wikipedia.mjs) so rows stay
                 aligned, same reasoning SearchOverlay's photo placeholder already established. */}
             <span className="flex h-5 w-5 shrink-0 items-center justify-center">
               {program.logoUrl && (
@@ -437,32 +444,15 @@ function CollegeProgramGroup({ title, programs }: { title: string; programs: Col
                 <img src={program.logoUrl} alt="" className="max-h-5 max-w-5 object-contain" />
               )}
             </span>
-            {program.wikipediaTitle ? (
-              <a
-                href={wikipediaUrl(program.wikipediaTitle)}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="link-accent"
-              >
-                {program.school}
-                {program.nickname && (
-                  <>
-                    {" "}
-                    <strong className="font-semibold">{program.nickname}</strong>
-                  </>
-                )}
-              </a>
-            ) : (
-              <>
-                {program.school}
-                {program.nickname && (
-                  <>
-                    {" "}
-                    <strong className="font-semibold">{program.nickname}</strong>
-                  </>
-                )}
-              </>
-            )}{" "}
+            <Link href={`${hrefBase}/${program.id}`} className="link-accent">
+              {program.school}
+              {program.nickname && (
+                <>
+                  {" "}
+                  <strong className="font-semibold">{program.nickname}</strong>
+                </>
+              )}
+            </Link>{" "}
             {program.conference && (
               <span className="text-xs font-medium uppercase tracking-wide text-muted">
                 {program.conference}
@@ -567,26 +557,25 @@ function GeographyTab({
                           <img src={team.logoUrl} alt="" className="max-h-5 max-w-5 object-contain" />
                         )}
                       </span>
-                      {team.wikipediaTitle ? (
-                        <a
-                          href={wikipediaUrl(team.wikipediaTitle)}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="link-accent"
-                        >
-                          {team.name}
-                        </a>
-                      ) : (
-                        team.name
-                      )}{" "}
+                      <Link href={`/team/${team.id}`} className="link-accent">
+                        {team.name}
+                      </Link>{" "}
                       <span className="text-muted">({team.cityName})</span>
                     </li>
                   ))}
                 </ul>
               </CollapsibleGroup>
             ))}
-            <CollegeProgramGroup title="NCAA Football (FBS)" programs={collegeFootball} />
-            <CollegeProgramGroup title="NCAA Basketball (D1)" programs={collegeBasketball} />
+            <CollegeProgramGroup
+              title="NCAA Football (FBS)"
+              programs={collegeFootball}
+              hrefBase="/college-football"
+            />
+            <CollegeProgramGroup
+              title="NCAA Basketball (D1)"
+              programs={collegeBasketball}
+              hrefBase="/college-basketball"
+            />
           </div>
         ) : (
           <Empty>No sports teams synced for this state.</Empty>

@@ -38,8 +38,10 @@ export type SportsTeam = {
   name: string;
   league: string;
   cityName: string;
+  stateId: string;
   wikipediaTitle: string | null;
   logoUrl: string | null;
+  bioSummary: string | null;
 };
 
 // Shared shape for both college_football_programs and college_basketball_programs — identical
@@ -51,9 +53,11 @@ export type CollegeProgram = {
   school: string;
   nickname: string | null;
   cityName: string;
+  stateId: string;
   conference: string | null;
   wikipediaTitle: string | null;
   logoUrl: string | null;
+  bioSummary: string | null;
 };
 
 type StateRow = {
@@ -127,25 +131,47 @@ type SportsTeamRow = {
   name: string;
   league: string;
   city_name: string;
+  state_id: string;
   wikipedia_title: string | null;
   logo_url: string | null;
+  bio_summary: string | null;
 };
+
+const SPORTS_TEAM_COLUMNS =
+  "id, name, league, city_name, state_id, wikipedia_title, logo_url, bio_summary";
+
+function sportsTeamFromRow(row: SportsTeamRow): SportsTeam {
+  return {
+    id: row.id,
+    name: row.name,
+    league: row.league,
+    cityName: row.city_name,
+    stateId: row.state_id,
+    wikipediaTitle: row.wikipedia_title,
+    logoUrl: row.logo_url,
+    bioSummary: row.bio_summary,
+  };
+}
 
 /** Every major-league sports team whose home city is in this state. */
 export async function getSportsTeamsForState(stateAbbr: string): Promise<SportsTeam[]> {
   const { data, error } = await supabase
     .from("sports_teams")
-    .select("id, name, league, city_name, wikipedia_title, logo_url")
+    .select(SPORTS_TEAM_COLUMNS)
     .eq("state_id", stateAbbr);
   if (error) throw error;
-  return (data as unknown as SportsTeamRow[]).map((row) => ({
-    id: row.id,
-    name: row.name,
-    league: row.league,
-    cityName: row.city_name,
-    wikipediaTitle: row.wikipedia_title,
-    logoUrl: row.logo_url,
-  }));
+  return (data as unknown as SportsTeamRow[]).map(sportsTeamFromRow);
+}
+
+/** A single sports team by id, for /team/[id]. */
+export async function getSportsTeamById(id: string): Promise<SportsTeam | null> {
+  const { data, error } = await supabase
+    .from("sports_teams")
+    .select(SPORTS_TEAM_COLUMNS)
+    .eq("id", id)
+    .maybeSingle();
+  if (error) throw error;
+  return data ? sportsTeamFromRow(data as unknown as SportsTeamRow) : null;
 }
 
 type CollegeProgramRow = {
@@ -153,10 +179,29 @@ type CollegeProgramRow = {
   school: string;
   nickname: string | null;
   city_name: string;
+  state_id: string;
   conference: string | null;
   wikipedia_title: string | null;
   logo_url: string | null;
+  bio_summary: string | null;
 };
+
+const COLLEGE_PROGRAM_COLUMNS =
+  "id, school, nickname, city_name, state_id, conference, wikipedia_title, logo_url, bio_summary";
+
+function collegeProgramFromRow(row: CollegeProgramRow): CollegeProgram {
+  return {
+    id: row.id,
+    school: row.school,
+    nickname: row.nickname,
+    cityName: row.city_name,
+    stateId: row.state_id,
+    conference: row.conference,
+    wikipediaTitle: row.wikipedia_title,
+    logoUrl: row.logo_url,
+    bioSummary: row.bio_summary,
+  };
+}
 
 async function getCollegeProgramsForState(
   table: "college_football_programs" | "college_basketball_programs",
@@ -164,18 +209,23 @@ async function getCollegeProgramsForState(
 ): Promise<CollegeProgram[]> {
   const { data, error } = await supabase
     .from(table)
-    .select("id, school, nickname, city_name, conference, wikipedia_title, logo_url")
+    .select(COLLEGE_PROGRAM_COLUMNS)
     .eq("state_id", stateAbbr);
   if (error) throw error;
-  return (data as unknown as CollegeProgramRow[]).map((row) => ({
-    id: row.id,
-    school: row.school,
-    nickname: row.nickname,
-    cityName: row.city_name,
-    conference: row.conference,
-    wikipediaTitle: row.wikipedia_title,
-    logoUrl: row.logo_url,
-  }));
+  return (data as unknown as CollegeProgramRow[]).map(collegeProgramFromRow);
+}
+
+async function getCollegeProgramById(
+  table: "college_football_programs" | "college_basketball_programs",
+  id: string,
+): Promise<CollegeProgram | null> {
+  const { data, error } = await supabase
+    .from(table)
+    .select(COLLEGE_PROGRAM_COLUMNS)
+    .eq("id", id)
+    .maybeSingle();
+  if (error) throw error;
+  return data ? collegeProgramFromRow(data as unknown as CollegeProgramRow) : null;
 }
 
 /** Every NCAA Division I FBS college football program in this state. */
@@ -186,4 +236,14 @@ export function getCollegeFootballForState(stateAbbr: string): Promise<CollegePr
 /** Every NCAA Division I men's basketball program in this state. */
 export function getCollegeBasketballForState(stateAbbr: string): Promise<CollegeProgram[]> {
   return getCollegeProgramsForState("college_basketball_programs", stateAbbr);
+}
+
+/** A single college football program by id, for /college-football/[id]. */
+export function getCollegeFootballProgramById(id: string): Promise<CollegeProgram | null> {
+  return getCollegeProgramById("college_football_programs", id);
+}
+
+/** A single college basketball program by id, for /college-basketball/[id]. */
+export function getCollegeBasketballProgramById(id: string): Promise<CollegeProgram | null> {
+  return getCollegeProgramById("college_basketball_programs", id);
 }

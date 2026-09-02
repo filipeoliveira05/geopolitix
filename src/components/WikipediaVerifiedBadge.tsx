@@ -64,13 +64,19 @@ export function WikipediaVerifiedBadge({ title }: { title?: string | null }) {
 // human eyeballing the page, though. Sky blue to sit visually between the
 // emerald verified badge and the muted no-page badge.
 //
-// Two real sources currently qualify, each with its own label/tooltip:
+// Three real sources currently qualify, each with its own label/tooltip:
 // - "congress-legislators": legislators.mjs's backfillLegislatorBios reads
 //   wikipedia_title directly off the row, populated from
 //   unitedstates/congress-legislators' own curated bioguide→title mapping.
 // - "wikidata": governor-history.mjs's fetchSitelinkTitles reads the
 //   Wikipedia article straight from Wikidata's own structured sitelink
 //   property for that exact QID — governors/governor_terms only.
+// - "wikipedia-list": sports.mjs/college-football.mjs/college-basketball.mjs
+//   read wikipedia_title straight off the wikilink TARGET on Wikipedia's own
+//   team/program list page (extractLinkTarget) — the source page's own
+//   editors point directly at the team's article, so like the other two
+//   sources this carries no name-search ambiguity risk (see the candidates
+//   table's Steve Cohen case in CLAUDE.md for what that risk looks like).
 const SOURCE_LABELS = {
   "congress-legislators": {
     label: "Sourced from congress-legislators",
@@ -79,6 +85,10 @@ const SOURCE_LABELS = {
   wikidata: {
     label: "Sourced from Wikidata",
     tooltip: "Matched via Wikidata's own structured Wikipedia sitelink for this person, not manually checked",
+  },
+  "wikipedia-list": {
+    label: "Sourced from Wikipedia",
+    tooltip: "Matched via the wikilink on Wikipedia's own team/program list page, not manually checked",
   },
 } as const;
 

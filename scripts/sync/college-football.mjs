@@ -25,7 +25,7 @@ import { supabaseAdmin, logSync } from "./_supabase-admin.mjs";
 import { createChangeLog } from "./_change-log.mjs";
 import { fetchJson } from "./_wikidata.mjs";
 import { extractLinkText, extractLinkTarget } from "./_wikilinks.mjs";
-import { backfillLogos } from "./_wikipedia.mjs";
+import { backfillLogoAndBio } from "./_wikipedia.mjs";
 
 const PAGE_TITLE = "List of NCAA Division I FBS football programs";
 
@@ -106,15 +106,17 @@ async function main() {
 
   const { data: existingPrograms, error: existingError } = await supabase
     .from("college_football_programs")
-    .select("school, nickname, city_name, state_id, conference, wikipedia_title, logo_url");
+    .select("school, nickname, city_name, state_id, conference, wikipedia_title, logo_url, bio_summary");
   if (existingError) throw existingError;
   const existingBySchool = new Map(existingPrograms.map((r) => [r.school, r]));
 
   for (const row of rows) {
     const previous = existingBySchool.get(row.school);
-    // See sports.mjs's identical comment — carry the existing logo forward unless this row is
-    // new or its wikipedia_title changed, so a normal rerun doesn't re-fetch all 138 logos.
-    row.logo_url = previous?.wikipedia_title === row.wikipedia_title ? previous.logo_url : null;
+    // See sports.mjs's identical comment — carry the existing logo/bio forward unless this row is
+    // new or its wikipedia_title changed, so a normal rerun doesn't re-fetch all 138 programs.
+    const sameTitle = previous?.wikipedia_title === row.wikipedia_title;
+    row.logo_url = sameTitle ? previous.logo_url : null;
+    row.bio_summary = sameTitle ? previous.bio_summary : null;
     if (!previous) changeLog.record("new program", row.school);
     else if (
       previous.nickname !== row.nickname ||
@@ -127,8 +129,10 @@ async function main() {
     } else changeLog.record("unchanged");
   }
 
-  const needsLogo = rows.filter((r) => r.wikipedia_title && !r.logo_url);
-  await backfillLogos(needsLogo, changeLog, (r) => r.school);
+  // See sports.mjs's identical comment — keyed on bio_summary, not logo_url, so a program whose
+  // logo_url was already fetched under the pre-bio_summary migration doesn't get skipped forever.
+  const needsBackfill = rows.filter((r) => r.wikipedia_title && !r.bio_summary);
+  await backfillLogoAndBio(needsBackfill, changeLog, (r) => r.school);
 
   const { error: upsertError } = await supabase
     .from("college_football_programs")
