@@ -55,6 +55,7 @@ const LEAGUES = [
   { key: "MLB", heading: "Major League Baseball" },
   { key: "NHL", heading: "National Hockey League" },
   { key: "MLS", heading: "Major League Soccer" },
+  { key: "WNBA", heading: "Women's National Basketball Association" },
 ];
 
 async function findSectionIndex(heading) {
@@ -78,14 +79,14 @@ function extractLinkText(cell) {
 }
 
 /**
- * Verified live against all 5 target leagues' real wikitext (NFL/NBA/MLB/
- * NHL/MLS, "List of professional sports teams in the United States and
+ * Verified live against all 6 target leagues' real wikitext (NFL/NBA/MLB/
+ * NHL/MLS/WNBA, "List of professional sports teams in the United States and
  * Canada") — every data row's cells always end with exactly 3 plain
  * "|"-prefixed cells (Team, Location, Venue), regardless of how many
  * "!"-prefixed rowspan Conference/Division header cells a row also
  * carries — taking the trailing "|"-line containing "||" is robust to the
- * column-count difference between leagues (NFL/NBA/MLB/NHL have 5 columns,
- * MLS has 4) without needing per-league column mapping.
+ * column-count difference between leagues (NFL/NBA/MLB/NHL/WNBA have 5
+ * columns, MLS has 4) without needing per-league column mapping.
  */
 function parseTeamsTable(wikitext) {
   const tableMatch = /\{\|[\s\S]*?\n\|\}/.exec(wikitext);
@@ -93,6 +94,16 @@ function parseTeamsTable(wikitext) {
   const rowBlocks = tableMatch[0].split(/\n\|-/).slice(1);
   const teams = [];
   for (const block of rowBlocks) {
+    // Stop at a "Future teams" marker row rather than skipping just that one
+    // block — caught live in the WNBA's table, which appends 4 not-yet-
+    // playing expansion teams (Houston Comets 2027, Cleveland Sirens 2028,
+    // Detroit 2029, Philadelphia 2030) after this heading row. The marker
+    // row itself has no data cells so the dataLines.length===0 check below
+    // would already skip it, but every row AFTER it is a future team with
+    // real-looking Team/Location/Venue cells that would otherwise parse as
+    // if it were an already-playing team in that city. None of the other
+    // synced leagues' tables contain this marker, so this is a no-op for them.
+    if (/Future teams/i.test(block)) break;
     // Join every "|"-prefixed (non-header, non-"|}") line in this row
     // block with "||" before splitting — not just the single line that
     // already contains "||". Caught live: the NHL's Seattle Kraken and
