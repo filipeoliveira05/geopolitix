@@ -313,7 +313,7 @@ async function backfillLegislatorBios(supabase, warnings, changeLog, { budgetMs,
 
 // Set by the frequent bio-backfill-only GitHub Actions schedule (see
 // .github/workflows/legislator-bio-backfill.yml) — the weekly full sync
-// (sync.yml) leaves both unset. Skips the legislators/terms upsert
+// (politicians-sync.yml) leaves both unset. Skips the legislators/terms upsert
 // entirely, and now (since wikipedia_title is a persisted column, not a
 // map re-derived from this run's own YAML fetch) skips fetching either
 // YAML file too — nothing in backfill-only mode needs them anymore — so a

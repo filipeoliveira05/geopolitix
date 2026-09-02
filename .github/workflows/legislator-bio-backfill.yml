@@ -1,7 +1,7 @@
 name: Legislator bio/photo backfill
 
 # Backfills legislators.bio_summary/photo_url from Wikipedia — a separate,
-# much more frequent schedule from sync.yml's weekly full sync, because the
+# much more frequent schedule from politicians-sync.yml's weekly full sync, because the
 # population here (~12,700 legislators, current + full House/Senate
 # history) makes one full pass take multiple days even at the deliberately
 # low concurrency this needs (see legislators.mjs's own comments — going
@@ -10,7 +10,7 @@ name: Legislator bio/photo backfill
 # bio_summary IS NULL next (LEGISLATORS_BACKFILL_ONLY skips re-syncing
 # legislators/terms from congress-legislators entirely, so a run every few
 # hours doesn't repeatedly churn the 45k-row terms table for no reason —
-# that stays on sync.yml's weekly cadence). Self-healing/idempotent by
+# that stays on politicians-sync.yml's weekly cadence). Self-healing/idempotent by
 # design, so a missed or overlapping run is harmless.
 #
 # Cadence/budget tuned from a real run's numbers, not guessed: a manual
@@ -24,7 +24,7 @@ name: Legislator bio/photo backfill
 on:
   # Schedule retired 2026-08-30 — the ~12,700-person backlog this workflow
   # existed to drain hit 100% coverage (see CLAUDE.md's coverage table), so
-  # the weekly BACKFILL_SCOPE=recent pass in sync.yml is now sufficient for
+  # the weekly BACKFILL_SCOPE=recent pass in politicians-sync.yml is now sufficient for
   # ongoing maintenance. workflow_dispatch stays available as a manual
   # fallback if a future data refresh ever reopens gaps — re-add the
   # `schedule:` block below (was `cron: "17 * * * *"`, offset from the top

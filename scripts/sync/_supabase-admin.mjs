@@ -17,7 +17,7 @@ export function supabaseAdmin() {
   return createClient(url, serviceKey, { realtime: { transport: ws } });
 }
 
-// Set by the scheduled GitHub Actions workflow (.github/workflows/sync.yml);
+// Set by the scheduled GitHub Actions workflow (.github/workflows/politicians-sync.yml);
 // absent when run by hand via `npm run sync:*`.
 export const TRIGGERED_BY = process.env.SYNC_TRIGGERED_BY === "cron" ? "cron" : "manual";
 

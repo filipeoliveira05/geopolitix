@@ -24,7 +24,7 @@
 //   under repeated querying — fetchJson below retries like the other sync
 //   scripts' external-API calls do.
 //
-// GOVERNOR_HISTORY_SCOPE="current" (weekly, in sync.yml) narrows each
+// GOVERNOR_HISTORY_SCOPE="current" (weekly, in politicians-sync.yml) narrows each
 // state's sync down to just its current term row (plus that one person's
 // party history) instead of the full statehood-to-now set — a term that
 // ended in 1850 never changes, so rewriting all ~2,400 governor_terms rows

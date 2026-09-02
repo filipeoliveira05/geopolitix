@@ -1,0 +1,51 @@
+name: Sports data sync
+
+# Manual-only, unlike politicians-sync.yml/races-sync.yml — no `schedule:` trigger, just
+# `workflow_dispatch` so it shows up on the Actions tab for an on-demand run.
+# sports.mjs/college-football.mjs/college-basketball.mjs are all Phase 2
+# scripts with no automatic cadence (see CLAUDE.md's Data conventions) —
+# their source pages (Wikipedia team/program lists) change rarely enough
+# that a weekly cron wasn't worth the added Wikipedia rate-limit pressure
+# on top of politicians-sync.yml/races-sync.yml/candidate-bio-backfill.yml, which
+# already share that same budget. Doesn't run states.mjs first — same
+# reasoning races-sync.yml already relies on: states is a one-time seed,
+# already populated, and none of these three scripts touch it, only read
+# its rows via each program/team's state_id FK.
+on:
+  workflow_dispatch: {} # on-demand run from the Actions tab only
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      SYNC_TRIGGERED_BY: manual
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      # Independent (continue-on-error) so one script/one Wikipedia page
+      # having a bad day doesn't skip the others — same reasoning
+      # politicians-sync.yml's steps already use.
+      - id: sync_sports
+        run: node scripts/sync/sports.mjs
+        continue-on-error: true
+      - id: sync_college_football
+        run: node scripts/sync/college-football.mjs
+        continue-on-error: true
+      - id: sync_college_basketball
+        run: node scripts/sync/college-basketball.mjs
+        continue-on-error: true
+      - name: Fail the run if any sync step failed
+        if: always()
+        run: |
+          if [ "${{ steps.sync_sports.outcome }}" = "failure" ] ||
+             [ "${{ steps.sync_college_football.outcome }}" = "failure" ] ||
+             [ "${{ steps.sync_college_basketball.outcome }}" = "failure" ]; then
+            echo "One or more sync steps failed — see the failing step's log above, and sync_logs in Supabase for details."
+            exit 1
+          fi

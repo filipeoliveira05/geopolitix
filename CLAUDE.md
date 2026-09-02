@@ -95,7 +95,7 @@ Build order: **Phase 1 politics → Phase 2 geography → Phase 3 quiz.** Don't 
   detects and repairs this (`BARE_QID_PATTERN`), self-healing any future occurrence via a
   `name ~ '^Q[0-9]+$'` filter.
 - **`legislators.mjs`/`governor-history.mjs` run current/recent-scoped in the weekly
-  `sync.yml`** (`LEGISLATORS_SCOPE=current`, `GOVERNOR_HISTORY_SCOPE=current`,
+  `politicians-sync.yml`** (`LEGISLATORS_SCOPE=current`, `GOVERNOR_HISTORY_SCOPE=current`,
   `BACKFILL_SCOPE=recent` — current officeholders plus anyone whose term ended within ~4 years)
   rather than full-historical, since a 150-year-old term never changes — same reasoning as
   `RACES_SCOPE=pending` above. Full historical resyncs (`npm run sync:legislators-historical`,
@@ -794,8 +794,8 @@ backfill (current + past, Senate + House all share one pool/one job) reached **1
 (12,712/12,712) as of 2026-08-30** (up from 27.9% on 2026-08-29 — converged fast via repeated
 manual `legislator-bio-backfill.yml` triggers), so per this doc's own retirement note below, that
 dedicated workflow's schedule is now paused (`workflow_dispatch` kept as a manual fallback, same
-pattern as `races-sync.yml`'s pause) — the weekly `BACKFILL_SCOPE=recent` pass in `sync.yml` is
-sufficient for ongoing maintenance from here. One known gap class, not a bug: a legislator whose
+pattern as `races-sync.yml`'s pause) — the weekly `BACKFILL_SCOPE=recent` pass in
+`politicians-sync.yml` is sufficient for ongoing maintenance from here. One known gap class, not a bug: a legislator whose
 `congress-legislators` entry has no `wikipedia` field at all can't be resolved by the automated
 backfill and stays `bio_summary IS NULL`/`wikipedia_title IS NULL` forever unless fixed by hand or
 upstream — same class of gap as OpenStates' missing Governor entries and Wikidata's bare-QID
@@ -814,13 +814,18 @@ connected with Vercel Authentication as the deployment gate; Supabase env vars w
 Vercel and local `.env.local`. Not Vercel Cron as the plan originally sketched — `governors.mjs`
 rate-limits itself to ~70-100+s, tight against Vercel's 300s function timeout, so a plain
 GitHub Actions workflow running the existing `npm run sync:*` scripts unchanged was the
-lower-risk choice. Three workflows: `sync.yml` (`states`/`legislators`/`governors`/
-`governor_terms`, weekly, Monday 06:00 UTC), `races-sync.yml` (`races_2026`, its own cadence so
-it can be paused after the last 2026 primaries (Sep 15) and resumed near the Nov 3 general
-independently of the other syncs — `RACES_SCOPE=pending` on the normal cadence, see Data
-conventions; offset an hour to Monday 07:00 UTC as of 2026-08-30 so it doesn't start at the
-exact same moment as `sync.yml`, both of which can hit Wikipedia's REST API), and
-`candidate-bio-backfill.yml` (every 3 hours). Needs three repo secrets
+lower-risk choice. Four workflows: `politicians-sync.yml` (`states`/`legislators`/`governors`/
+`governor_terms`, weekly, Monday 06:00 UTC — renamed from `sync.yml` 2026-09-02, once
+`sports-sync.yml` below existed too and the original generic name stopped disambiguating
+anything), `races-sync.yml` (`races_2026`, its own cadence so it can be paused after the last
+2026 primaries (Sep 15) and resumed near the Nov 3 general independently of the other syncs —
+`RACES_SCOPE=pending` on the normal cadence, see Data conventions; offset an hour to Monday
+07:00 UTC as of 2026-08-30 so it doesn't start at the exact same moment as `politicians-sync.yml`,
+both of which can hit Wikipedia's REST API), `candidate-bio-backfill.yml` (every 3 hours), and
+`sports-sync.yml` (`sports`/`college_football_programs`/`college_basketball_programs`,
+added 2026-09-02 — `workflow_dispatch` only, deliberately no `schedule:`, so it exists on the
+Actions tab for an on-demand run but doesn't add its own recurring Wikipedia-rate-limit pressure
+on top of the three already-scheduled workflows above). Needs three repo secrets
 (Settings → Secrets and variables → Actions): `NEXT_PUBLIC_SUPABASE_URL`,
 `SUPABASE_SERVICE_ROLE_KEY`, `OPENSTATES_API_KEY`. Each sync step runs independently
 (`continue-on-error`, so one external API having a bad day doesn't skip the others), but a

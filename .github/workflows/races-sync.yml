@@ -1,6 +1,6 @@
 name: 2026 races sync
 
-# Split out from sync.yml so races_2026's cadence can move independently
+# Split out from politicians-sync.yml so races_2026's cadence can move independently
 # of legislators/governors/governor-history — weekly through the last 2026
 # primaries (Sep 15), then pause until closer to the Nov 3 general, per
 # races-2026.mjs's own header comment on why every race is still "open" as
@@ -23,7 +23,7 @@ name: 2026 races sync
 # candidate-bio-backfill.yml workflow (its own, more frequent cadence)
 # handles draining that backlog further.
 on:
-  # Offset an hour from sync.yml's own "0 6 * * 1" (added 2026-08-30) —
+  # Offset an hour from politicians-sync.yml's own "0 6 * * 1" (added 2026-08-30) —
   # both workflows can hit Wikipedia's REST API (governor-history.mjs's
   # recent-scope bio backfill here, races-2026.mjs's candidate bio backfill
   # there), and Wikipedia's rate limit is already the tight constraint

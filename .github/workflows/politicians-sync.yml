@@ -1,4 +1,4 @@
-name: Weekly data sync
+name: Politicians data sync
 
 # Weekly cadence covers every currently-automated job (plan §6: legislators/
 # governors "weekly or biweekly" — not set up here, bump the schedule
