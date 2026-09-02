@@ -458,21 +458,21 @@ function GeographyTab({
               // eslint-disable-next-line @next/next/no-img-element -- external Commons URL, same convention as photo_url elsewhere
               <img src={flagUrl} alt="" className="h-20 w-auto self-start rounded-sm border border-rule" />
             )}
-            <div className="flex flex-wrap divide-x divide-rule">
+            <div className="flex flex-wrap gap-x-6 gap-y-2">
               {capital && (
-                <div className="pr-4">
+                <div>
                   <div className="text-[10px] font-medium uppercase tracking-wide text-muted">Capital</div>
                   <div className="font-display text-lg">{capital}</div>
                 </div>
               )}
               {population && (
-                <div className="px-4">
+                <div>
                   <div className="text-[10px] font-medium uppercase tracking-wide text-muted">Population</div>
                   <div className="font-display text-lg">{population.toLocaleString()}</div>
                 </div>
               )}
               {region && (
-                <div className="pl-4">
+                <div>
                   <div className="text-[10px] font-medium uppercase tracking-wide text-muted">Region</div>
                   <div className="font-display text-lg">{region}</div>
                 </div>
