@@ -9,7 +9,7 @@ import {
   type TermWithLegislator,
 } from "@/lib/legislators-data";
 import type { GovernorTerm } from "@/lib/governors-data";
-import { primaryPendingMessage, type Race } from "@/lib/races-data";
+import { candidateHref, primaryPendingMessage, type Race } from "@/lib/races-data";
 import type { City, SportsTeam, CollegeProgram } from "@/lib/geography-data";
 import { wikipediaUrl } from "@/lib/wikipedia";
 import { CollapsibleGroup } from "@/components/CollapsibleGroup";
@@ -591,15 +591,25 @@ function MidtermsTab({ races }: StateTabsProps) {
                 <Empty>{pendingMessage}</Empty>
               ) : (
                 <ul className="flex flex-col gap-1">
-                  {race.candidates.map((candidate) => (
-                    <li key={candidate.id}>
-                      {candidate.name} <PartyBadge party={candidate.party} />
-                      {candidate.isIncumbent && <span className="text-muted"> (incumbent)</span>}
-                      {candidate.id === race.winnerCandidateId && (
-                        <span className="text-muted"> — winner</span>
-                      )}
-                    </li>
-                  ))}
+                  {race.candidates.map((candidate) => {
+                    const href = candidateHref(candidate);
+                    return (
+                      <li key={candidate.id}>
+                        {href ? (
+                          <Link href={href} className="link-accent">
+                            {candidate.name}
+                          </Link>
+                        ) : (
+                          candidate.name
+                        )}{" "}
+                        <PartyBadge party={candidate.party} />
+                        {candidate.isIncumbent && <span className="text-muted"> (incumbent)</span>}
+                        {candidate.id === race.winnerCandidateId && (
+                          <span className="text-muted"> — winner</span>
+                        )}
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
             </Section>

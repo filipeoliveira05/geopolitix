@@ -1,20 +1,6 @@
 import Link from "next/link";
-import { primaryPendingMessage, type Race, type RaceCandidate } from "@/lib/races-data";
+import { candidateHref, primaryPendingMessage, type Race } from "@/lib/races-data";
 import { PartyBadge } from "@/components/PartyBadge";
-
-/**
- * A matched officeholder's existing profile always wins over the new
- * candidate page — no duplicate content for someone who already has a
- * richer page with full term history. candidateId is guaranteed present
- * on the unmatched branch (races-2026.mjs always creates a `candidates`
- * row for an unmatched, non-placeholder candidate).
- */
-function candidateHref(candidate: RaceCandidate): string | null {
-  if (candidate.matchedLegislatorId) return `/legislator/${candidate.matchedLegislatorId}`;
-  if (candidate.matchedGovernorId) return `/governor/${candidate.matchedGovernorId}`;
-  if (candidate.candidateId) return `/candidate/${candidate.candidateId}`;
-  return null; // a placeholder ("TBD"/"(presumptive)") — isPrimaryPending already hides these
-}
 
 /**
  * One race's row — state/district label + status dot + candidate faceoff.

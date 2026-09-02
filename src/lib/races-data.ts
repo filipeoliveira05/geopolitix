@@ -105,6 +105,20 @@ export function primaryPendingMessage(race: Race): string | null {
   return null;
 }
 
+/**
+ * A matched officeholder's existing profile always wins over the new
+ * candidate page — no duplicate content for someone who already has a
+ * richer page with full term history. candidateId is guaranteed present
+ * on the unmatched branch (races-2026.mjs always creates a `candidates`
+ * row for an unmatched, non-placeholder candidate).
+ */
+export function candidateHref(candidate: RaceCandidate): string | null {
+  if (candidate.matchedLegislatorId) return `/legislator/${candidate.matchedLegislatorId}`;
+  if (candidate.matchedGovernorId) return `/governor/${candidate.matchedGovernorId}`;
+  if (candidate.candidateId) return `/candidate/${candidate.candidateId}`;
+  return null; // a placeholder ("TBD"/"(presumptive)") — isPrimaryPending already hides these
+}
+
 export async function getRacesForState(stateAbbr: string): Promise<Race[]> {
   // race_candidates has two FKs into races_2026 (race_id and
   // winner_candidate_id) — PostgREST can't infer which one to embed on
