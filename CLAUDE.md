@@ -390,7 +390,65 @@ Build order: **Phase 1 politics → Phase 2 geography → Phase 3 quiz.** Don't 
     a state with no synced teams — HI has none — renders "No major-league sports teams synced for
     this state" rather than an empty/broken section). Both `sync:geography` and `sync:sports`
     confirmed idempotent (a rerun against the fully-synced state reports zero changes for every
-    city/state/team).
+    city/state/team). (The empty-state copy and the "no synced pro teams" HI case are both
+    superseded by the 2026-09-02 work below — HI now has a synced college program, and the message
+    itself was reworded once the section stopped being pro-leagues-only.)
+  - **`sports.mjs` extended to WNBA and NWSL (2026-09-02)** — both leagues live on the same
+    Wikipedia page/table shape as the original five, so each was a one-line `LEAGUES` addition,
+    but neither was a pure drop-in once checked against real wikitext (this codebase's own
+    "verify live before trusting" habit paid off twice here, not hypothetically):
+    the WNBA's table appends a "Future teams" subsection listing four not-yet-playing expansion
+    franchises (Houston Comets 2027, Cleveland Sirens 2028, Detroit 2029, Philadelphia 2030) —
+    `parseTeamsTable()` had no concept of "not yet playing" and would have scraped these as real
+    current teams; fixed with a `break` once a row block matching `/Future teams/i` is hit (a
+    general guard, not WNBA-specific, so it's a no-op for every other league's table). NWSL has
+    one team (Boston Legacy FC, playing interim seasons in two cities) split across two wikitext
+    rows via a rowspan'd Team cell — the second row's only 2 cells already fail the existing
+    `cells.length < 3` check, so the team is kept once under its first-listed city rather than
+    duplicated or lost; verified live, not just inferred from reading the regex. Also gave
+    `sports.mjs` its first real stale-row cleanup: upsert alone never removed a team that
+    relocated/renamed/folded off Wikipedia's list (unlike `cities`' full delete-then-reinsert or
+    `races_2026`'s `last_synced_at` cutover) — fixed by diffing the pre-upsert snapshot (already
+    fetched for the change log) against the fresh key set and deleting whatever's left over, same
+    id-diff pattern `governors.mjs` uses for a departed governor. Verified live: 172 total US
+    teams across 7 leagues (156 unchanged pro + 14 WNBA + 16 NWSL, both real full rosters), zero
+    unexpected skips.
+- **`college-football.mjs` (Phase 2 extension, added 2026-09-02)** — NCAA Division I FBS programs
+  (School/Nickname/City/State/Conference), from Wikipedia's "List of NCAA Division I FBS football
+  programs," a single wikitable (138 schools, confirmed live — exactly the real total), no key.
+  Deliberately a **separate `college_football_programs` table**, not a new `sports_teams` league
+  value — a college program carries a conference (no equivalent pro-team field) and is
+  amateur/institutional, not "major-league" the way `sports_teams`' own UI copy already commits
+  to. Parses by **fixed position from the FRONT** of each row (cells 0–5: School, Nickname, City,
+  State, Enrollment, Current conference) — the inverse of `sports.mjs`'s from-the-back approach,
+  since here the variable-column-count rows (some schools' "Joined FBS"/"First joined FBS" merge
+  via `colspan=2`) only vary in TRAILING columns, so a front-anchored slice is unaffected by it.
+  The State cell is already a clean 2-letter abbreviation link (e.g. `[[Alabama|AL]]`) — no
+  `nameToAbbr`-style lookup/splitting needed, unlike `sports.mjs`'s "City, State" location cells.
+  `wikipedia_title` is sourced from the **Nickname cell's link target**
+  (e.g. `Alabama_Crimson_Tide_football`), not the School cell's (`University_of_Alabama`) — the
+  program's own article is more specific and more useful to link than the general university one.
+  **One real bug caught and fixed live, not assumed away**: Hawaii's school name uses a
+  `{{okina}}` MediaWiki template for the ʻokina character (U+02BB) — the plain regex parser has no
+  template engine and was leaving raw `"Hawai{{okina}}i"` text in the synced row. Fixed with a
+  single substitution (`\{\{okina\}\}` → `ʻ`) on the fetched wikitext before parsing, rather than
+  a general template resolver, since a full check of all 138 schools confirmed this is the only
+  template used anywhere on the page. The stale-row cleanup (same pattern just added to
+  `sports.mjs`) caught its own first real trigger from this fix: the malformed row was correctly
+  diffed out as "no longer listed" and replaced by the corrected one in the same run. Needed its
+  own follow-up migration for `service_role`'s write grant
+  (`20260902120100_college_football_programs_service_role_grant.sql`) — the exact same gotcha
+  `governor_terms`/`candidates` already hit (the blanket grant in
+  `20260826133154_service_role_grants.sql` only covers tables that existed at that point in
+  time), caught live via a real "permission denied" error on the first sync attempt, not
+  anticipated in advance. UI: merges into the state page's existing "Sports teams" section rather
+  than a separate section (see the `/state/[abbr]` entry below) via a new generic
+  `CollapsibleGroup` component — the same rotating-chevron interaction `HouseRacesByState.tsx`
+  already established, but deliberately WITHOUT its TanStack Query lazy-fetch machinery, since a
+  single state's sports data (pro + college) is already small and already fully loaded via props
+  — nothing here needed deferring the way House's 435-race listing page did. Every group defaults
+  **expanded**, not collapsed — collapsing exists for tidiness/scannability here, not to hide
+  overwhelming volume.
 - **House terms/races join on `district_number` (plain int)** — the map, `getCurrentRepsByDistrictKey()`,
   and every House `StateTabs.tsx` display all key off it; see the `districts` entry above for why
   the once-parallel `district_id` FK column was dropped rather than wired up.
@@ -821,9 +879,12 @@ plan §5 — current representation (real, including governor); history (real Se
 governor history back to statehood as aligned tables, current officeholder marked with a dot
 rather than "(current)" text — see UI conventions; `getHouseHistory()` mirrors
 `getSenateHistory()`); geography (real, added 2026-08-31 — capital/population/region/flag in an
-Overview line, a "Most populous cities" table with a capital badge, a "Sports teams" list grouped
-by league, all from `src/lib/geography-data.ts`; see the `geography.mjs`/`sports.mjs` entry in
-Data conventions above for the sync itself); 2026 midterms
+Overview line, a "Most populous cities" table with a capital badge, a "Sports teams" section
+grouped into collapsible per-league sections (pro leagues from `sports_teams` plus a trailing
+"NCAA Football (FBS)" group from `college_football_programs`, added 2026-09-02 — see the
+`college-football.mjs` entry in Data conventions above), all from `src/lib/geography-data.ts`; see
+the `geography.mjs`/`sports.mjs` entry in Data conventions above for the pro-league sync itself);
+2026 midterms
 (real — Senate, Governor, AND House races for this state, per-candidate party + incumbent flag;
 a House race's `Section` title includes its district number/"At-large" since a state can have
 dozens of them, sorted by district — see `raceSectionTitle()`/`OFFICE_ORDER` in `StateTabs.tsx`;
@@ -928,10 +989,14 @@ everyone else links here.
   no key. Fully rewritten 2026-09-01, replacing an earlier Wikidata-based version — no
   `population-overlay` companion script anymore (it existed briefly, then got folded into this
   one). See the Data conventions entry above for the full writeup.
-- `sports` (`sports_teams`) — NFL/NBA/MLB/NHL/MLS teams, from Wikipedia's team-list page (142
-  teams, confirmed live, no key). No dependency on `sync:geography` having run first (dropped its
-  `cities` FK in the same 2026-09-01 revamp — stores its own city name/state directly). See the
-  Data conventions entry above — includes why this isn't TheSportsDB despite the plan's original
-  suggestion.
+- `sports` (`sports_teams`) — NFL/NBA/MLB/NHL/MLS/WNBA/NWSL teams, from Wikipedia's team-list page
+  (172 US teams across 7 leagues, confirmed live, no key — WNBA/NWSL added 2026-09-02). No
+  dependency on `sync:geography` having run first (dropped its `cities` FK in the same 2026-09-01
+  revamp — stores its own city name/state directly). See the Data conventions entry above —
+  includes why this isn't TheSportsDB despite the plan's original suggestion.
+- `college_football` (`college_football_programs`) — NCAA Division I FBS programs, from
+  Wikipedia's "List of NCAA Division I FBS football programs" (138 schools, confirmed live, no
+  key). Added 2026-09-02. A deliberately separate table from `sports_teams`, not a shared one —
+  see the Data conventions entry above for the full writeup.
 
 Not started: quiz (Phase 3).

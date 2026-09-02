@@ -43,7 +43,7 @@ No hardcoded data in the codebase.
 2. A **manual refresh** (today: `npm run sync:<name>`) can force a pull any time, and is the only mechanism for tables without automatic sync.
 3. The production app **always reads from Supabase**, never calls external APIs directly from the browser.
 
-**Current implementation state** (see `CLAUDE.md` Status for the up-to-date picture): `states`, `legislators`/`terms`, `governors`, `races_2026`/`race_candidates`, `districts`, `cities`, and `sports_teams` sync scripts all write directly to Supabase — though `districts`' actual geometry lives in a Supabase Storage bucket rather than a table column (§7 step 10 explains why).
+**Current implementation state** (see `CLAUDE.md` Status for the up-to-date picture): `states`, `legislators`/`terms`, `governors`, `races_2026`/`race_candidates`, `districts`, `cities`, `sports_teams`, and `college_football_programs` sync scripts all write directly to Supabase — though `districts`' actual geometry lives in a Supabase Storage bucket rather than a table column (§7 step 10 explains why).
 
 **Derived/joined geometry is a separate concern from syncing.** Anything computed by combining two already-synced datasets — e.g. joining district shapes to current reps' party, or splitting a state's real geometry into per-senator halves — belongs in `src/lib/*-geo.ts`, computed at read time and memoized, not precomputed by a sync script.
 
@@ -96,8 +96,10 @@ No hardcoded data in the codebase.
 ### Geography (Phase 2, shipped 2026-08-31; fully rewritten onto World Population Review 2026-09-01)
 - **World Population Review only, no Wikidata, no API key** — state population/capital/flag and each state's top 10 most populous cities all come from `worldpopulationreview.com`'s state and per-state city-ranking pages (a clean embedded JSON blob, not table-cell scraping). Replaces an original Wikidata-SPARQL design (city discovery via settlement-class filtering) and a short-lived WPR-population-overlay-on-top-of-Wikidata intermediate step — both existed for about a day before being fully replaced at the user's request, once it became clear a single WPR-only source doesn't need the several bug fixes (name-collision heuristics, classification traps, a schema flag) the two-source design required just to compensate for Wikidata's staleness. Full writeup, including why WPR's own `rank` field needs no city-type filtering (unlike Wikidata's classes), is in `CLAUDE.md`'s Data conventions section — don't re-derive here.
 
-### Sports (Phase 2, shipped 2026-08-31)
+### Sports (Phase 2, shipped 2026-08-31; extended to WNBA/NWSL and college football 2026-09-02)
 - **Not TheSportsDB** — its free key turned out to hard-cap every league's team list at 10 results (confirmed live), unusable for full rosters. Sourced instead by parsing Wikipedia's own "List of professional sports teams in the United States and Canada" article. Full parsing detail and a real row-format edge case (the NHL's Seattle Kraken/Vancouver Canucks rows) are in `CLAUDE.md`'s Data conventions section.
+- **WNBA and NWSL added on top of the original NFL/NBA/MLB/NHL/MLS five** — same page, same table shape, but each needed its own real fix once checked against live wikitext rather than assumed safe from the shape alone: the WNBA's table lists 4 not-yet-playing expansion franchises under a "Future teams" heading (needed an explicit stop-parsing guard), and NWSL has one team split across two rows via rowspan for a mid-season venue move (already handled correctly by the existing minimum-cell-count check). `sports_teams` also got its first real stale-row cleanup in the same pass — full detail in `CLAUDE.md`'s Data conventions section.
+- **College football (NCAA Division I FBS) is a separate table (`college_football_programs`), not a `sports_teams` league value** — a college program carries a conference (no pro-team equivalent) and is amateur/institutional, not "major-league" the way `sports_teams` itself is framed. Sourced from Wikipedia's "List of NCAA Division I FBS football programs" (138 schools, one wikitable). Full writeup — including the fixed-position-from-the-front parsing strategy (the inverse of the pro-league parser's from-the-back approach) and a real `{{okina}}` template bug caught live on Hawaii's row — is in `CLAUDE.md`'s Data conventions section.
 
 ### `unitedstates` GitHub org — other repos worth knowing about
 The org (`github.com/unitedstates`) has ~40 repos total; most haven't been touched since
@@ -256,12 +258,20 @@ involved).
   diffing/preserving anything across runs.
 
 ### `sports_teams`
-- `id` (PK) · `name` · `league` (enum) · `city_name` (text) · `state_id` (FK). Stores its own home
-  city/state directly rather than joining through `cities` (that FK was dropped in the same
-  2026-09-01 revamp — its only actual use was rendering plain text like "New England Patriots
-  (Foxborough)" next to a team's name; no `/city/[id]` page exists or was ever planned, so a `cities`
-  join — and everything needed to keep a non-top-10 home city's row alive for it without polluting
-  the "most populous cities" ranking — was solving a problem plain text already solved).
+- `id` (PK) · `name` · `league` (text, no enum constraint — currently NFL/NBA/MLB/NHL/MLS/WNBA/NWSL)
+  · `city_name` (text) · `state_id` (FK). Stores its own home city/state directly rather than
+  joining through `cities` (that FK was dropped in the same 2026-09-01 revamp — its only actual use
+  was rendering plain text like "New England Patriots (Foxborough)" next to a team's name; no
+  `/city/[id]` page exists or was ever planned, so a `cities` join — and everything needed to keep a
+  non-top-10 home city's row alive for it without polluting the "most populous cities" ranking —
+  was solving a problem plain text already solved).
+
+### `college_football_programs`
+- `id` (PK) · `school` (unique) · `nickname` · `city_name` (text) · `state_id` (FK) · `conference`
+  · `wikipedia_title` (the program's own article, e.g. `Alabama_Crimson_Tide_football` — sourced
+  from the Nickname cell's link target, not the School cell's general-university one). Added
+  2026-09-02, deliberately separate from `sports_teams` rather than a shared table — see the Sports
+  section above and `CLAUDE.md`'s Data conventions for why.
 
 ### `sync_logs`
 - `id` (PK) · `source` (free-text, varies by scope/mode within the same script — not stable
@@ -335,7 +345,8 @@ CLAUDE.md's data-conventions section):
 | Sync governor history (full statehood-to-now) | Wikidata | **Manual only** (`npm run sync:governor-history` with `GOVERNOR_HISTORY_SCOPE` unset) — same crowdsourced-correction rationale as legislators | `governor_terms` (full history) |
 | Sync districts/geometry | Census cartographic boundary files | Manual only (~static, redistricting is ~once/decade) | `districts` |
 | Sync geography (state population/capital/flag/region + top-10 cities) | World Population Review | Manual only (`npm run sync:geography`), fully rewritten 2026-09-01 (was Wikidata-based) — city population changes faster than "years to decades," so re-run this more often than `sync:districts` if freshness matters; `cities` is fully delete-then-reinsert per state every run, not diffed | `states` (population/region/flag_url/capital_city_id columns), `cities` |
-| Sync sports | Wikipedia (team-list page parsing) | Manual only (`npm run sync:sports`) — no dependency on `sync:geography` having run first as of 2026-09-01 (dropped its `cities` FK, stores city name/state directly) — franchise rosters/relocations change rarely | `sports_teams` |
+| Sync sports | Wikipedia (team-list page parsing) | Manual only (`npm run sync:sports`) — no dependency on `sync:geography` having run first as of 2026-09-01 (dropped its `cities` FK, stores city name/state directly) — franchise rosters/relocations change rarely | `sports_teams` (NFL/NBA/MLB/NHL/MLS/WNBA/NWSL as of 2026-09-02) |
+| Sync college football | Wikipedia (NCAA FBS programs page) | Manual only (`npm run sync:college-football`) — conference realignment/program changes are rare, and this is a single-page fetch (no per-state loop) | `college_football_programs` |
 | Sync 2026 races (Senate + Governor + House, pending states only) | Wikipedia infobox parsing | Weekly, **its own separate workflow** (`races-sync.yml`, decoupled from `sync.yml` since 2026-08-29 so this cadence can move independently — e.g. paused after the last 2026 primaries (Sep 15) and resumed near the Nov 3 general; offset an hour to Monday 07:00 UTC as of 2026-08-30, since `sync.yml`'s own 06:00 UTC run can also hit Wikipedia's REST API and the two shouldn't compound rate-limit pressure by starting at the same moment), `RACES_SCOPE=pending` — only re-fetches states whose primary isn't resolved yet in our own data (confirmed live: 28/506 races needed a real fetch on a real run) | `races_2026`, `race_candidates`, plus matching against current legislators/governors (`matched_legislator_id`/`matched_governor_id`) |
 | Sync 2026 races (full sweep, every state) | Wikipedia infobox parsing | **Manual only** (`RACES_SCOPE` unset/`"full"`) — an occasional full resync, and mandatory for the Nov 3 general itself, when every state needs re-checking regardless of primary status | same as above |
 | Sync challenger candidate bios (recent backlog) | Wikipedia REST API | Folded into the weekly `races-sync.yml` run, budget-capped (`BACKFILL_BUDGET_MS`, 10 min) so a normal week stays short | `candidates.bio_summary`/`photo_url` |
