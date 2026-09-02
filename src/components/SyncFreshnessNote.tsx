@@ -85,27 +85,30 @@ export function SyncFreshnessNote({
 // be pointless ceremony around content that already fits on one line.
 const COLLAPSE_THRESHOLD = 3;
 
-function CollapsedSummary({
+// The trigger stays visible in both states (same interaction as CollapsibleGroup: a persistent
+// header toggles content beneath it) rather than being replaced by the expanded row — an earlier
+// version did that, which meant there was no way back to collapsed once opened.
+function FreshnessToggle({
   worst,
-  onExpand,
+  isOpen,
+  onToggle,
 }: {
   worst: { colorClassName: string; pulse: boolean };
-  onExpand: () => void;
+  isOpen: boolean;
+  onToggle: () => void;
 }) {
   return (
     <button
       type="button"
-      onClick={onExpand}
+      onClick={onToggle}
       className="inline-flex items-center gap-1.5 text-xs text-muted"
-      aria-expanded={false}
+      aria-expanded={isOpen}
     >
       <span
         className={`inline-block h-1.5 w-1.5 rounded-full ${worst.colorClassName} ${worst.pulse ? "animate-pulse" : ""}`}
       />
       Data freshness
-      {/* Same rotate-on-expand chevron as CollapsibleGroup/HouseRacesByState — collapsed state
-          only, since expanding here replaces this button entirely rather than revealing content
-          beneath it (nothing to keep pointing at once open). */}
+      {/* Same rotate-on-expand chevron as CollapsibleGroup/HouseRacesByState. */}
       <svg
         xmlns="http://www.w3.org/2000/svg"
         viewBox="0 0 24 24"
@@ -114,7 +117,7 @@ function CollapsedSummary({
         strokeWidth={2}
         strokeLinecap="round"
         strokeLinejoin="round"
-        className="h-3 w-3 shrink-0"
+        className={`h-3 w-3 shrink-0 transition-transform duration-150 ${isOpen ? "rotate-90" : ""}`}
         aria-hidden="true"
       >
         <path d="M9 6l6 6-6 6" />
@@ -142,24 +145,29 @@ export function SyncFreshnessRow({
   );
   if (known.length === 0) return null;
 
-  if (known.length > COLLAPSE_THRESHOLD && !isOpen) {
-    // The stalest item's own tier — an honest "is anything here actually worth checking"
-    // signal at a glance, not a fabricated combined status.
-    const worstItem = known.reduce((oldest, item) =>
-      item.syncedAt < oldest.syncedAt ? item : oldest,
-    );
-    return (
-      <div className={className}>
-        <CollapsedSummary worst={freshnessTier(worstItem.syncedAt)} onExpand={() => setIsOpen(true)} />
-      </div>
-    );
-  }
-
-  return (
-    <p className={`flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted ${className}`}>
+  const itemRow = (
+    <p className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted">
       {known.map((item) => (
         <FreshnessItem key={item.label} label={item.label} syncedAt={item.syncedAt} />
       ))}
     </p>
+  );
+
+  if (known.length <= COLLAPSE_THRESHOLD) {
+    return <div className={className}>{itemRow}</div>;
+  }
+
+  // The stalest item's own tier — an honest "is anything here actually worth checking" signal
+  // at a glance, not a fabricated combined status.
+  const worstItem = known.reduce((oldest, item) => (item.syncedAt < oldest.syncedAt ? item : oldest));
+  return (
+    <div className={className}>
+      <FreshnessToggle
+        worst={freshnessTier(worstItem.syncedAt)}
+        isOpen={isOpen}
+        onToggle={() => setIsOpen((open) => !open)}
+      />
+      {isOpen && <div className="mt-1">{itemRow}</div>}
+    </div>
   );
 }
