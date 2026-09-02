@@ -38,6 +38,7 @@ export type SportsTeam = {
   name: string;
   league: string;
   cityName: string;
+  wikipediaTitle: string | null;
 };
 
 // Shared shape for both college_football_programs and college_basketball_programs — identical
@@ -124,13 +125,14 @@ type SportsTeamRow = {
   name: string;
   league: string;
   city_name: string;
+  wikipedia_title: string | null;
 };
 
 /** Every major-league sports team whose home city is in this state. */
 export async function getSportsTeamsForState(stateAbbr: string): Promise<SportsTeam[]> {
   const { data, error } = await supabase
     .from("sports_teams")
-    .select("id, name, league, city_name")
+    .select("id, name, league, city_name, wikipedia_title")
     .eq("state_id", stateAbbr);
   if (error) throw error;
   return (data as unknown as SportsTeamRow[]).map((row) => ({
@@ -138,6 +140,7 @@ export async function getSportsTeamsForState(stateAbbr: string): Promise<SportsT
     name: row.name,
     league: row.league,
     cityName: row.city_name,
+    wikipediaTitle: row.wikipedia_title,
   }));
 }
 

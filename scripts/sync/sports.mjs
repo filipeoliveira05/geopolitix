@@ -29,7 +29,7 @@ import { feature } from "topojson-client";
 import { supabaseAdmin, logSync } from "./_supabase-admin.mjs";
 import { createChangeLog } from "./_change-log.mjs";
 import { fetchJson } from "./_wikidata.mjs";
-import { extractLinkText } from "./_wikilinks.mjs";
+import { extractLinkText, extractLinkTarget } from "./_wikilinks.mjs";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const fipsToAbbr = JSON.parse(
@@ -127,7 +127,8 @@ function parseTeamsTable(wikitext) {
     const [teamCell, locationCell] = cells.slice(-3, -1);
     const team = extractLinkText(teamCell)?.replace(/'''/g, "").trim();
     const location = extractLinkText(locationCell);
-    if (team && location) teams.push({ team, location });
+    const wikipediaTitle = extractLinkTarget(teamCell);
+    if (team && location) teams.push({ team, location, wikipediaTitle });
   }
   return teams;
 }
@@ -158,13 +159,13 @@ export async function parseAllLeagues() {
     }
     const wikitext = await fetchSectionWikitext(sectionIndex);
     const parsed = parseTeamsTable(wikitext);
-    for (const { team, location } of parsed) {
+    for (const { team, location, wikipediaTitle } of parsed) {
       const resolved = resolveLocation(location);
       if (!resolved) {
         skipped.push(`${league.key}: ${team} (${location})`);
         continue;
       }
-      teams.push({ league: league.key, team, ...resolved });
+      teams.push({ league: league.key, team, wikipediaTitle, ...resolved });
     }
   }
   return { teams, skipped };
@@ -183,11 +184,17 @@ async function main() {
   }
   for (const s of skipped) changeLog.record("skipped (non-US or unparsed)", s);
 
-  const teamRows = teams.map((t) => ({ league: t.league, name: t.team, city_name: t.city, state_id: t.stateAbbr }));
+  const teamRows = teams.map((t) => ({
+    league: t.league,
+    name: t.team,
+    city_name: t.city,
+    state_id: t.stateAbbr,
+    wikipedia_title: t.wikipediaTitle,
+  }));
 
   const { data: existingTeams, error: existingTeamsError } = await supabase
     .from("sports_teams")
-    .select("league, name, city_name, state_id");
+    .select("league, name, city_name, state_id, wikipedia_title");
   if (existingTeamsError) throw existingTeamsError;
   const existingByKey = new Map(existingTeams.map((r) => [`${r.league}:${r.name}`, r]));
 
@@ -197,6 +204,8 @@ async function main() {
     if (!previous) changeLog.record("new team", `${row.league} ${row.name}`);
     else if (previous.city_name !== row.city_name || previous.state_id !== row.state_id) {
       changeLog.record("updated (city changed)", `${row.league} ${row.name}`);
+    } else if (previous.wikipedia_title !== row.wikipedia_title) {
+      changeLog.record("updated (wikipedia title changed)", `${row.league} ${row.name}`);
     } else changeLog.record("unchanged");
   }
 

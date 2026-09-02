@@ -520,7 +520,19 @@ function GeographyTab({
                 <ul className="flex flex-col gap-1">
                   {group.teams.map((team) => (
                     <li key={team.id}>
-                      {team.name} <span className="text-muted">({team.cityName})</span>
+                      {team.wikipediaTitle ? (
+                        <a
+                          href={wikipediaUrl(team.wikipediaTitle)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="link-accent"
+                        >
+                          {team.name}
+                        </a>
+                      ) : (
+                        team.name
+                      )}{" "}
+                      <span className="text-muted">({team.cityName})</span>
                     </li>
                   ))}
                 </ul>
