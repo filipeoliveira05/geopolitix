@@ -13,6 +13,7 @@ import {
   getStateGeography,
   getCitiesForState,
   getSportsTeamsForState,
+  getCollegeFootballForState,
 } from "@/lib/geography-data";
 import { StateTabs } from "@/components/StateTabs";
 import { SyncFreshnessRow } from "@/components/SyncFreshnessNote";
@@ -48,6 +49,7 @@ export default async function StatePage(props: PageProps<"/state/[abbr]">) {
     geography,
     cities,
     sportsTeams,
+    collegeFootball,
   ] = await Promise.all([
     getGovernor(abbr),
     getCurrentSenators(abbr),
@@ -59,15 +61,23 @@ export default async function StatePage(props: PageProps<"/state/[abbr]">) {
     getStateGeography(abbr),
     getCitiesForState(abbr),
     getSportsTeamsForState(abbr),
+    getCollegeFootballForState(abbr),
   ]);
-  const [legislatorsSyncedAt, governorsSyncedAt, governorHistorySyncedAt, geographySyncedAt, sportsSyncedAt] =
-    await Promise.all([
-      getJobFreshness(["legislators"]),
-      getJobFreshness(["governors"]),
-      getJobFreshness(["governor_history"]),
-      getJobFreshness(["geography"]),
-      getJobFreshness(["sports"]),
-    ]);
+  const [
+    legislatorsSyncedAt,
+    governorsSyncedAt,
+    governorHistorySyncedAt,
+    geographySyncedAt,
+    sportsSyncedAt,
+    collegeFootballSyncedAt,
+  ] = await Promise.all([
+    getJobFreshness(["legislators"]),
+    getJobFreshness(["governors"]),
+    getJobFreshness(["governor_history"]),
+    getJobFreshness(["geography"]),
+    getJobFreshness(["sports"]),
+    getJobFreshness(["college_football"]),
+  ]);
 
   return (
     <div className="mx-auto w-full max-w-3xl flex-1 animate-fade-in p-6 sm:p-10">
@@ -83,6 +93,7 @@ export default async function StatePage(props: PageProps<"/state/[abbr]">) {
           { label: "Governor history", syncedAt: governorHistorySyncedAt },
           { label: "Geography", syncedAt: geographySyncedAt },
           { label: "Sports", syncedAt: sportsSyncedAt },
+          { label: "College football", syncedAt: collegeFootballSyncedAt },
         ]}
         className="mt-1"
       />
@@ -102,6 +113,7 @@ export default async function StatePage(props: PageProps<"/state/[abbr]">) {
           flagUrl={geography?.flagUrl ?? null}
           cities={cities}
           sportsTeams={sportsTeams}
+          collegeFootball={collegeFootball}
           senators={senators}
           representatives={representatives}
           senateHistory={senateHistory}

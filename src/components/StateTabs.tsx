@@ -10,7 +10,9 @@ import {
 } from "@/lib/legislators-data";
 import type { GovernorTerm } from "@/lib/governors-data";
 import { primaryPendingMessage, type Race } from "@/lib/races-data";
-import type { City, SportsTeam } from "@/lib/geography-data";
+import type { City, SportsTeam, CollegeFootballProgram } from "@/lib/geography-data";
+import { wikipediaUrl } from "@/lib/wikipedia";
+import { CollapsibleGroup } from "@/components/CollapsibleGroup";
 
 type TabKey = "current" | "history" | "geography" | "midterms";
 
@@ -31,6 +33,7 @@ export type StateTabsProps = {
   flagUrl: string | null;
   cities: City[];
   sportsTeams: SportsTeam[];
+  collegeFootball: CollegeFootballProgram[];
   senators: TermWithLegislator[];
   representatives: TermWithLegislator[];
   senateHistory: TermWithLegislator[];
@@ -377,7 +380,24 @@ function HistoryTab({ senateHistory, houseHistory, governorHistory }: StateTabsP
   );
 }
 
-function GeographyTab({ capital, population, region, flagUrl, cities, sportsTeams }: StateTabsProps) {
+// Fixed display order for the pro-league groups (NCAA-FBS always renders last, after every pro
+// league) — same reasoning OFFICE_ORDER below gets: insertion/alphabetical order would otherwise
+// drift with whatever order sports_teams happens to return rows in.
+const LEAGUE_ORDER = ["NFL", "NBA", "MLB", "NHL", "MLS", "WNBA", "NWSL"];
+
+function GeographyTab({
+  capital,
+  population,
+  region,
+  flagUrl,
+  cities,
+  sportsTeams,
+  collegeFootball,
+}: StateTabsProps) {
+  const proLeagueGroups = LEAGUE_ORDER.map((league) => ({
+    league,
+    teams: sportsTeams.filter((t) => t.league === league),
+  })).filter((g) => g.teams.length > 0);
   return (
     <div className="flex flex-col gap-6">
       <Section title="Overview">
@@ -429,20 +449,54 @@ function GeographyTab({ capital, population, region, flagUrl, cities, sportsTeam
       </Section>
 
       <Section title="Sports teams">
-        {sportsTeams.length > 0 ? (
-          <ul className="flex flex-col gap-1">
-            {sportsTeams.map((team) => (
-              <li key={team.id}>
-                {team.name}{" "}
-                <span className="text-xs font-medium uppercase tracking-wide text-muted">
-                  {team.league}
-                </span>{" "}
-                <span className="text-muted">({team.cityName})</span>
-              </li>
+        {proLeagueGroups.length > 0 || collegeFootball.length > 0 ? (
+          <div>
+            {proLeagueGroups.map((group) => (
+              <CollapsibleGroup key={group.league} title={group.league} count={group.teams.length}>
+                <ul className="flex flex-col gap-1">
+                  {group.teams.map((team) => (
+                    <li key={team.id}>
+                      {team.name} <span className="text-muted">({team.cityName})</span>
+                    </li>
+                  ))}
+                </ul>
+              </CollapsibleGroup>
             ))}
-          </ul>
+            {collegeFootball.length > 0 && (
+              <CollapsibleGroup title="NCAA Football (FBS)" count={collegeFootball.length}>
+                <ul className="flex flex-col gap-1">
+                  {collegeFootball.map((program) => (
+                    <li key={program.id}>
+                      {program.wikipediaTitle ? (
+                        <a
+                          href={wikipediaUrl(program.wikipediaTitle)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="link-accent"
+                        >
+                          {program.school}
+                          {program.nickname && <> {program.nickname}</>}
+                        </a>
+                      ) : (
+                        <>
+                          {program.school}
+                          {program.nickname && <> {program.nickname}</>}
+                        </>
+                      )}{" "}
+                      {program.conference && (
+                        <span className="text-xs font-medium uppercase tracking-wide text-muted">
+                          {program.conference}
+                        </span>
+                      )}{" "}
+                      <span className="text-muted">({program.cityName})</span>
+                    </li>
+                  ))}
+                </ul>
+              </CollapsibleGroup>
+            )}
+          </div>
         ) : (
-          <Empty>No major-league sports teams synced for this state.</Empty>
+          <Empty>No sports teams synced for this state.</Empty>
         )}
       </Section>
     </div>
