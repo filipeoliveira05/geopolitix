@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildTeamLogoQuestions, buildTeamStateQuestions } from "./sports-questions";
+import { buildTeamLogoQuestions, buildTeamStateQuestions, buildMatchingPairs } from "./sports-questions";
 import type { SportsTeam } from "@/lib/geography-data";
 
 // Real state abbreviations, not synthetic ones — getStateName() is pure/local (no Supabase call)
@@ -64,5 +64,28 @@ describe("buildTeamStateQuestions", () => {
       expect(q.options).toHaveLength(4);
       expect(q.options[q.correctIndex]).toBeTruthy();
     }
+  });
+});
+
+describe("buildMatchingPairs", () => {
+  it("builds the requested number of pairs", () => {
+    expect(buildMatchingPairs(makeTeams(10), 6)).toHaveLength(6);
+  });
+
+  it("pairs each team's real logo with its real name", () => {
+    const teams = makeTeams(10);
+    const pairs = buildMatchingPairs(teams, 6);
+    for (const p of pairs) {
+      const team = teams.find((t) => t.id === p.id);
+      expect(team?.logoUrl).toBe(p.imageUrl);
+      expect(team?.name).toBe(p.name);
+    }
+  });
+
+  it("only draws from teams that have a logo", () => {
+    const teams = makeTeams(5);
+    teams[0] = { ...teams[0], logoUrl: null };
+    const pairs = buildMatchingPairs(teams, 4);
+    expect(pairs.every((p) => p.id !== "T0")).toBe(true);
   });
 });

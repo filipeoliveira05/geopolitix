@@ -2,7 +2,7 @@ import type { SportsTeam } from "@/lib/geography-data";
 import { getStateName } from "@/lib/states";
 import { pickRandom } from "./random";
 import { buildMultipleChoiceQuestion } from "./build-multiple-choice";
-import type { MultipleChoiceQuestion } from "./types";
+import type { MultipleChoiceQuestion, MatchingPair } from "./types";
 
 export function buildTeamLogoQuestions(
   teams: SportsTeam[],
@@ -42,4 +42,10 @@ export function buildTeamStateQuestions(
       getOptionText: (t) => t.stateName,
     }),
   );
+}
+
+export function buildMatchingPairs(teams: SportsTeam[], count: number): MatchingPair[] {
+  const withLogo = teams.filter((t) => t.logoUrl !== null);
+  const subjects = pickRandom(withLogo, count);
+  return subjects.map((t) => ({ id: t.id, imageUrl: t.logoUrl as string, name: t.name }));
 }

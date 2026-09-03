@@ -35,3 +35,11 @@ export type AnsweredMapClick = {
 };
 
 export type AnsweredQuestion = AnsweredMultipleChoice | AnsweredMapClick;
+
+// A matching-pairs board isn't a "question" at all (no prompt/answer, just N pairs solved
+// together) — deliberately not part of the QuizQuestion union above.
+export type MatchingPair = {
+  id: string;
+  imageUrl: string;
+  name: string;
+};
