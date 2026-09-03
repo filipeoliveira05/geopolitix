@@ -613,9 +613,18 @@ async function backfillCandidateBios(supabase, abbrToStateName, warnings, change
       return;
     }
 
+    // last_synced_at is stamped here too, not just on the main race-matching sync above — it
+    // powers /candidate/[id]'s own per-row freshness note, and without this a candidate whose
+    // bio was just backfilled would still show the timestamp of whenever their row was last
+    // matched/inserted by the (much less frequent) race sync instead.
     const { error: updateError } = await supabase
       .from("candidates")
-      .update({ wikipedia_title: title, bio_summary: bioSummary, photo_url: photoUrl })
+      .update({
+        wikipedia_title: title,
+        bio_summary: bioSummary,
+        photo_url: photoUrl,
+        last_synced_at: new Date().toISOString(),
+      })
       .eq("id", candidate.id);
     if (updateError) {
       warnings.push(`candidate bio backfill: update failed for ${candidate.name} — ${updateError.message}`);

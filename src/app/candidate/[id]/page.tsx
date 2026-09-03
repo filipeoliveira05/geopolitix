@@ -5,7 +5,6 @@ import { getStateName } from "@/lib/states";
 import { getCandidateById } from "@/lib/candidates-data";
 import { PartyBadge } from "@/components/PartyBadge";
 import { SyncFreshnessNote } from "@/components/SyncFreshnessNote";
-import { getJobFreshness } from "@/lib/sync-freshness";
 import { WikipediaVerifiedBadge, WikipediaNoPageBadge } from "@/components/WikipediaVerifiedBadge";
 import { SectionHeading } from "@/components/SectionHeading";
 import { BackToMapLink } from "@/components/BackToMapLink";
@@ -30,10 +29,6 @@ export default async function CandidatePage(props: PageProps<"/candidate/[id]">)
   if (!candidate || !candidate.race) notFound();
 
   const { race } = candidate;
-  // Both jobs actually touch a candidate row — races.mjs matches/inserts it, and
-  // races_candidate_backfill later fills bio/photo on the same row — so the more recent of the
-  // two is the honest "last touched" answer, not just one or the other.
-  const syncedAt = await getJobFreshness(["races", "races_candidate_backfill"]);
   const officeLabel =
     race.office === "house" && race.districtNumber !== null
       ? `${OFFICE_LABELS.house} — ${race.districtNumber === 0 ? "At-large" : `District ${race.districtNumber}`}`
@@ -84,7 +79,7 @@ export default async function CandidatePage(props: PageProps<"/candidate/[id]">)
       </div>
 
       <footer className="mt-6 py-6 text-center">
-        <SyncFreshnessNote label="Candidates" syncedAt={syncedAt} />
+        <SyncFreshnessNote label="This candidate" syncedAt={candidate.lastSyncedAt} />
       </footer>
     </div>
   );

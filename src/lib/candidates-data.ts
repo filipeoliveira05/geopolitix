@@ -14,6 +14,7 @@ export type Candidate = {
   wikipediaTitle: string | null;
   wikipediaVerified: boolean;
   wikipediaCheckedNo: boolean;
+  lastSyncedAt: Date | null;
   race: {
     office: RaceOffice;
     stateId: string;
@@ -32,6 +33,7 @@ type CandidateRow = {
   wikipedia_title: string | null;
   wikipedia_verified: boolean;
   wikipedia_checked_no: boolean;
+  last_synced_at: string | null;
   race_candidates: {
     party: string | null;
     is_incumbent: boolean;
@@ -47,7 +49,7 @@ export async function getCandidateById(id: string): Promise<Candidate | null> {
   const { data, error } = await supabase
     .from("candidates")
     .select(
-      "id, name, state_id, bio_summary, photo_url, wikipedia_title, wikipedia_verified, wikipedia_checked_no, " +
+      "id, name, state_id, bio_summary, photo_url, wikipedia_title, wikipedia_verified, wikipedia_checked_no, last_synced_at, " +
         // race_candidates has two FKs into races_2026 (race_id and
         // winner_candidate_id) — PostgREST can't infer which one to embed
         // on without being told explicitly (same disambiguation
@@ -71,6 +73,7 @@ export async function getCandidateById(id: string): Promise<Candidate | null> {
     wikipediaTitle: row.wikipedia_title,
     wikipediaVerified: row.wikipedia_verified,
     wikipediaCheckedNo: row.wikipedia_checked_no,
+    lastSyncedAt: row.last_synced_at ? new Date(row.last_synced_at) : null,
     race:
       raceCandidate?.races_2026
         ? {
