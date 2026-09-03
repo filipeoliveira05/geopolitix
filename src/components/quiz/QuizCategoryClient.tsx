@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { QuizCategoryMeta } from "@/lib/quiz/category-config";
-import { fetchCategoryPool, buildCategorySession } from "@/lib/quiz/engine";
+import { fetchCategoryPool, buildCategorySession, getCategoryPoolSize } from "@/lib/quiz/engine";
 import type { MultipleChoiceQuestion, AnsweredQuestion } from "@/lib/quiz/types";
 import { QuizStartScreen } from "./QuizStartScreen";
 import { QuestionSession } from "./QuestionSession";
@@ -48,7 +48,7 @@ export function QuizCategoryClient({ category }: { category: QuizCategoryMeta })
   return (
     <QuizStartScreen
       category={category}
-      poolSize={pool?.length ?? 0}
+      poolSize={pool !== undefined ? getCategoryPoolSize(category.id, pool) : 0}
       isLoading={isLoading}
       onStart={start}
     />
