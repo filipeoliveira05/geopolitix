@@ -1,4 +1,5 @@
 import { supabase } from "./supabase";
+import { getStateName } from "./states";
 
 // Reads the Supabase `governors` table (plan §4), synced via
 // `npm run sync:governors` (see scripts/sync/governors.mjs).
@@ -274,4 +275,33 @@ export async function getTermsForPerson(wikidataPersonId: string): Promise<Gover
   return (data as unknown as GovernorTermRow[])
     .map(termFromRow)
     .sort((a, b) => (b.startDate ?? "").localeCompare(a.startDate ?? ""));
+}
+
+export type GovernorFact = {
+  stateId: string;
+  stateName: string;
+  governorName: string;
+};
+
+/**
+ * Every state OpenStates actually has a current Governor entry for (38/50 — the OpenStates-gap
+ * states have no row here at all, see this file's other comments) — powers the quiz's
+ * Officeholders category. Deliberately doesn't fall back to governor_terms for the gap states
+ * the way getGovernor() does for a single state's own page — that fallback needs a second query
+ * per gap state, and the 38-state pool is already comfortably above the 4-subject minimum a
+ * session needs, so it's not worth the extra complexity for v1.
+ */
+export async function getAllCurrentGovernors(): Promise<GovernorFact[]> {
+  const { data, error } = await supabase
+    .from("governors")
+    .select("first_name, last_name, state_id");
+  if (error) throw error;
+  return (data as { first_name: string | null; last_name: string | null; state_id: string }[])
+    .map((g): GovernorFact | null => {
+      const stateName = getStateName(g.state_id);
+      const governorName = [g.first_name, g.last_name].filter(Boolean).join(" ");
+      if (!stateName || !governorName) return null;
+      return { stateId: g.state_id, stateName, governorName };
+    })
+    .filter((g): g is GovernorFact => g !== null);
 }

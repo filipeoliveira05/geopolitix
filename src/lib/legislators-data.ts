@@ -1,5 +1,6 @@
 import { supabase } from "./supabase";
 import { tallyPartyLetters } from "./party-colors";
+import { getStateName } from "./states";
 
 // Reads the Supabase `legislators`/`terms` tables (plan §4), synced via
 // `npm run sync:legislators` (see scripts/sync/legislators.mjs).
@@ -324,4 +325,38 @@ export async function getTermsForLegislator(legislatorId: string): Promise<Term[
   return (data as unknown as Omit<TermRow, "legislator">[])
     .map(termFromRow)
     .sort((a, b) => b.startDate.localeCompare(a.startDate));
+}
+
+export type LegislatorStateFact = {
+  legislatorId: string;
+  photoUrl: string;
+  stateId: string;
+  stateName: string;
+};
+
+/**
+ * Every currently-serving legislator (House + Senate) who has a photo, one row per person —
+ * powers the quiz's Officeholders category (guess-the-state-from-photo). A person can only hold
+ * one current term at a time, so the is_current filter alone already guarantees no duplicates.
+ */
+export async function getAllCurrentLegislatorsWithPhoto(): Promise<LegislatorStateFact[]> {
+  const { data, error } = await supabase
+    .from("terms")
+    .select("state_id, legislator:legislators(id, photo_url)")
+    .eq("is_current", true);
+  if (error) throw error;
+  return (
+    data as unknown as { state_id: string; legislator: { id: string; photo_url: string | null } }[]
+  )
+    .map((row): LegislatorStateFact | null => {
+      const stateName = getStateName(row.state_id);
+      if (!stateName || !row.legislator?.photo_url) return null;
+      return {
+        legislatorId: row.legislator.id,
+        photoUrl: row.legislator.photo_url,
+        stateId: row.state_id,
+        stateName,
+      };
+    })
+    .filter((f): f is LegislatorStateFact => f !== null);
 }
