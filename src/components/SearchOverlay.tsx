@@ -33,7 +33,19 @@ export function SearchOverlay({ onClose, entries, isLoading }: SearchOverlayProp
   const fuse = useMemo(
     () =>
       entries
-        ? new Fuse(entries, { keys: ["name"], threshold: 0.35, ignoreLocation: true })
+        ? new Fuse(entries, {
+            // name weighted higher than subtitle so a name match still outranks a subtitle-only
+            // one (e.g. typing "Texas" surfaces the state itself above every legislator/team
+            // whose subtitle merely mentions "TX") — subtitle is there so office/league/state
+            // text ("Senator", "NFL", "Governor") becomes searchable too, not just a person/
+            // team's own name.
+            keys: [
+              { name: "name", weight: 2 },
+              { name: "subtitle", weight: 1 },
+            ],
+            threshold: 0.35,
+            ignoreLocation: true,
+          })
         : null,
     [entries],
   );
