@@ -17,13 +17,13 @@ export const QUIZ_CATEGORIES: QuizCategoryMeta[] = [
     id: "officeholders",
     label: "Officeholders",
     description: "Governors and legislators.",
-    enabled: false,
+    enabled: true,
   },
   {
     id: "midterms",
     label: "2026 Midterms",
     description: "This cycle's candidates.",
-    enabled: false,
+    enabled: true,
   },
   { id: "sports", label: "Sports", description: "Pro and college teams.", enabled: false },
   {

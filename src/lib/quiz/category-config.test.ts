@@ -6,17 +6,20 @@ describe("QUIZ_CATEGORIES", () => {
     expect(QUIZ_CATEGORIES).toHaveLength(5);
   });
 
-  it("has geography enabled and every other category disabled", () => {
-    const geography = QUIZ_CATEGORIES.find((c) => c.id === "geography");
-    expect(geography?.enabled).toBe(true);
-    const others = QUIZ_CATEGORIES.filter((c) => c.id !== "geography");
-    expect(others.every((c) => c.enabled === false)).toBe(true);
+  it("has geography, officeholders, and midterms enabled; sports and mashups still disabled", () => {
+    const byId = new Map(QUIZ_CATEGORIES.map((c) => [c.id, c.enabled]));
+    expect(byId.get("geography")).toBe(true);
+    expect(byId.get("officeholders")).toBe(true);
+    expect(byId.get("midterms")).toBe(true);
+    expect(byId.get("sports")).toBe(false);
+    expect(byId.get("mashups")).toBe(false);
   });
 });
 
 describe("getQuizCategory", () => {
   it("returns the matching category for a known, enabled id", () => {
-    expect(getQuizCategory("geography")?.id).toBe("geography");
+    expect(getQuizCategory("officeholders")?.id).toBe("officeholders");
+    expect(getQuizCategory("midterms")?.id).toBe("midterms");
   });
 
   it("returns null for a known but disabled id", () => {
