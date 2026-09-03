@@ -6,12 +6,12 @@ describe("QUIZ_CATEGORIES", () => {
     expect(QUIZ_CATEGORIES).toHaveLength(5);
   });
 
-  it("has geography, officeholders, and midterms enabled; sports and mashups still disabled", () => {
+  it("has geography, officeholders, midterms, and sports enabled; mashups still disabled", () => {
     const byId = new Map(QUIZ_CATEGORIES.map((c) => [c.id, c.enabled]));
     expect(byId.get("geography")).toBe(true);
     expect(byId.get("officeholders")).toBe(true);
     expect(byId.get("midterms")).toBe(true);
-    expect(byId.get("sports")).toBe(false);
+    expect(byId.get("sports")).toBe(true);
     expect(byId.get("mashups")).toBe(false);
   });
 });
@@ -23,7 +23,7 @@ describe("getQuizCategory", () => {
   });
 
   it("returns null for a known but disabled id", () => {
-    expect(getQuizCategory("sports")).toBeNull();
+    expect(getQuizCategory("mashups")).toBeNull();
   });
 
   it("returns null for an unknown id", () => {

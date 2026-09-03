@@ -25,7 +25,7 @@ export const QUIZ_CATEGORIES: QuizCategoryMeta[] = [
     description: "This cycle's candidates.",
     enabled: true,
   },
-  { id: "sports", label: "Sports", description: "Pro and college teams.", enabled: false },
+  { id: "sports", label: "Sports", description: "Pro and college teams.", enabled: true },
   {
     id: "mashups",
     label: "Mashups",

@@ -1,4 +1,4 @@
-import { getAllStateCapitalsAndFlags, type StateFact } from "@/lib/geography-data";
+import { getAllStateCapitalsAndFlags, getAllSportsTeams, type StateFact, type SportsTeam } from "@/lib/geography-data";
 import { getAllCurrentGovernors, type GovernorFact } from "@/lib/governors-data";
 import { getAllCurrentLegislatorsWithPhoto, type LegislatorStateFact } from "@/lib/legislators-data";
 import { getSenateAndGovernorRaces } from "@/lib/races-data";
@@ -10,22 +10,25 @@ import {
   buildIncumbencyQuestions,
   type CandidateFact,
 } from "./midterms-questions";
+import {
+  buildTeamLogoQuestions,
+  buildTeamStateQuestions,
+  buildMatchingPairs,
+} from "./sports-questions";
 import type { QuizCategoryId } from "./category-config";
-import type { QuizQuestion } from "./types";
+import type { QuizQuestion, MatchingPair } from "./types";
 
 export const SESSION_LENGTH = 10;
+export const MATCHING_PAIR_COUNT = 6;
 
 type OfficeholdersPool = { governors: GovernorFact[]; legislatorsWithPhoto: LegislatorStateFact[] };
 type MidtermsPool = { candidates: CandidateFact[] };
 
 /**
  * Fetches a category's full data pool — used both to check "is there enough data to play" (see
- * getCategoryPoolSize below) and, once Start is pressed, to build the actual session. One fetch
- * per category-page visit (cached by the caller's TanStack Query key), never re-fetched per
- * question. The pool's shape differs per category (a flat array for Geography, an object of two
- * independent arrays for Officeholders, since its two question types draw from unrelated tables)
- * — callers must go through getCategoryPoolSize/buildCategorySession, never inspect the shape
- * directly.
+ * getCategoryPoolSize below) and, once Start is pressed, to build the actual session (or, for a
+ * category with a matching mode, the matching board — see buildMatchingBoard). One fetch per
+ * category-page visit (cached by the caller's TanStack Query key), never re-fetched per question.
  */
 export async function fetchCategoryPool(category: QuizCategoryId): Promise<unknown> {
   switch (category) {
@@ -44,6 +47,8 @@ export async function fetchCategoryPool(category: QuizCategoryId): Promise<unkno
       const pool: MidtermsPool = { candidates: candidateFactsFromRaces(races) };
       return pool;
     }
+    case "sports":
+      return getAllSportsTeams();
     default:
       return [];
   }
@@ -64,6 +69,8 @@ export function getCategoryPoolSize(category: QuizCategoryId, pool: unknown): nu
     }
     case "midterms":
       return (pool as MidtermsPool).candidates.length;
+    case "sports":
+      return (pool as SportsTeam[]).length;
     default:
       return 0;
   }
@@ -100,7 +107,36 @@ export function buildCategorySession(category: QuizCategoryId, pool: unknown): Q
         ...buildIncumbencyQuestions(candidates, SESSION_LENGTH - half),
       ];
     }
+    case "sports": {
+      const teams = pool as SportsTeam[];
+      return [
+        ...buildTeamLogoQuestions(teams, half),
+        ...buildTeamStateQuestions(teams, SESSION_LENGTH - half),
+      ];
+    }
     default:
       throw new Error(`No quiz engine registered for category "${category}"`);
+  }
+}
+
+/** Whether this category offers a matching-pairs mode alongside its normal 10-question round. */
+export function categoryHasMatchingMode(category: QuizCategoryId): boolean {
+  return category === "sports";
+}
+
+/**
+ * Builds a matching-pairs board from an already-fetched pool — same `pool` shape
+ * fetchCategoryPool returned for this category, reused rather than a second fetch. Only called
+ * for a category categoryHasMatchingMode() confirms has this mode.
+ */
+export function buildMatchingBoard(category: QuizCategoryId, pool: unknown): MatchingPair[] {
+  switch (category) {
+    case "sports": {
+      const teams = pool as SportsTeam[];
+      const available = teams.filter((t) => t.logoUrl !== null).length;
+      return buildMatchingPairs(teams, Math.min(MATCHING_PAIR_COUNT, available));
+    }
+    default:
+      throw new Error(`No matching board registered for category "${category}"`);
   }
 }
