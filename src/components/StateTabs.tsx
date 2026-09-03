@@ -432,36 +432,41 @@ function CollegeProgramGroup({
   if (programs.length === 0) return null;
   return (
     <CollapsibleGroup title={title} count={programs.length}>
-      <ul className="flex flex-col gap-1">
-        {programs.map((program) => (
-          <li key={program.id} className="flex items-center gap-2">
-            {/* Fixed-width slot even when a program has no logo (a real, expected gap for some
-                smaller schools — see backfillLogoAndBio's comment in _wikipedia.mjs) so rows stay
-                aligned, same reasoning SearchOverlay's photo placeholder already established. */}
-            <span className="flex h-5 w-5 shrink-0 items-center justify-center">
-              {program.logoUrl && (
-                // eslint-disable-next-line @next/next/no-img-element -- external Wikimedia URL, same convention as photo_url elsewhere
-                <img src={program.logoUrl} alt="" className="max-h-5 max-w-5 object-contain" />
-              )}
-            </span>
-            <Link href={`${hrefBase}/${program.id}`} className="link-accent">
-              {program.school}
-              {program.nickname && (
-                <>
-                  {" "}
-                  <strong className="font-semibold">{program.nickname}</strong>
-                </>
-              )}
-            </Link>{" "}
-            {program.conference && (
-              <span className="text-xs font-medium uppercase tracking-wide text-muted">
-                {program.conference}
+      {/* overflow-x-auto (+ overflow-y-hidden to avoid the unset-y-becomes-auto trap, per
+          CLAUDE.md's horizontally-scrolling-content convention) so a long name/conference/city
+          combo scrolls within its own row instead of wrapping to a second line. */}
+      <div className="overflow-x-auto overflow-y-hidden">
+        <ul className="flex flex-col gap-2">
+          {programs.map((program) => (
+            <li key={program.id} className="flex items-center gap-2 whitespace-nowrap">
+              {/* Fixed-width slot even when a program has no logo (a real, expected gap for some
+                  smaller schools — see backfillLogoAndBio's comment in _wikipedia.mjs) so rows stay
+                  aligned, same reasoning SearchOverlay's photo placeholder already established. */}
+              <span className="flex h-5 w-5 shrink-0 items-center justify-center">
+                {program.logoUrl && (
+                  // eslint-disable-next-line @next/next/no-img-element -- external Wikimedia URL, same convention as photo_url elsewhere
+                  <img src={program.logoUrl} alt="" className="max-h-5 max-w-5 object-contain" />
+                )}
               </span>
-            )}{" "}
-            <span className="text-muted">({program.cityName})</span>
-          </li>
-        ))}
-      </ul>
+              <Link href={`${hrefBase}/${program.id}`} className="link-accent">
+                {program.school}
+                {program.nickname && (
+                  <>
+                    {" "}
+                    <strong className="font-semibold">{program.nickname}</strong>
+                  </>
+                )}
+              </Link>
+              {program.conference && (
+                <span className="rounded bg-seal-soft px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-seal">
+                  {program.conference}
+                </span>
+              )}
+              <span className="text-muted">({program.cityName})</span>
+            </li>
+          ))}
+        </ul>
+      </div>
     </CollapsibleGroup>
   );
 }
@@ -548,22 +553,24 @@ function GeographyTab({
           <div>
             {proLeagueGroups.map((group) => (
               <CollapsibleGroup key={group.league} title={group.league} count={group.teams.length}>
-                <ul className="flex flex-col gap-1">
-                  {group.teams.map((team) => (
-                    <li key={team.id} className="flex items-center gap-2">
-                      <span className="flex h-5 w-5 shrink-0 items-center justify-center">
-                        {team.logoUrl && (
-                          // eslint-disable-next-line @next/next/no-img-element -- external Wikimedia URL, same convention as photo_url elsewhere
-                          <img src={team.logoUrl} alt="" className="max-h-5 max-w-5 object-contain" />
-                        )}
-                      </span>
-                      <Link href={`/team/${team.id}`} className="link-accent">
-                        {team.name}
-                      </Link>{" "}
-                      <span className="text-muted">({team.cityName})</span>
-                    </li>
-                  ))}
-                </ul>
+                <div className="overflow-x-auto overflow-y-hidden">
+                  <ul className="flex flex-col gap-2">
+                    {group.teams.map((team) => (
+                      <li key={team.id} className="flex items-center gap-2 whitespace-nowrap">
+                        <span className="flex h-5 w-5 shrink-0 items-center justify-center">
+                          {team.logoUrl && (
+                            // eslint-disable-next-line @next/next/no-img-element -- external Wikimedia URL, same convention as photo_url elsewhere
+                            <img src={team.logoUrl} alt="" className="max-h-5 max-w-5 object-contain" />
+                          )}
+                        </span>
+                        <Link href={`/team/${team.id}`} className="link-accent">
+                          {team.name}
+                        </Link>
+                        <span className="text-muted">({team.cityName})</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               </CollapsibleGroup>
             ))}
             <CollegeProgramGroup
