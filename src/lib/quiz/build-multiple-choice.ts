@@ -14,8 +14,14 @@ export function buildMultipleChoiceQuestion<T>(
     getPrompt: (subject: T) => string;
     getOptionText: (item: T) => string;
     getImageUrl?: (subject: T) => string | null;
+    // Defaults to 4 (every Geography/Officeholders question uses this many). A question type
+    // whose real answer space has fewer than 4 distinct values (e.g. political party —
+    // realistically only 2-3 values nationwide) passes a smaller count instead of forcing a
+    // doomed 4-option question that can never find enough real distractors.
+    optionCount?: number;
   },
 ): MultipleChoiceQuestion {
+  const optionCount = opts.optionCount ?? 4;
   const correctText = opts.getOptionText(subject);
 
   const seen = new Set<string>();
@@ -27,8 +33,8 @@ export function buildMultipleChoiceQuestion<T>(
     distractorCandidates.push(text);
   }
 
-  const distractors = pickRandom(distractorCandidates, 3);
-  const options = pickRandom([correctText, ...distractors], 4);
+  const distractors = pickRandom(distractorCandidates, optionCount - 1);
+  const options = pickRandom([correctText, ...distractors], optionCount);
 
   return {
     format: "multiple-choice",

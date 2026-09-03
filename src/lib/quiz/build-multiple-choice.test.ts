@@ -92,4 +92,29 @@ describe("buildMultipleChoiceQuestion", () => {
     });
     expect(new Set(q.options).size).toBe(4);
   });
+
+  it("supports a smaller option count via optionCount", () => {
+    const smallPool: Item[] = [
+      { id: "a", label: "Alpha" },
+      { id: "b", label: "Beta" },
+    ];
+    const q = buildMultipleChoiceQuestion(smallPool[0], smallPool, {
+      getPrompt: () => "prompt",
+      getOptionText: (item) => item.label,
+      optionCount: 2,
+    });
+    expect(q.options).toHaveLength(2);
+    expect(q.options[q.correctIndex]).toBe("Alpha");
+  });
+
+  it("still throws when the pool has fewer distinct texts than the requested optionCount", () => {
+    const onlyOne: Item[] = [{ id: "a", label: "Alpha" }];
+    expect(() =>
+      buildMultipleChoiceQuestion(onlyOne[0], onlyOne, {
+        getPrompt: () => "prompt",
+        getOptionText: (item) => item.label,
+        optionCount: 2,
+      }),
+    ).toThrow();
+  });
 });
