@@ -79,7 +79,7 @@ export default async function CandidatePage(props: PageProps<"/candidate/[id]">)
       </div>
 
       <footer className="mt-6 py-6 text-center">
-        <SyncFreshnessNote label="This candidate" syncedAt={candidate.lastSyncedAt} />
+        <SyncFreshnessNote label="This candidate" syncedAt={candidate.lastSyncedAt} possessive />
       </footer>
     </div>
   );

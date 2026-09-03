@@ -65,7 +65,7 @@ export function TeamProfile({ team, syncLabel }: { team: TeamProfileData; syncLa
       </div>
 
       <footer className="mt-6 py-6 text-center">
-        <SyncFreshnessNote label={syncLabel} syncedAt={team.lastSyncedAt} />
+        <SyncFreshnessNote label={syncLabel} syncedAt={team.lastSyncedAt} possessive />
       </footer>
     </div>
   );

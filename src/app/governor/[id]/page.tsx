@@ -177,7 +177,7 @@ export default async function GovernorPage(props: PageProps<"/governor/[id]">) {
       </div>
 
       <footer className="mt-6 py-6 text-center">
-        <SyncFreshnessNote label="This governor" syncedAt={profile.lastSyncedAt} />
+        <SyncFreshnessNote label="This governor" syncedAt={profile.lastSyncedAt} possessive />
       </footer>
     </div>
   );

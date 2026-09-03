@@ -137,7 +137,7 @@ export default async function LegislatorPage(props: PageProps<"/legislator/[id]"
       </div>
 
       <footer className="mt-6 py-6 text-center">
-        <SyncFreshnessNote label="This legislator" syncedAt={legislator.lastSyncedAt} />
+        <SyncFreshnessNote label="This legislator" syncedAt={legislator.lastSyncedAt} possessive />
       </footer>
     </div>
   );

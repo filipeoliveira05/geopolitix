@@ -40,7 +40,15 @@ function freshnessTier(date: Date): { colorClassName: string; pulse: boolean; de
   return { colorClassName: "bg-muted", pulse: false, description: "Synced over a week ago" };
 }
 
-function FreshnessItem({ label, syncedAt }: { label: string; syncedAt: Date }) {
+function FreshnessItem({
+  label,
+  syncedAt,
+  possessive = false,
+}: {
+  label: string;
+  syncedAt: Date;
+  possessive?: boolean;
+}) {
   const { colorClassName, pulse, description } = freshnessTier(syncedAt);
   const { value, suffix } = timeAgo(syncedAt);
   return (
@@ -49,7 +57,8 @@ function FreshnessItem({ label, syncedAt }: { label: string; syncedAt: Date }) {
         className={`mr-1.5 inline-block h-1.5 w-1.5 rounded-full ${colorClassName} ${pulse ? "animate-pulse" : ""}`}
         title={description}
       />
-      {label} synced{"\u00A0"}
+      {possessive ? `${label}'s info was synced` : `${label} synced`}
+      {"\u00A0"}
       {value ? (
         <>
           <span className="font-mono">{value}</span>{"\u00A0"}
@@ -66,12 +75,19 @@ export function SyncFreshnessNote({
   label,
   syncedAt,
   className = "",
+  possessive = false,
 }: {
   label: string;
   syncedAt: Date | null;
   className?: string;
+  // "This candidate's info was synced Y ago" instead of "This candidate synced Y ago" — an
+  // individual entity page (candidate/governor/legislator/team/college program) is describing
+  // when that entity's DATA was synced, not claiming the entity itself was "synced." A job-level
+  // note (e.g. midterms-2026's "Race data synced Y ago") reads fine either way but keeps the
+  // plain phrasing as the default, since "Race data's info" is redundant.
+  possessive?: boolean;
 }) {
-  return <SyncFreshnessRow items={[{ label, syncedAt }]} className={className} />;
+  return <SyncFreshnessRow items={[{ label, syncedAt, possessive }]} className={className} />;
 }
 
 // Above this many items, showing every one inline at once (a real problem on /state/[abbr] once
@@ -136,19 +152,25 @@ export function SyncFreshnessRow({
   items,
   className = "",
 }: {
-  items: { label: string; syncedAt: Date | null }[];
+  items: { label: string; syncedAt: Date | null; possessive?: boolean }[];
   className?: string;
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const known = items.filter(
-    (item): item is { label: string; syncedAt: Date } => item.syncedAt !== null,
+    (item): item is { label: string; syncedAt: Date; possessive?: boolean } =>
+      item.syncedAt !== null,
   );
   if (known.length === 0) return null;
 
   const itemRow = (
     <p className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted">
       {known.map((item) => (
-        <FreshnessItem key={item.label} label={item.label} syncedAt={item.syncedAt} />
+        <FreshnessItem
+          key={item.label}
+          label={item.label}
+          syncedAt={item.syncedAt}
+          possessive={item.possessive}
+        />
       ))}
     </p>
   );

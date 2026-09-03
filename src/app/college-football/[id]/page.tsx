@@ -31,7 +31,7 @@ export default async function CollegeFootballProgramPage(
         wikipediaTitle: program.wikipediaTitle,
         lastSyncedAt: program.lastSyncedAt,
       }}
-      syncLabel="This program"
+      syncLabel="This college team"
     />
   );
 }
