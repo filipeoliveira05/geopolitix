@@ -2,14 +2,15 @@
 
 import { useEffect } from "react";
 import { useQuizSession } from "@/lib/quiz/useQuizSession";
-import type { MultipleChoiceQuestion, AnsweredQuestion } from "@/lib/quiz/types";
+import type { QuizQuestion, AnsweredQuestion } from "@/lib/quiz/types";
 import { MultipleChoiceQuestionView } from "./MultipleChoiceQuestionView";
+import { MapClickQuestionView } from "./MapClickQuestionView";
 
 export function QuestionSession({
   questions,
   onComplete,
 }: {
-  questions: MultipleChoiceQuestion[];
+  questions: QuizQuestion[];
   onComplete: (answers: AnsweredQuestion[]) => void;
 }) {
   const session = useQuizSession(questions);
@@ -21,17 +22,27 @@ export function QuestionSession({
 
   if (session.isComplete || !session.currentQuestion) return null;
 
+  const hasAnswered = session.chosenIndex !== null || session.mapClickAnswer !== null;
+
   return (
     <div className="mx-auto w-full max-w-lg">
       <p className="mb-2 text-sm text-muted">
         Question {session.index + 1} of {session.total} — Score: {session.score}
       </p>
-      <MultipleChoiceQuestionView
-        question={session.currentQuestion}
-        chosenIndex={session.chosenIndex}
-        onAnswer={session.answer}
-      />
-      {session.chosenIndex !== null && (
+      {session.currentQuestion.format === "multiple-choice" ? (
+        <MultipleChoiceQuestionView
+          question={session.currentQuestion}
+          chosenIndex={session.chosenIndex}
+          onAnswer={session.answerMultipleChoice}
+        />
+      ) : (
+        <MapClickQuestionView
+          question={session.currentQuestion}
+          clickedStateId={session.mapClickAnswer}
+          onAnswer={session.answerMapClick}
+        />
+      )}
+      {hasAnswered && (
         <button
           onClick={session.next}
           className="mt-4 rounded bg-seal px-4 py-2 text-sm font-medium text-white"
