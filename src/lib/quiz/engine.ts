@@ -16,7 +16,7 @@ import {
   buildMatchingPairs,
 } from "./sports-questions";
 import { countOddOneOutEligibleStates, buildOddOneOutQuestions } from "./mashups-questions";
-import { pickRandom } from "./random";
+import { pickRandom, randomSplit } from "./random";
 import type { QuizCategoryId } from "./category-config";
 import type { QuizQuestion, MultipleChoiceQuestion, MatchingPair } from "./types";
 
@@ -112,39 +112,53 @@ export function getCategoryPoolSize(category: QuizCategoryId, pool: unknown): nu
  * Turns an already-fetched pool into one session's worth of questions. `pool` must be exactly
  * what `fetchCategoryPool` returned for this same category — each switch branch casts it back to
  * the concrete shape its generators expect.
+ *
+ * Each question type's count is randomized per session via `randomSplit` (not a fixed
+ * even/thirds division), and the combined result is shuffled (`pickRandom(qs, qs.length)`, the
+ * same full-shuffle idiom `buildSpeedRoundPool` already used below) — otherwise every session
+ * showed its question types in the same fixed blocks in the same order (e.g. Geography always
+ * ran all its capital questions, then all its flag questions, then all its map-click questions),
+ * which reads as an obviously hardcoded pattern to a repeat player and won't scale as more
+ * question types get added per category.
  */
 export function buildCategorySession(category: QuizCategoryId, pool: unknown): QuizQuestion[] {
-  const half = Math.floor(SESSION_LENGTH / 2);
   switch (category) {
     case "geography": {
       const facts = pool as StateFact[];
-      const third = Math.floor(SESSION_LENGTH / 3);
-      return [
-        ...buildCapitalQuestions(facts, third),
-        ...buildFlagQuestions(facts, third),
-        ...buildMapClickQuestions(facts, SESSION_LENGTH - third * 2),
+      const [capitalCount, flagCount, mapClickCount] = randomSplit(SESSION_LENGTH, 3);
+      const questions: QuizQuestion[] = [
+        ...buildCapitalQuestions(facts, capitalCount),
+        ...buildFlagQuestions(facts, flagCount),
+        ...buildMapClickQuestions(facts, mapClickCount),
       ];
+      return pickRandom(questions, questions.length);
     }
     case "officeholders": {
       const { governors, legislatorsWithPhoto } = pool as OfficeholdersPool;
-      return [
-        ...buildGovernorQuestions(governors, half),
-        ...buildLegislatorPhotoQuestions(legislatorsWithPhoto, SESSION_LENGTH - half),
+      const [governorCount, legislatorCount] = randomSplit(SESSION_LENGTH, 2);
+      const questions: QuizQuestion[] = [
+        ...buildGovernorQuestions(governors, governorCount),
+        ...buildLegislatorPhotoQuestions(legislatorsWithPhoto, legislatorCount),
       ];
+      return pickRandom(questions, questions.length);
     }
     case "midterms": {
       const { candidates } = pool as MidtermsPool;
-      return [
-        ...buildCandidatePartyQuestions(candidates, half),
-        ...buildIncumbencyQuestions(candidates, SESSION_LENGTH - half),
+      const [partyCount, incumbencyCount] = randomSplit(SESSION_LENGTH, 2);
+      const questions: QuizQuestion[] = [
+        ...buildCandidatePartyQuestions(candidates, partyCount),
+        ...buildIncumbencyQuestions(candidates, incumbencyCount),
       ];
+      return pickRandom(questions, questions.length);
     }
     case "sports": {
       const teams = pool as SportsTeam[];
-      return [
-        ...buildTeamLogoQuestions(teams, half),
-        ...buildTeamStateQuestions(teams, SESSION_LENGTH - half),
+      const [logoCount, teamStateCount] = randomSplit(SESSION_LENGTH, 2);
+      const questions: QuizQuestion[] = [
+        ...buildTeamLogoQuestions(teams, logoCount),
+        ...buildTeamStateQuestions(teams, teamStateCount),
       ];
+      return pickRandom(questions, questions.length);
     }
     case "mashups": {
       const { sports } = pool as MashupsPool;

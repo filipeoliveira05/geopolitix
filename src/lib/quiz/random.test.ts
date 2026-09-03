@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { pickRandom } from "./random";
+import { pickRandom, randomSplit } from "./random";
 
 describe("pickRandom", () => {
   it("returns the requested count of items", () => {
@@ -35,5 +35,51 @@ describe("pickRandom", () => {
     const copy = [...items];
     pickRandom(items, 3);
     expect(items).toEqual(copy);
+  });
+});
+
+describe("randomSplit", () => {
+  it("returns parts that sum to total", () => {
+    for (let i = 0; i < 50; i++) {
+      const counts = randomSplit(10, 3);
+      expect(counts.reduce((a, b) => a + b, 0)).toBe(10);
+    }
+  });
+
+  it("returns the requested number of parts", () => {
+    expect(randomSplit(10, 3)).toHaveLength(3);
+  });
+
+  it("gives every part at least 1", () => {
+    for (let i = 0; i < 50; i++) {
+      const counts = randomSplit(10, 3);
+      for (const count of counts) {
+        expect(count).toBeGreaterThanOrEqual(1);
+      }
+    }
+  });
+
+  it("varies the split across calls (not a fixed even/thirds division)", () => {
+    const splits = new Set<string>();
+    for (let i = 0; i < 30; i++) {
+      splits.add(randomSplit(10, 3).join(","));
+    }
+    expect(splits.size).toBeGreaterThan(1);
+  });
+
+  it("returns [total] for a single part", () => {
+    expect(randomSplit(7, 1)).toEqual([7]);
+  });
+
+  it("returns all 1s when total equals parts", () => {
+    expect(randomSplit(3, 3)).toEqual([1, 1, 1]);
+  });
+
+  it("throws when total is less than parts", () => {
+    expect(() => randomSplit(2, 3)).toThrow();
+  });
+
+  it("throws when parts is less than 1", () => {
+    expect(() => randomSplit(5, 0)).toThrow();
   });
 });
