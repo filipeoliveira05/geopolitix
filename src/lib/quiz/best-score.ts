@@ -39,3 +39,35 @@ export function updateBestScoreIfHigher(
     return null;
   }
 }
+
+export type BestMatching = { mistakes: number; date: string };
+
+function matchingStorageKey(category: QuizCategoryId): string {
+  return `geopolitix:quiz-matching-best:${category}`;
+}
+
+export function getBestMatching(category: QuizCategoryId): BestMatching | null {
+  try {
+    const raw = localStorage.getItem(matchingStorageKey(category));
+    return raw ? (JSON.parse(raw) as BestMatching) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Same "write only if it wins" shape as updateBestScoreIfHigher, just inverted — fewer mistakes
+ * is better here, not a higher score. */
+export function updateBestMatchingIfLower(
+  category: QuizCategoryId,
+  mistakes: number,
+): BestMatching | null {
+  try {
+    const existing = getBestMatching(category);
+    if (existing && existing.mistakes <= mistakes) return existing;
+    const next: BestMatching = { mistakes, date: new Date().toISOString() };
+    localStorage.setItem(matchingStorageKey(category), JSON.stringify(next));
+    return next;
+  } catch {
+    return null;
+  }
+}
