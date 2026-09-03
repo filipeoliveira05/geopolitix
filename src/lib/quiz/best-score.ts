@@ -71,3 +71,35 @@ export function updateBestMatchingIfLower(
     return null;
   }
 }
+
+function speedRoundStorageKey(category: QuizCategoryId): string {
+  return `geopolitix:quiz-speed-best:${category}`;
+}
+
+export function getBestSpeedRound(category: QuizCategoryId): BestScore | null {
+  try {
+    const raw = localStorage.getItem(speedRoundStorageKey(category));
+    return raw ? (JSON.parse(raw) as BestScore) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Same "write only if it wins" shape as updateBestScoreIfHigher, under a separate storage-key
+ * prefix — a speed round's score (routinely 15-30+ across its larger shuffled pool) is not
+ * comparable to the regular round's own max of 10, so the two must never share a key. */
+export function updateBestSpeedRoundIfHigher(
+  category: QuizCategoryId,
+  score: number,
+  total: number,
+): BestScore | null {
+  try {
+    const existing = getBestSpeedRound(category);
+    if (existing && existing.score >= score) return existing;
+    const next: BestScore = { score, total, date: new Date().toISOString() };
+    localStorage.setItem(speedRoundStorageKey(category), JSON.stringify(next));
+    return next;
+  } catch {
+    return null;
+  }
+}
