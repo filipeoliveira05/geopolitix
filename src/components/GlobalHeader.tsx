@@ -56,7 +56,7 @@ export function GlobalHeader() {
           <Link href="/midterms-2026" className="text-muted hover:text-seal">
             Midterms 2026
           </Link>
-          <Link href="/quiz" className="hidden text-muted hover:text-seal sm:inline">
+          <Link href="/quiz" className="text-muted hover:text-seal">
             Quiz
           </Link>
           <button
