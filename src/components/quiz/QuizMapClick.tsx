@@ -88,6 +88,13 @@ export function QuizMapClick({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
   const onSelectStateRef = useRef(onSelectState);
+  // Tracks whether the underlying MapLibre instance has already been torn down by the mount
+  // effect's own cleanup (map.remove()) — caught live: on unmount, the feedback effect's cleanup
+  // below can run against a `map` that's already been removed (its internal style/source manager
+  // torn down), and calling setFeatureState on it throws "Cannot read properties of undefined"
+  // instead of silently no-op-ing. This flag lets that cleanup skip itself once removal has
+  // already happened, regardless of which effect's cleanup React happens to run first.
+  const removedRef = useRef(false);
 
   useEffect(() => {
     onSelectStateRef.current = onSelectState;
@@ -95,6 +102,13 @@ export function QuizMapClick({
 
   useEffect(() => {
     if (!containerRef.current) return;
+    // Reset here, not just set to true in this same effect's own cleanup below — React's
+    // development-mode Strict Mode double-invokes this effect once on initial mount (mount →
+    // cleanup → mount again), and without resetting on the second real mount, removedRef stays
+    // `true` forever, permanently no-oping the feedback effect's cleanup below from then on.
+    // Caught live: every map-click question after the first left its coloring uncleared on the
+    // next question, since the "already removed" guard was skipping every real cleanup.
+    removedRef.current = false;
     const map = new MapLibreMap({
       container: containerRef.current,
       style: EMPTY_STYLE,
@@ -147,6 +161,7 @@ export function QuizMapClick({
     });
 
     return () => {
+      removedRef.current = true;
       map.remove();
       mapRef.current = null;
     };
@@ -166,6 +181,7 @@ export function QuizMapClick({
       map.setFeatureState({ source: SOURCE_ID, id: feedback.clickedStateId }, { result: "wrong-click" });
     }
     return () => {
+      if (removedRef.current) return; // map already torn down — nothing to clean up
       map.setFeatureState({ source: SOURCE_ID, id: feedback.targetStateId }, { result: null });
       if (!feedback.correct && feedback.clickedStateId !== feedback.targetStateId) {
         map.setFeatureState({ source: SOURCE_ID, id: feedback.clickedStateId }, { result: null });
