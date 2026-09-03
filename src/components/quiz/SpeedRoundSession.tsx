@@ -31,25 +31,30 @@ export function SpeedRoundSession({
     answersRef.current = answers;
   }, [answers]);
 
-  // Set up once on mount — reads the latest answers via answersRef rather than depending on
-  // `answers` directly, so the interval itself is never torn down and recreated mid-countdown.
+  // Set up once on mount — the updater only ever computes the next second count, nothing else;
+  // calling onComplete (a different component's setState) from inside it is a real React rules-
+  // of-hooks violation ("Cannot update a component while rendering a different component"),
+  // caught live via the exact warning text plus an actually-premature round end during
+  // verification — the completion side effect below is a separate effect for that reason, not
+  // just a style preference.
   useEffect(() => {
     const interval = setInterval(() => {
-      setSecondsLeft((s) => {
-        if (s <= 1) {
-          clearInterval(interval);
-          if (!endedRef.current) {
-            endedRef.current = true;
-            onComplete(answersRef.current);
-          }
-          return 0;
-        }
-        return s - 1;
-      });
+      setSecondsLeft((s) => (s > 1 ? s - 1 : 0));
     }, 1000);
     return () => clearInterval(interval);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- deliberately runs once; onComplete/answers are read via refs, not reactive deps
   }, []);
+
+  // Fires exactly once when the countdown reaches 0 — a proper effect (post-render), not a
+  // state-updater side effect. onComplete/answersRef are read via refs/closure rather than
+  // listed as deps, so an unrelated re-render (e.g. a new onComplete identity from the parent)
+  // never re-fires this.
+  useEffect(() => {
+    if (secondsLeft === 0 && !endedRef.current) {
+      endedRef.current = true;
+      onComplete(answersRef.current);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only secondsLeft hitting 0 should trigger this; onComplete/answersRef are refs/closures, not reactive deps
+  }, [secondsLeft]);
 
   const currentQuestion = questions[index] ?? null;
 
