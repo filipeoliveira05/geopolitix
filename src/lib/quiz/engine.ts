@@ -2,7 +2,7 @@ import { getAllStateCapitalsAndFlags, type StateFact } from "@/lib/geography-dat
 import { getAllCurrentGovernors, type GovernorFact } from "@/lib/governors-data";
 import { getAllCurrentLegislatorsWithPhoto, type LegislatorStateFact } from "@/lib/legislators-data";
 import { getSenateAndGovernorRaces } from "@/lib/races-data";
-import { buildCapitalQuestions, buildFlagQuestions } from "./geography-questions";
+import { buildCapitalQuestions, buildFlagQuestions, buildMapClickQuestions } from "./geography-questions";
 import { buildGovernorQuestions, buildLegislatorPhotoQuestions } from "./officeholders-questions";
 import {
   candidateFactsFromRaces,
@@ -79,9 +79,11 @@ export function buildCategorySession(category: QuizCategoryId, pool: unknown): Q
   switch (category) {
     case "geography": {
       const facts = pool as StateFact[];
+      const third = Math.floor(SESSION_LENGTH / 3);
       return [
-        ...buildCapitalQuestions(facts, half),
-        ...buildFlagQuestions(facts, SESSION_LENGTH - half),
+        ...buildCapitalQuestions(facts, third),
+        ...buildFlagQuestions(facts, third),
+        ...buildMapClickQuestions(facts, SESSION_LENGTH - third * 2),
       ];
     }
     case "officeholders": {

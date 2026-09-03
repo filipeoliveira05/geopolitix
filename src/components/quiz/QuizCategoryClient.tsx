@@ -4,14 +4,14 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { QuizCategoryMeta } from "@/lib/quiz/category-config";
 import { fetchCategoryPool, buildCategorySession, getCategoryPoolSize } from "@/lib/quiz/engine";
-import type { MultipleChoiceQuestion, AnsweredQuestion } from "@/lib/quiz/types";
+import type { QuizQuestion, AnsweredQuestion } from "@/lib/quiz/types";
 import { QuizStartScreen } from "./QuizStartScreen";
 import { QuestionSession } from "./QuestionSession";
 import { QuizResultsScreen } from "./QuizResultsScreen";
 
 type Phase =
   | { name: "start" }
-  | { name: "session"; questions: MultipleChoiceQuestion[] }
+  | { name: "session"; questions: QuizQuestion[] }
   | { name: "results"; answers: AnsweredQuestion[] };
 
 export function QuizCategoryClient({ category }: { category: QuizCategoryMeta }) {
@@ -23,7 +23,7 @@ export function QuizCategoryClient({ category }: { category: QuizCategoryMeta })
 
   function start() {
     if (!pool) return;
-    const questions = buildCategorySession(category.id, pool) as MultipleChoiceQuestion[];
+    const questions = buildCategorySession(category.id, pool);
     setPhase({ name: "session", questions });
   }
 

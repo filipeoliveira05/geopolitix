@@ -48,7 +48,11 @@ export function QuizResultsScreen({
             {missed.map((a, i) => (
               <li key={i} className="text-sm text-muted">
                 {a.question.prompt}{" "}
-                <span className="text-ink">{a.question.options[a.question.correctIndex]}</span>
+                <span className="text-ink">
+                  {a.format === "multiple-choice"
+                    ? a.question.options[a.question.correctIndex]
+                    : a.question.targetStateName}
+                </span>
               </li>
             ))}
           </ul>
