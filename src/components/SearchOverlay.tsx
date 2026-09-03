@@ -105,7 +105,7 @@ export function SearchOverlay({ onClose, entries, isLoading }: SearchOverlayProp
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={handleInputKeyDown}
-          placeholder="Search legislators, governors, candidates, states…"
+          placeholder="Search legislators, governors, candidates, states, teams, college programs…"
           className="w-full border-b border-rule bg-transparent px-4 py-3 text-sm text-ink outline-none placeholder:text-muted"
         />
 

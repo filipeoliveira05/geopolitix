@@ -11,7 +11,14 @@ import { getAllStates } from "./states";
 // searchable population (~15,700 rows) is small enough to just hold in
 // memory for the session.
 
-export type SearchEntryType = "legislator" | "governor" | "candidate" | "state";
+export type SearchEntryType =
+  | "legislator"
+  | "governor"
+  | "candidate"
+  | "state"
+  | "team"
+  | "college-football"
+  | "college-basketball";
 
 export type SearchEntry = {
   id: string;
@@ -172,6 +179,81 @@ async function fetchCandidateEntries(): Promise<SearchEntry[]> {
   }));
 }
 
+type SportsTeamRow = {
+  id: string;
+  name: string;
+  league: string;
+  city_name: string;
+  state_id: string;
+  logo_url: string | null;
+};
+
+async function fetchSportsTeamEntries(): Promise<SearchEntry[]> {
+  const teams = await selectAllPages<SportsTeamRow>(() =>
+    supabase.from("sports_teams").select("id, name, league, city_name, state_id, logo_url"),
+  );
+  return teams.map((t) => ({
+    id: t.id,
+    name: t.name,
+    type: "team" as const,
+    subtitle: `${t.league} · ${t.city_name}, ${t.state_id}`,
+    href: `/team/${t.id}`,
+    photoUrl: t.logo_url,
+  }));
+}
+
+type CollegeProgramRow = {
+  id: string;
+  school: string;
+  nickname: string | null;
+  conference: string | null;
+  city_name: string;
+  state_id: string;
+  logo_url: string | null;
+};
+
+// Shared by both college tables — same row shape, only the type/href/label differ. Search name
+// includes the nickname (e.g. "Virginia Cavaliers", not just "Virginia") so a mascot-only query
+// like "Cavaliers" matches, same reasoning CollegeProgramGroup's display line already uses.
+function collegeProgramEntries(
+  programs: CollegeProgramRow[],
+  type: "college-football" | "college-basketball",
+  hrefBase: "/college-football" | "/college-basketball",
+  label: string,
+): SearchEntry[] {
+  return programs.map((p) => ({
+    id: p.id,
+    name: [p.school, p.nickname].filter(Boolean).join(" "),
+    type,
+    subtitle: `${label}${p.conference ? " · " + p.conference : ""} · ${p.city_name}, ${p.state_id}`,
+    href: `${hrefBase}/${p.id}`,
+    photoUrl: p.logo_url,
+  }));
+}
+
+async function fetchCollegeFootballEntries(): Promise<SearchEntry[]> {
+  const programs = await selectAllPages<CollegeProgramRow>(() =>
+    supabase
+      .from("college_football_programs")
+      .select("id, school, nickname, conference, city_name, state_id, logo_url"),
+  );
+  return collegeProgramEntries(programs, "college-football", "/college-football", "NCAA Football");
+}
+
+async function fetchCollegeBasketballEntries(): Promise<SearchEntry[]> {
+  const programs = await selectAllPages<CollegeProgramRow>(() =>
+    supabase
+      .from("college_basketball_programs")
+      .select("id, school, nickname, conference, city_name, state_id, logo_url"),
+  );
+  return collegeProgramEntries(
+    programs,
+    "college-basketball",
+    "/college-basketball",
+    "NCAA Basketball",
+  );
+}
+
 // Free — getAllStates() is derived from the map's own local geometry data
 // (us-atlas), no Supabase round trip needed. Flag URL follows the same
 // predictable WPR pattern geography.mjs syncs from, so it needs no fetch
@@ -188,10 +270,28 @@ function buildStateEntries(): SearchEntry[] {
 }
 
 export async function buildSearchIndex(): Promise<SearchEntry[]> {
-  const [legislatorEntries, governorEntries, candidateEntries] = await Promise.all([
+  const [
+    legislatorEntries,
+    governorEntries,
+    candidateEntries,
+    teamEntries,
+    collegeFootballEntries,
+    collegeBasketballEntries,
+  ] = await Promise.all([
     fetchLegislatorEntries(),
     fetchGovernorEntries(),
     fetchCandidateEntries(),
+    fetchSportsTeamEntries(),
+    fetchCollegeFootballEntries(),
+    fetchCollegeBasketballEntries(),
   ]);
-  return [...legislatorEntries, ...governorEntries, ...candidateEntries, ...buildStateEntries()];
+  return [
+    ...legislatorEntries,
+    ...governorEntries,
+    ...candidateEntries,
+    ...teamEntries,
+    ...collegeFootballEntries,
+    ...collegeBasketballEntries,
+    ...buildStateEntries(),
+  ];
 }
