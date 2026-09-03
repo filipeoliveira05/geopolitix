@@ -6,13 +6,13 @@ describe("QUIZ_CATEGORIES", () => {
     expect(QUIZ_CATEGORIES).toHaveLength(5);
   });
 
-  it("has geography, officeholders, midterms, and sports enabled; mashups still disabled", () => {
+  it("has all 5 categories enabled", () => {
     const byId = new Map(QUIZ_CATEGORIES.map((c) => [c.id, c.enabled]));
     expect(byId.get("geography")).toBe(true);
     expect(byId.get("officeholders")).toBe(true);
     expect(byId.get("midterms")).toBe(true);
     expect(byId.get("sports")).toBe(true);
-    expect(byId.get("mashups")).toBe(false);
+    expect(byId.get("mashups")).toBe(true);
   });
 });
 
@@ -22,8 +22,10 @@ describe("getQuizCategory", () => {
     expect(getQuizCategory("midterms")?.id).toBe("midterms");
   });
 
-  it("returns null for a known but disabled id", () => {
-    expect(getQuizCategory("mashups")).toBeNull();
+  it("returns the matching category for every id, now that all 5 are enabled", () => {
+    for (const id of ["geography", "officeholders", "midterms", "sports", "mashups"]) {
+      expect(getQuizCategory(id)?.id).toBe(id);
+    }
   });
 
   it("returns null for an unknown id", () => {

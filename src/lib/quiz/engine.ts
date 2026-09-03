@@ -15,20 +15,32 @@ import {
   buildTeamStateQuestions,
   buildMatchingPairs,
 } from "./sports-questions";
+import { countOddOneOutEligibleStates, buildOddOneOutQuestions } from "./mashups-questions";
+import { pickRandom } from "./random";
 import type { QuizCategoryId } from "./category-config";
-import type { QuizQuestion, MatchingPair } from "./types";
+import type { QuizQuestion, MultipleChoiceQuestion, MatchingPair } from "./types";
 
 export const SESSION_LENGTH = 10;
 export const MATCHING_PAIR_COUNT = 6;
+const SPEED_ROUND_PER_GENERATOR = 5;
 
 type OfficeholdersPool = { governors: GovernorFact[]; legislatorsWithPhoto: LegislatorStateFact[] };
 type MidtermsPool = { candidates: CandidateFact[] };
+type MashupsPool = {
+  geography: StateFact[];
+  officeholders: OfficeholdersPool;
+  midterms: MidtermsPool;
+  sports: SportsTeam[];
+};
 
 /**
  * Fetches a category's full data pool — used both to check "is there enough data to play" (see
  * getCategoryPoolSize below) and, once Start is pressed, to build the actual session (or, for a
- * category with a matching mode, the matching board — see buildMatchingBoard). One fetch per
- * category-page visit (cached by the caller's TanStack Query key), never re-fetched per question.
+ * category with a matching/speed-round mode, that mode's own board/pool — see
+ * buildMatchingBoard/buildSpeedRoundPool). One fetch per category-page visit (cached by the
+ * caller's TanStack Query key), never re-fetched per question. Mashups fetches every other
+ * category's own pool up front (not just Sports, which its 10-question round alone needs) so its
+ * speed-round mode can start instantly with zero additional fetches once the page has loaded.
  */
 export async function fetchCategoryPool(category: QuizCategoryId): Promise<unknown> {
   switch (category) {
@@ -49,6 +61,22 @@ export async function fetchCategoryPool(category: QuizCategoryId): Promise<unkno
     }
     case "sports":
       return getAllSportsTeams();
+    case "mashups": {
+      const [geography, governors, legislatorsWithPhoto, races, sports] = await Promise.all([
+        getAllStateCapitalsAndFlags(),
+        getAllCurrentGovernors(),
+        getAllCurrentLegislatorsWithPhoto(),
+        getSenateAndGovernorRaces(),
+        getAllSportsTeams(),
+      ]);
+      const pool: MashupsPool = {
+        geography,
+        officeholders: { governors, legislatorsWithPhoto },
+        midterms: { candidates: candidateFactsFromRaces(races) },
+        sports,
+      };
+      return pool;
+    }
     default:
       return [];
   }
@@ -57,7 +85,9 @@ export async function fetchCategoryPool(category: QuizCategoryId): Promise<unkno
 /**
  * How many distinct playable subjects a category's pool actually has — used by QuizStartScreen
  * to gate the Start button. For Officeholders (two independent question types, each needing its
- * own minimum) this is the SMALLER of the two pools, since a session draws from both.
+ * own minimum) this is the SMALLER of the two pools, since a session draws from both. For
+ * Mashups this is how many states have enough pro teams for an odd-one-out question — NOT a raw
+ * team count, since that's the actual constraint buildOddOneOutQuestions is subject to.
  */
 export function getCategoryPoolSize(category: QuizCategoryId, pool: unknown): number {
   switch (category) {
@@ -71,6 +101,8 @@ export function getCategoryPoolSize(category: QuizCategoryId, pool: unknown): nu
       return (pool as MidtermsPool).candidates.length;
     case "sports":
       return (pool as SportsTeam[]).length;
+    case "mashups":
+      return countOddOneOutEligibleStates((pool as MashupsPool).sports);
     default:
       return 0;
   }
@@ -114,6 +146,10 @@ export function buildCategorySession(category: QuizCategoryId, pool: unknown): Q
         ...buildTeamStateQuestions(teams, SESSION_LENGTH - half),
       ];
     }
+    case "mashups": {
+      const { sports } = pool as MashupsPool;
+      return buildOddOneOutQuestions(sports, SESSION_LENGTH);
+    }
     default:
       throw new Error(`No quiz engine registered for category "${category}"`);
   }
@@ -139,4 +175,36 @@ export function buildMatchingBoard(category: QuizCategoryId, pool: unknown): Mat
     default:
       throw new Error(`No matching board registered for category "${category}"`);
   }
+}
+
+/** Whether this category offers a timed speed-round mode alongside its normal 10-question round. */
+export function categoryHasSpeedRoundMode(category: QuizCategoryId): boolean {
+  return category === "mashups";
+}
+
+/**
+ * Builds a shuffled speed-round question pool by drawing ~SPEED_ROUND_PER_GENERATOR questions
+ * from every existing multiple-choice generator across Geography/Officeholders/Midterms/Sports
+ * (deliberately excluding map-click, which needs a persistent map ill-suited to rapid-fire
+ * answering, and matching, which isn't even a QuizQuestion). Reuses the exact same pool
+ * fetchCategoryPool already fetched for Mashups — no second fetch. Only called for a category
+ * categoryHasSpeedRoundMode() confirms has this mode.
+ */
+export function buildSpeedRoundPool(pool: unknown): MultipleChoiceQuestion[] {
+  const { geography, officeholders, midterms, sports } = pool as MashupsPool;
+  const n = SPEED_ROUND_PER_GENERATOR;
+  const combined: MultipleChoiceQuestion[] = [
+    ...buildCapitalQuestions(geography, Math.min(n, geography.length)),
+    ...buildFlagQuestions(geography, Math.min(n, geography.length)),
+    ...buildGovernorQuestions(officeholders.governors, Math.min(n, officeholders.governors.length)),
+    ...buildLegislatorPhotoQuestions(
+      officeholders.legislatorsWithPhoto,
+      Math.min(n, officeholders.legislatorsWithPhoto.length),
+    ),
+    ...buildCandidatePartyQuestions(midterms.candidates, Math.min(n, midterms.candidates.length)),
+    ...buildIncumbencyQuestions(midterms.candidates, Math.min(n, midterms.candidates.length)),
+    ...buildTeamLogoQuestions(sports, Math.min(n, sports.filter((t) => t.logoUrl !== null).length)),
+    ...buildTeamStateQuestions(sports, Math.min(n, sports.length)),
+  ];
+  return pickRandom(combined, combined.length);
 }

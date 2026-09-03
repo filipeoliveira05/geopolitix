@@ -30,7 +30,7 @@ export const QUIZ_CATEGORIES: QuizCategoryMeta[] = [
     id: "mashups",
     label: "Mashups",
     description: "Mixed-category challenges.",
-    enabled: false,
+    enabled: true,
   },
 ];
 
