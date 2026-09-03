@@ -13,6 +13,8 @@ export function QuizStartScreen({
   onStart,
   hasMatchingMode,
   onStartMatching,
+  hasSpeedRoundMode,
+  onStartSpeedRound,
 }: {
   category: QuizCategoryMeta;
   poolSize: number;
@@ -20,6 +22,8 @@ export function QuizStartScreen({
   onStart: () => void;
   hasMatchingMode: boolean;
   onStartMatching: () => void;
+  hasSpeedRoundMode: boolean;
+  onStartSpeedRound: () => void;
 }) {
   const canStart = !isLoading && poolSize >= MIN_POOL_SIZE;
 
@@ -31,7 +35,7 @@ export function QuizStartScreen({
       {isLoading ? (
         <p className="mt-6 text-sm text-muted">Loading…</p>
       ) : canStart ? (
-        <div className="mt-6 flex justify-center gap-3">
+        <div className="mt-6 flex flex-wrap justify-center gap-3">
           <button
             onClick={onStart}
             className="rounded bg-seal px-6 py-3 text-sm font-medium text-white"
@@ -44,6 +48,14 @@ export function QuizStartScreen({
               className="rounded border border-rule px-6 py-3 text-sm text-ink"
             >
               Play Matching
+            </button>
+          )}
+          {hasSpeedRoundMode && (
+            <button
+              onClick={onStartSpeedRound}
+              className="rounded border border-rule px-6 py-3 text-sm text-ink"
+            >
+              Play Speed Round
             </button>
           )}
         </div>

@@ -9,20 +9,31 @@ import {
   getCategoryPoolSize,
   categoryHasMatchingMode,
   buildMatchingBoard,
+  categoryHasSpeedRoundMode,
+  buildSpeedRoundPool,
 } from "@/lib/quiz/engine";
-import type { QuizQuestion, AnsweredQuestion, MatchingPair } from "@/lib/quiz/types";
+import type {
+  QuizQuestion,
+  MultipleChoiceQuestion,
+  AnsweredQuestion,
+  MatchingPair,
+} from "@/lib/quiz/types";
 import { QuizStartScreen } from "./QuizStartScreen";
 import { QuestionSession } from "./QuestionSession";
 import { QuizResultsScreen } from "./QuizResultsScreen";
 import { MatchingSession } from "./MatchingSession";
 import { MatchingResultsScreen } from "./MatchingResultsScreen";
+import { SpeedRoundSession } from "./SpeedRoundSession";
+import { SpeedRoundResultsScreen } from "./SpeedRoundResultsScreen";
 
 type Phase =
   | { name: "start" }
   | { name: "session"; questions: QuizQuestion[] }
   | { name: "results"; answers: AnsweredQuestion[] }
   | { name: "matching"; pairs: MatchingPair[] }
-  | { name: "matching-results"; mistakes: number };
+  | { name: "matching-results"; mistakes: number }
+  | { name: "speed-round"; questions: MultipleChoiceQuestion[] }
+  | { name: "speed-round-results"; answers: AnsweredQuestion[] };
 
 export function QuizCategoryClient({ category }: { category: QuizCategoryMeta }) {
   const [phase, setPhase] = useState<Phase>({ name: "start" });
@@ -43,12 +54,22 @@ export function QuizCategoryClient({ category }: { category: QuizCategoryMeta })
     setPhase({ name: "matching", pairs });
   }
 
+  function startSpeedRound() {
+    if (!pool) return;
+    const questions = buildSpeedRoundPool(pool);
+    setPhase({ name: "speed-round", questions });
+  }
+
   function finish(answers: AnsweredQuestion[]) {
     setPhase({ name: "results", answers });
   }
 
   function finishMatching(mistakes: number) {
     setPhase({ name: "matching-results", mistakes });
+  }
+
+  function finishSpeedRound(answers: AnsweredQuestion[]) {
+    setPhase({ name: "speed-round-results", answers });
   }
 
   function playAgain() {
@@ -79,6 +100,20 @@ export function QuizCategoryClient({ category }: { category: QuizCategoryMeta })
     );
   }
 
+  if (phase.name === "speed-round") {
+    return <SpeedRoundSession questions={phase.questions} onComplete={finishSpeedRound} />;
+  }
+
+  if (phase.name === "speed-round-results") {
+    return (
+      <SpeedRoundResultsScreen
+        category={category}
+        answers={phase.answers}
+        onPlayAgain={playAgain}
+      />
+    );
+  }
+
   return (
     <QuizStartScreen
       category={category}
@@ -87,6 +122,8 @@ export function QuizCategoryClient({ category }: { category: QuizCategoryMeta })
       onStart={start}
       hasMatchingMode={categoryHasMatchingMode(category.id)}
       onStartMatching={startMatching}
+      hasSpeedRoundMode={categoryHasSpeedRoundMode(category.id)}
+      onStartSpeedRound={startSpeedRound}
     />
   );
 }
