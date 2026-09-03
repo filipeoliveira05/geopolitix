@@ -1,7 +1,7 @@
 import type { StateFact } from "@/lib/geography-data";
 import { pickRandom } from "./random";
 import { buildMultipleChoiceQuestion } from "./build-multiple-choice";
-import type { MultipleChoiceQuestion } from "./types";
+import type { MultipleChoiceQuestion, MapClickQuestion } from "./types";
 
 export function buildCapitalQuestions(facts: StateFact[], count: number): MultipleChoiceQuestion[] {
   const subjects = pickRandom(facts, count);
@@ -22,4 +22,14 @@ export function buildFlagQuestions(facts: StateFact[], count: number): MultipleC
       getImageUrl: (f) => f.flagUrl,
     }),
   );
+}
+
+export function buildMapClickQuestions(facts: StateFact[], count: number): MapClickQuestion[] {
+  const subjects = pickRandom(facts, count);
+  return subjects.map((s) => ({
+    format: "map-click",
+    prompt: `Click on ${s.stateName}.`,
+    targetStateId: s.stateId,
+    targetStateName: s.stateName,
+  }));
 }

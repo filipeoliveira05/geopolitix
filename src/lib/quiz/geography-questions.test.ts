@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildCapitalQuestions, buildFlagQuestions } from "./geography-questions";
+import { buildCapitalQuestions, buildFlagQuestions, buildMapClickQuestions } from "./geography-questions";
 import type { StateFact } from "@/lib/geography-data";
 
 function makeFacts(n: number): StateFact[] {
@@ -73,5 +73,24 @@ describe("buildFlagQuestions", () => {
     for (const q of questions) {
       expect(q.prompt).toBe("Which state does this flag belong to?");
     }
+  });
+});
+
+describe("buildMapClickQuestions", () => {
+  it("builds the requested number of questions", () => {
+    const questions = buildMapClickQuestions(makeFacts(10), 5);
+    expect(questions).toHaveLength(5);
+  });
+
+  it("does not repeat a target state across the session", () => {
+    const questions = buildMapClickQuestions(makeFacts(10), 5);
+    expect(new Set(questions.map((q) => q.targetStateId)).size).toBe(5);
+  });
+
+  it("phrases the prompt naming the target state, with matching targetStateId/targetStateName", () => {
+    const [q] = buildMapClickQuestions(makeFacts(10), 1);
+    expect(q.prompt).toBe(`Click on ${q.targetStateName}.`);
+    expect(q.targetStateId).toMatch(/^S\d+$/);
+    expect(q.targetStateName).toMatch(/^State\d+$/);
   });
 });
