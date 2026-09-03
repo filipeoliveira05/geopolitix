@@ -56,9 +56,6 @@ export function GlobalHeader() {
           <Link href="/midterms-2026" className="text-muted hover:text-seal">
             Midterms 2026
           </Link>
-          {/* Phase 2 — light up once that section exists; no functional change needed here when
-              it does, just flip this to a real link. */}
-          <span className="hidden cursor-default text-muted/50 sm:inline">Geography</span>
           <Link href="/quiz" className="hidden text-muted hover:text-seal sm:inline">
             Quiz
           </Link>

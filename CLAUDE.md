@@ -847,8 +847,13 @@ Build order: **Phase 1 politics → Phase 2 geography → Phase 3 quiz.** Don't 
   own top-anchored controls (mode toggle, "2026 Midterms" link) are shifted from `top-2`/`top-3` to
   `top-16` to clear the overlay, and `page.tsx`'s desktop state-panel sidebar gets `sm:pt-14` for
   the same reason (mobile stacks the panel below the map already, unaffected). Carries "Midterms
-  2026" today plus disabled "Geography"/"Quiz" slots that light up once those phases ship — no
-  functional change needed elsewhere when they do.
+  2026" and "Quiz" (the latter lit up once Phase 3 shipped 2026-09-03 — flipping its disabled
+  placeholder to a real `<Link>` needed no other functional change, as originally planned).
+  **No "Geography" nav slot** — Phase 2's content lives entirely inside `/state/[abbr]`'s
+  Geography tab, per-state, with no standalone `/geography` hub page a single top-level link
+  could point to, so its own disabled placeholder was removed 2026-09-03 rather than lit up (a
+  state-by-state feature, unlike Quiz/Midterms which each got one real hub route from the start).
+  Revisit only if a dedicated geography hub page is ever built.
 - **Global search (`SearchOverlay`, added 2026-08-31)** — opened from `GlobalHeader`'s search
   icon, an icon-triggered modal rather than an always-visible inline box (near-zero permanent
   header width, same interaction on mobile/desktop). Matches happen entirely client-side against a
