@@ -211,9 +211,20 @@ Build order: **Phase 1 politics → Phase 2 geography → Phase 3 quiz.** Don't 
   run), and a new `CANDIDATES_BACKFILL_ONLY` mode (mirrors `LEGISLATORS_BACKFILL_ONLY`) powers a
   dedicated `candidate-bio-backfill.yml` workflow — every 3 hours, not hourly, since the
   population here (~568 unmatched candidates) is far smaller than legislators' ~12,700. Tagged
-  with its own `job: "races_candidate_backfill"` slug (not `"races"`) so it stays out of
-  `src/lib/sync-freshness.ts`'s core-jobs freshness figure, same reasoning
-  `legislators_bio_backfill` is already excluded for.
+  with its own `job: "races_candidate_backfill"` slug (not `"races"`), same reasoning
+  `legislators_bio_backfill` gets its own slug for.
+- **`candidates.last_synced_at` powers `/candidate/[id]`'s own per-row freshness note** (added
+  2026-09-03, the first table to get this treatment before the same pattern was extended to
+  legislators/governors/governor_terms/sports_teams/college_football_programs/
+  college_basketball_programs — see the Data-freshness indicators entry in UI conventions for the
+  full writeup). The column already existed (added earlier, for insert-then-cleanup's cutover
+  marker) but wasn't being read for display — the page instead called
+  `getJobFreshness(["races", "races_candidate_backfill"])`, the most recent run of either job
+  across ALL candidates, not this one specifically. A real gap surfaced fixing this:
+  `backfillCandidateBios()`'s update only ever wrote `wikipedia_title`/`bio_summary`/`photo_url`,
+  never `last_synced_at`, so a candidate's row stayed stuck at whatever the far-less-frequent
+  race-matching sync last stamped it, even right after a fresh bio backfill — fixed by stamping
+  `last_synced_at` on that update too.
 - **Manual Wikipedia-bio verification (`wikipedia_verified`/`wikipedia_checked_no`/
   `wikipedia_title`, added 2026-08-30)** — even exact-match search can't rule out two different
   real people sharing one exact name (a real case: CA House candidate "Steve Cohen" auto-matched
@@ -661,7 +672,20 @@ Build order: **Phase 1 politics → Phase 2 geography → Phase 3 quiz.** Don't 
   as the explicit `"\u00A0"` string escape, never a pasted literal NBSP character — the latter
   is visually indistinguishable from a normal space in an editor/diff, and a well-meaning
   plain-space edit on top of one silently reverts to collapsing again with no visible diff
-  explaining why. Radius is plain Tailwind `rounded` (4px) everywhere, never
+  explaining why. **Separate gotcha, same neighborhood: never call `.toLocaleString()`/
+  `Intl.NumberFormat` with no explicit locale on anything server-rendered** (fixed 2026-09-03,
+  `src/lib/format.ts`'s `formatPopulation()`) — the default locale is the *runtime's* locale, which
+  is the Node server's during SSR but the *browser's* during client hydration, and these aren't
+  guaranteed to agree. Caught live as a real hydration-mismatch error on `/state/[abbr]`
+  (`4,148,818` server-rendered vs. `4 148 818` on a client whose browser locale grouped
+  thousands differently) — React discards and regenerates the whole subtree when this happens, not
+  just a cosmetic diff. `formatPopulation()` replaces every population `.toLocaleString()` call
+  (`StatePanel.tsx`, `StateTabs.tsx` ×2) with plain regex-based space insertion instead of any
+  locale API, so the output is byte-identical on every render regardless of server/client locale —
+  chosen over pinning an explicit locale string (e.g. `.toLocaleString("en-US")`, tried first and
+  verified to also fix the mismatch) partly per user preference for a space separator, and partly
+  because even a fixed locale's grouping character isn't guaranteed byte-identical across different
+  ICU versions between Node and a browser. Radius is plain Tailwind `rounded` (4px) everywhere, never
   `rounded-md`/`-lg`/`-xl`; no `box-shadow` on any surface (the `SearchOverlay` backdrop scrim is
   the one exception). Shared primitives: `Card` (`src/components/Card.tsx`, a bordered
   `bg-surface` wrapper), `SectionHeading` (`src/components/SectionHeading.tsx`, the
@@ -698,6 +722,14 @@ Build order: **Phase 1 politics → Phase 2 geography → Phase 3 quiz.** Don't 
   CSS spec, leaving `overflow-y` unset while `overflow-x` isn't `visible` silently computes
   `overflow-y` to `auto` too, which trapped a tiny vertical scroll on `StateTabs`' tab bar
   before this was caught. Same pattern for horizontally-scrolling non-table content.
+  **The Sports teams section's per-row lists (pro teams, `CollegeProgramGroup`) are a real
+  instance of this, not just a table** (fixed 2026-09-03) — each row's conference badge
+  (`SUN BELT`/`CONFERENCE USA`/`BIG SOUTH`) originally sat in a `flex-wrap` container that could
+  break mid-badge onto a second line on narrow screens, visibly misaligning the row. Fixed to a
+  single non-wrapping `<li>` (`whitespace-nowrap`, `flex items-center`, no `flex-wrap`) inside its
+  own `overflow-x-auto overflow-y-hidden` wrapper — a long row (name + badge + city) now scrolls
+  horizontally within itself instead of wrapping, same convention as every other
+  horizontally-scrolling content in this doc.
 - **`/state/[abbr]`'s History tab (added 2026-08-31) splits its three tables differently, not
   uniformly** — flat, ungrouped Senate/House/Governor tables became unusably long once real
   data was in (confirmed live: California's House history alone is 2,207 rows, since the old
@@ -731,21 +763,66 @@ Build order: **Phase 1 politics → Phase 2 geography → Phase 3 quiz.** Don't 
   in history tables. Place it `inline-block` with `align-middle` next to text that might wrap
   (not a `flex items-center` sibling) — flex-centering against a block that wraps to two lines
   misaligns the dot against the wrapped text; inline keeps it pinned to the line it's actually on.
-- **Data-freshness indicators** (`SyncFreshnessNote`/`SyncFreshnessRow`/`GlobalFooter`,
-  `src/lib/sync-freshness.ts`): small muted "X synced Y ago" text reading `sync_logs`, which
-  every sync script now stamps with a stable `job` slug instead of relying on the free-text
-  `source` field (which already varies by scope/mode within the same script). Each item is
-  prefixed by a small dot reusing the app's "Live/pending" convention rather than a new one:
-  pulsing emerald for synced within the last day (the one tier where "live" is an honest claim),
-  static amber for 1-7 days, static neutral gray beyond that — same pulse-means-something
-  discipline as `RaceRow`'s not-yet-decided dot elsewhere in the app.
-  **Two kinds of note, not shown together:** `/state/[abbr]` shows seven separate items via
+- **Data-freshness indicators** (`SyncFreshnessNote`/`SyncFreshnessRow`, `src/lib/sync-freshness.ts`):
+  small muted "X synced Y ago" text reading `sync_logs`, which every sync script now stamps with a
+  stable `job` slug instead of relying on the free-text `source` field (which already varies by
+  scope/mode within the same script). Each item is prefixed by a small dot reusing the app's
+  "Live/pending" convention rather than a new one: pulsing emerald for synced within the last day
+  (the one tier where "live" is an honest claim), static amber for 1-7 days, static neutral gray
+  beyond that — same pulse-means-something discipline as `RaceRow`'s not-yet-decided dot elsewhere
+  in the app.
+  **Two levels, not one: per-job on hub pages, per-row on individual pages.** A hub page that
+  summarizes many rows at once (`/state/[abbr]`, `/midterms-2026`) shows `getJobFreshness()` —
+  "when did this whole sync job last run" — since there's no single row to point at. An individual
+  entity page instead reads that exact row's own `last_synced_at` column directly, added to every
+  table with its own detail page: `candidates` (2026-09-03, first), then `legislators`/`governors`/
+  `governor_terms`/`sports_teams`/`college_football_programs`/`college_basketball_programs`
+  (2026-09-03, same day, same pattern). **This replaced an earlier `GlobalFooter` design that
+  showed a site-wide job-level fallback on every individual page** — caught live as actively
+  misleading: `/college-football/[id]` read "synced 2 days ago" (the oldest of five unrelated
+  "core" jobs — states/legislators/governors/governor_history/races, none of them college
+  football) while the *same sync*'s own per-job note on `/state/[abbr]` read "10 hours ago" for
+  the identical table. `GlobalFooter`/`getGlobalFreshness()`/`CORE_JOBS` are deleted entirely, not
+  just superseded — nothing renders them anymore.
+  **Every sync write path that actually touches a row stamps `last_synced_at`, not just the
+  primary upsert** — the same class of bug already caught once (see `candidates.last_synced_at`'s
+  own entry in Data conventions above, where `backfillCandidateBios()`'s update wasn't stamping it)
+  recurred and was fixed proactively for the rest: `governor-history.mjs`'s
+  `copyCurrentBiosToGovernors()` (the only place a current governor's bio/photo is actually
+  written, since OpenStates never provides them) and both `legislators.mjs`/`governor-history.mjs`
+  bio-backfill `.update()` calls all stamp it too, not just each table's row-construction/upsert
+  step.
+  **Real per-row differentiation, not just per-row plumbing** — `legislators`/`governor_terms`
+  are the two tables where this actually shows different values on different rows in practice,
+  since their weekly sync only rebuilds *current/recent* rows (`LEGISLATORS_SCOPE=current`/
+  `GOVERNOR_HISTORY_SCOPE=current`); a genuinely historical row's `last_synced_at` only advances
+  on an occasional full manual resync. Confirmed live: a current legislator read "2 days ago"
+  while a purely historical one (never in `terms.is_current`) read "5 days ago" on the same day.
+  `governors`/`sports_teams`/`college_football_programs`/`college_basketball_programs` do a
+  full-table upsert every run, so every row in a given run shares one timestamp today — still the
+  architecturally correct column to read from (and it self-corrects the moment any of these
+  scripts ever adds partial-scope syncing), just not more granular than the job-level note already
+  was for those four specifically.
+  **Existing rows got a one-time manual backfill (2026-09-03), not left null** — same class of
+  by-hand fix as this doc's other hand-patched gaps (Georgia Southern's logo, bioguide `G000607`),
+  not a committed script: full-table-upsert tables were stamped uniformly with that job's latest
+  `sync_logs` success (accurate, since that run genuinely touched every row); `legislators`/
+  `governor_terms` were split — rows with a current term/`is_current=true` got the latest
+  current-scope run's timestamp, everything else got the latest full-scope run's timestamp,
+  determined from `sync_logs.source` (legislators' source string lists both YAML URLs on a full
+  run, only the current one otherwise) and `sync_logs.triggered_by` (`governor_history`'s source
+  string never varies by scope, but `triggered_by != "cron"` reliably means a manual/full run in
+  practice, confirmed against real logged runs) — not fabricated, derived from what actually
+  happened.
+  `/midterms-2026` still shows one item (`SyncFreshnessNote`, a thin wrapper over
+  `SyncFreshnessRow` for the single-item case) since races is one atomic sync covering
+  Senate/Governor/House together — nothing to split. `/state/[abbr]` shows seven separate items via
   `SyncFreshnessRow` — Legislators/Governor/Governor history/Geography/Sports/College football/
   College basketball, each its own dot and timestamp — rather than one combined number. An
   earlier version used a single `getJobFreshness([...])` call across the first three, which takes
-  the MOST RECENT of the group — caught live as dishonest in the opposite direction from the
-  global figure's own fix below: it could read "synced 1 hour ago" while one of the jobs was
-  actually days stale, silently hiding it behind whichever job happened to run most recently.
+  the MOST RECENT of the group — caught live as dishonest in the same direction as the `GlobalFooter`
+  problem above: it could read "synced 1 hour ago" while one of the jobs was actually days stale,
+  silently hiding it behind whichever job happened to run most recently.
   **Collapses behind a toggle above 3 items (added once the row grew to 7)** — showing every job
   inline via `flex-wrap` ate a disproportionate amount of vertical space right under the page's
   H1 on mobile, where it wrapped across several lines. `SyncFreshnessRow` now renders a persistent
@@ -756,19 +833,9 @@ Build order: **Phase 1 politics → Phase 2 geography → Phase 3 quiz.** Don't 
   version did the latter, which meant there was no way back to collapsed once expanded, fixed by
   keeping the trigger persistently visible in both states. A page with 3 or fewer items (e.g.
   `/midterms-2026`'s single race-sync note) renders exactly as it always did — no toggle added,
-  since it already fits on one line. `/midterms-2026` still shows one item
-  (`SyncFreshnessNote`, a thin wrapper over `SyncFreshnessRow` for the single-item case) since
-  races is one atomic sync covering Senate/Governor/House together — nothing to split.
-  `GlobalFooter` — the "oldest of every core job's latest run" figure, deliberately excluding
-  `legislators_bio_backfill` since it runs far more often than the political data underneath it
-  and would otherwise permanently read "synced within the hour" — is a **fallback for pages with
-  no page-specific note** (`/legislator/[id]`, `/governor/[id]`) only. An earlier version showed
-  both the global footer and a page-specific note on the same page; caught live as genuinely
-  confusing (a page reading "synced 1 hour ago" at the top and "synced 1 day ago" at the bottom
-  look contradictory even though they answer different questions — one page's data vs. the whole
-  site's stalest job) and removed the redundant one rather than just re-labeling it. The home map
-  (`/`) gets neither — its `h-dvh` fullscreen layout has no room for a footer row without either
-  overflowing the viewport or getting clipped.
+  since it already fits on one line. The home map (`/`) shows no freshness note at all — its
+  `h-dvh` fullscreen layout has no room for one without either overflowing the viewport or getting
+  clipped.
 - **`GlobalHeader` (added 2026-08-31) is a persistent header shown on every route**, rendered
   once in `src/app/layout.tsx` — the long-term IA answer for how politics/geography/quiz phases
   relate: one shared nav bar all three hang an entry off, instead of every page inventing its own
@@ -787,12 +854,21 @@ Build order: **Phase 1 politics → Phase 2 geography → Phase 3 quiz.** Don't 
   header width, same interaction on mobile/desktop). Matches happen entirely client-side against a
   pre-fetched flat index (`src/lib/search-index.ts`'s `buildSearchIndex()` — legislators,
   governors incl. the OpenStates-gap/historical `governor_terms` fallback `getGovernor()` already
-  uses, candidates, and states from the free local `getAllStates()`) via Fuse.js
+  uses, candidates, states from the free local `getAllStates()`, and — added 2026-09-03 —
+  `sports_teams`/`college_football_programs`/`college_basketball_programs`, the three tables
+  backing `/team/[id]`/`/college-football/[id]`/`/college-basketball/[id]`) via Fuse.js
   (`ignoreLocation: true` — without it, a typo late in a multi-word name like "Fetterrman" scored
   too low to surface "John Fetterman", confirmed live before adding this option), not a per-
   keystroke server query — "John Smith" as one string can't `ilike` split `first_name`/`last_name`
   columns without a SQL function, and the ~15,700-row population is small enough to hold in memory
-  for the session instead. The index fetch is lazy (`useQuery`'s `enabled` flips on the search
+  for the session instead. A college program's searchable `name` includes its nickname (e.g.
+  "Virginia Cavaliers", not just "Virginia") so a mascot-only query still matches — same reasoning
+  `CollegeProgramGroup`'s display line already combines school+nickname. **Matches on `subtitle`
+  too, not just `name`** (added 2026-09-03) — `Fuse`'s `keys` is `[{name: "name", weight: 2},
+  {name: "subtitle", weight: 1}]`, so office/league/state text sitting only in the subtitle (e.g.
+  "NFL", "Senator") becomes searchable, while a name match (e.g. "Texas" finding the state itself,
+  not every entry whose subtitle merely mentions "TX") still outranks a subtitle-only one thanks to
+  the weight split. The index fetch is lazy (`useQuery`'s `enabled` flips on the search
   button's hover/focus/click, `staleTime: Infinity`) so nobody who never touches search pays the
   payload cost. Departed legislators get a generic "Former member of Congress" subtitle rather than
   their actual last chamber/state — accurate subtitles would need fetching all ~45k `terms` rows
@@ -1160,9 +1236,10 @@ candidates table's wrong-person risk, just without an equivalent ID lookup to po
 [abbr]`'s Sports teams section links team/program names to these pages now instead of straight
 out to Wikipedia (the external link moved onto the detail page itself, as the badge) — same
 pattern `RepresentativesList.tsx` already uses for `/legislator/[id]` over a direct Wikipedia
-link. No page-specific `SyncFreshnessRow` here, matching `/legislator/[id]`/`/governor/[id]`/
-`/candidate/[id]`'s own convention of relying on `GlobalFooter`'s fallback instead — these are
-detail pages, not hub pages.
+link. Each page's footer shows that exact row's own `last_synced_at` (added 2026-09-03, via
+`TeamProfile`'s `lastSyncedAt` field on `TeamProfileData`) — see the Data-freshness indicators
+entry in UI conventions for the full per-row-vs-per-job writeup and the `GlobalFooter` design this
+replaced.
 
 **Synced data**, via `npm run sync:<name>`:
 - `states` — minimal id/name seed (`us-atlas` + `fips-to-abbr.json`), 50 states + DC.

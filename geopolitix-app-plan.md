@@ -144,7 +144,9 @@ General reports, SCOTUS volumes, etc.) has no connection to this app's scope.
   in the historical YAML) · `wikipedia_verified`/`wikipedia_checked_no` (both booleans, default
   `false` — reserved for a future manual audit like the one already run against `candidates`
   (§4's `candidates` entry below); every legislator bio today is ID-sourced, not yet
-  human-verified, see CLAUDE.md's verification-badge note).
+  human-verified, see CLAUDE.md's verification-badge note) · `last_synced_at` (added 2026-09-03 —
+  powers `/legislator/[id]`'s own per-row freshness note; stamped by every write path
+  (upsert + bio-backfill update), see CLAUDE.md's Data-freshness indicators entry).
 
 ### `terms`
 A legislator's term — full historical record without duplicating `legislators`.
@@ -175,7 +177,10 @@ A legislator's term — full historical record without duplicating `legislators`
   gap, since the UI never reads dates from here — see §3) · `wikipedia_title`/
   `wikipedia_verified`/`wikipedia_checked_no` (same shape/meaning as `legislators`' own columns
   above — copied from the matching `governor_terms` current-term row alongside `bio_summary`/
-  `photo_url`, not sourced independently). No history — one row per state,
+  `photo_url`, not sourced independently) · `last_synced_at` (added 2026-09-03, same purpose as
+  `legislators`' own — stamped both by `governors.mjs`'s upsert and by
+  `copyCurrentBiosToGovernors()`'s update, since that's the only place a current officeholder's
+  bio/photo is actually written). No history — one row per state,
   current officeholder only, and only for the states OpenStates actually covers (§3's 12-state
   gap has no row here at all, `getGovernor()` falls back to `governor_terms` instead); **upserted**
   each sync, not full-replaced — `governor_terms.governor_id`'s FK onto this table's `id` (added
@@ -206,7 +211,10 @@ governors predate OpenStates entirely and have no `legislators.id`-style natural
   own structured sitelink property for that person's QID — never guessed or searched) ·
   `wikipedia_verified`/`wikipedia_checked_no` (both booleans, default `false` — same shape as
   `legislators`'; every historical governor bio today is ID-sourced via that sitelink, not yet
-  human-verified).
+  human-verified) · `last_synced_at` (added 2026-09-03 — powers `/governor/[id]`'s per-row
+  freshness note for a historical governor; a genuinely non-current term row only advances on an
+  occasional full manual resync, `GOVERNOR_HISTORY_SCOPE=current`'s weekly cadence only touches
+  each state's current term).
 
 ### `races_2026`
 Senate + Governor + House (§3) — House added after the MVP once its different Wikipedia page
@@ -265,7 +273,9 @@ involved).
   article, sourced from the Team cell's link target) · `logo_url`, `bio_summary` (both nullable,
   added 2026-09-02 — backfilled from the same Wikipedia REST call, with an infobox-parsing
   fallback for `logo_url` when the REST thumbnail alone misses a real logo; **100% coverage
-  confirmed live, 172/172**). Stores its own home city/state directly rather than
+  confirmed live, 172/172**) · `last_synced_at` (added 2026-09-03 — powers `/team/[id]`'s per-row
+  freshness note; every row shares one timestamp per run today since this table does a full
+  upsert every sync, not a partial one). Stores its own home city/state directly rather than
   joining through `cities` (that FK was dropped in the same 2026-09-01 revamp — its only actual use
   was rendering plain text like "New England Patriots (Foxborough)" next to a team's name; no
   `/city/[id]` page exists or was ever planned, so a `cities` join — and everything needed to keep a
@@ -278,14 +288,16 @@ involved).
   from the Nickname cell's link target, not the School cell's general-university one) · `logo_url`,
   `bio_summary` (both nullable, added 2026-09-02, same backfill mechanism as `sports_teams` above;
   **100% coverage confirmed live, 138/138** — one genuine no-Wikipedia-logo gap, Georgia Southern,
-  closed by hand). Added 2026-09-02, deliberately separate from `sports_teams` rather than a shared table — see the Sports
+  closed by hand) · `last_synced_at` (added 2026-09-03, same shape/reasoning as `sports_teams`'
+  own). Added 2026-09-02, deliberately separate from `sports_teams` rather than a shared table — see the Sports
   section above and `CLAUDE.md`'s Data conventions for why.
 
 ### `college_basketball_programs`
 - Identical shape to `college_football_programs` — `id` (PK) · `school` (unique) · `nickname` ·
   `city_name` (text) · `state_id` (FK) · `conference` · `wikipedia_title` · `logo_url`,
   `bio_summary` (both nullable, added 2026-09-02, same backfill mechanism; **100% bio coverage,
-  361/365 logo coverage confirmed live** — 4 genuine no-Wikipedia-logo gaps closed by hand). A
+  361/365 logo coverage confirmed live** — 4 genuine no-Wikipedia-logo gaps closed by hand) ·
+  `last_synced_at` (added 2026-09-03, same shape/reasoning as `sports_teams`' own). A
   separate table, not a
   shared one, even though the row shape is the same — each is a distinct, independently re-synced
   source, not two views of one underlying entity. `school` is sourced from a second Wikipedia page
@@ -377,10 +389,11 @@ CLAUDE.md's data-conventions section):
 | Sync challenger candidate bios (full backlog) | Wikipedia REST API | **Every 3 hours** — its own separate workflow (`candidate-bio-backfill.yml`, `CANDIDATES_BACKFILL_ONLY=true`), same weekly-sync/frequent-backfill split legislators already has, tuned to the smaller ~568-candidate population (not legislators' hourly/~12,700) | `candidates.bio_summary`/`photo_url` (full population) |
 
 Each job writes a `sync_logs` row for diagnostics — and, as of 2026-08-29, for the app's own
-"data synced X ago" freshness indicators too (`SyncFreshnessNote`/`SyncFreshnessRow`/
-`GlobalFooter`, `src/lib/sync-freshness.ts`), not just an aspirational future use. See
-CLAUDE.md's UI conventions for the current design (per-job breakdown vs. global fallback, the
-tiered pulsing-dot convention, and the `job` slug each script stamps).
+"data synced X ago" freshness indicators too (`SyncFreshnessNote`/`SyncFreshnessRow`,
+`src/lib/sync-freshness.ts`), not just an aspirational future use. As of 2026-09-03 this is a
+per-row column (`last_synced_at`, on every table with its own detail page) on individual pages,
+not just a per-job figure — see CLAUDE.md's Data-freshness indicators entry for the current design
+(per-row vs. per-job, the tiered pulsing-dot convention, and the `job` slug each script stamps).
 
 ---
 
