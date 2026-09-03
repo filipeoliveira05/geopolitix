@@ -31,6 +31,7 @@ type Profile = {
   stateId: string;
   terms: GovernorTerm[];
   lastSyncedAt: Date | null;
+  isCurrent: boolean;
 };
 
 /**
@@ -56,6 +57,7 @@ async function loadProfile(id: string): Promise<Profile | null> {
       stateId: governor.stateId,
       terms,
       lastSyncedAt: governor.lastSyncedAt,
+      isCurrent: true,
     };
   }
 
@@ -75,6 +77,7 @@ async function loadProfile(id: string): Promise<Profile | null> {
     stateId: mostRecent.stateId,
     terms,
     lastSyncedAt: mostRecent.lastSyncedAt,
+    isCurrent: mostRecent.isCurrent,
   };
 }
 
@@ -109,7 +112,8 @@ export default async function GovernorPage(props: PageProps<"/governor/[id]">) {
         <div>
           <h1 className="font-display text-3xl font-semibold text-ink">{profile.name}</h1>
           <p className="text-sm text-muted">
-            <PartyBadge party={profile.party} /> Governor of{" "}
+            <PartyBadge party={profile.party} />{" "}
+            {profile.isCurrent ? "Governor" : "Former governor"} of{" "}
             <Link href={`/state/${profile.stateId}`} className="link-accent">
               {stateName}
             </Link>
@@ -150,7 +154,8 @@ export default async function GovernorPage(props: PageProps<"/governor/[id]">) {
                       )}
                     </td>
                     <td className="py-1.5 pr-3 align-middle">
-                      Governor of {getStateName(term.stateId) ?? term.stateId}
+                      {term.isCurrent ? "Governor" : "Former governor"} of{" "}
+                      {getStateName(term.stateId) ?? term.stateId}
                     </td>
                     <td className="w-px py-1.5 pr-3 align-middle whitespace-nowrap">
                       <PartyBadge party={term.party} />
