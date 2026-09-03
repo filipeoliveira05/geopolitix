@@ -962,8 +962,11 @@ several real live-discovered gotchas. A follow-on pass (2026-09-02) added team/p
 bios plus individual `/team/[id]`/`/college-football/[id]`/`/college-basketball/[id]` pages on
 top of the already-complete Phase 2 tables — see the `logo_url`/`bio_summary` entry in Data
 conventions above for the full writeup (several real reliability bugs caught and fixed along the
-way, not just the feature itself). Next up per the build order is Phase 3 (quiz), unless told
-otherwise.
+way, not just the feature itself). **Phase 3 (quiz) is also complete**, shipped 2026-09-03 across
+5 incremental plans — see the `/quiz`, `/quiz/[category]` entry near the end of this section for
+the full writeup (architecture, all 5 categories, and the real bugs caught building map-click and
+speed-round specifically). This closes out the build order from "What this app is" above — every
+originally-planned phase is now shipped.
 
 **Profile data coverage (name/photo/bio/term history), verified live — a living snapshot, not a
 one-time claim; re-check the actual counts before trusting old numbers here:**
@@ -1038,8 +1041,6 @@ doesn't apply here. `withHardTimeout` (`_wikipedia.mjs`) combines a real `Promis
 `AbortSignal` so a timeout is enforced whether or not the wrapped callback actually honors the
 signal — both matter; an earlier version had only one or the other and let stuck retries pile
 up silently.
-
-Remaining: quiz (Phase 3).
 
 **Home page** (`src/app/page.tsx` + `UsMap.tsx`): interactive MapLibre map, two modes (see UI
 conventions) — States (default, current Senate delegation) and Districts (current House
@@ -1299,4 +1300,118 @@ replaced.
   error-swallowing bug, and two rounds of retry-budget tuning — all documented in the
   `logo_url`/`bio_summary` entry in Data conventions above.
 
-Not started: quiz (Phase 3).
+**`/quiz`, `/quiz/[category]`** (Phase 3, added 2026-09-03 across 5 incremental plans): five
+category tiles (Geography, Officeholders, 2026 Midterms, Sports, Mashups), each either a real
+`/quiz/[category]` link or a disabled "coming soon" tile depending on `QUIZ_CATEGORIES[].enabled`
+in `src/lib/quiz/category-config.ts` — `getQuizCategory()` 404s a disabled category's route
+directly, not just hides its hub tile, so there was never a moment where a not-yet-built category
+was reachable by URL. All 5 are now `enabled: true` — the full v1 scope from the design spec is
+shipped. No new Supabase tables or sync scripts: every question generator reads through the
+existing `*-data.ts` query helpers (`geography-data.ts`, `governors-data.ts`,
+`legislators-data.ts`, `races-data.ts`) the rest of the app already uses.
+
+**Architecture, established in Plan 1 and extended by every later plan without changing its
+shape:** a `QuizQuestion` discriminated union (`src/lib/quiz/types.ts`) — `MultipleChoiceQuestion`
+(prompt/optional image/options/correctIndex) and `MapClickQuestion` (prompt/target state, added
+Plan 3) — plus a parallel `AnsweredQuestion` union recording what was actually clicked. A
+category's full data pool is fetched once per page visit (`fetchCategoryPool()` in
+`src/lib/quiz/engine.ts`, cached by TanStack Query's own `["quiz-pool", categoryId]` key) and
+turned into a 10-question session (`SESSION_LENGTH`) by `buildCategorySession()` — a plain switch
+dispatching to each category's own generators in `src/lib/quiz/*-questions.ts`.
+`QuizCategoryClient.tsx` is the one state machine every category's start/session/results (and,
+where applicable, matching/speed-round) phases flow through — a `Phase` discriminated union
+switched in one component, not a router-per-phase design, since every phase is client-only
+interaction with no need for its own URL. **Vitest, introduced in Plan 1, is scoped ONLY to pure
+functions in `src/lib/quiz/*`** (question generators, `pickRandom`, `best-score.ts`'s key logic)
+— hooks/components/anything touching Supabase stay out of its scope, consistent with this app's
+existing "verify UI live in a browser, don't try to unit-test it" philosophy. `vitest.config.mts`
+needed its own explicit `resolve.alias` for `@/*` (Vite does not read `tsconfig.json`'s `paths` on
+its own) — caught live in Plan 4 once the first REAL (value, not type-only) `@/lib/*` import in a
+test file failed to resolve; every earlier test had only ever imported types from that alias,
+which are erased before bundling and never actually needed resolving.
+
+**Question option counts are NOT fixed at 4 everywhere** — `buildMultipleChoiceQuestion()`'s
+`optionCount` param (default 4) lets a question type whose real answer space has fewer distinct
+values ask a smaller, honest question instead of forcing a doomed 4-option question that can never
+find enough real distractors. Added in Plan 2 at the user's own explicit suggestion ("can't we
+just allow multiple choice questions with just two options? this way we could ask the question
+what party is this candidate") after an initial true/false-format proposal was rejected — party
+questions use however many distinct real party values exist in the pool (2, occasionally 3, capped
+at 4); incumbency questions are a plain hardcoded Yes/No, bypassing `buildMultipleChoiceQuestion`
+entirely since `isIncumbent` is already boolean with no pool-based distractor to pick.
+
+**Five categories, each a mix of question types:**
+- **Geography** (`geography-questions.ts`): capital-name MC, state-flag-image MC, and
+  **map-click** ("Click on {state}.") — the one format that isn't multiple choice at all.
+  `QuizMapClick.tsx` renders its own dedicated MapLibre instance (own worker-URL fix reusing
+  `scripts/copy-maplibre-worker.mjs`'s existing copy, own Alaska/Hawaii inset remapping, same
+  `UsMap.tsx` gotchas but a separate component, not a shared one, since gameplay interaction —
+  click-to-answer plus red/green feedback highlighting via `setFeatureState` — has nothing in
+  common with the main map's mode-toggle/side-panel design). **Two real bugs caught live in Plan
+  3, both Strict-Mode-shaped:** the feedback-highlighting effect's cleanup called
+  `map.setFeatureState` on an already-`.remove()`'d map instance during unmount (fixed with a
+  `removedRef` guard checked before that cleanup runs); that guard itself was then never reset on
+  remount, so React 19 dev Strict Mode's mount→cleanup→mount double-invoke left it permanently
+  `true` after the very first cycle, silently no-oping every real cleanup thereafter — confirmed
+  live via every map-click question after the first leaving its red/green coloring stuck from the
+  previous question. Fixed by resetting `removedRef.current = false` at the top of the mount
+  effect's body, not just setting it in the cleanup — verify live, don't assume a guard ref
+  behaves the same across Strict Mode's synthetic double-invoke as it would in a single real
+  mount.
+- **Officeholders** (`officeholders-questions.ts`): "who is the current governor of X" MC, and a
+  legislator-photo MC ("which state does this legislator represent?").
+- **2026 Midterms** (`midterms-questions.ts`): candidate-party MC (the 2-3-option case above) and
+  incumbency Yes/No. `candidateFactsFromRaces()` flattens every race's candidates into one flat
+  pool, skipping Wikipedia's own "TBD"/"(presumptive)" placeholder names (same check
+  `races-data.ts`'s `isPrimaryPending()` already uses at the race level) and any candidate with no
+  known party — both question types need a real name and a real party.
+- **Sports** (`sports-questions.ts`, Plan 4): team-logo MC ("which team is this?") and
+  team-state MC, plus a second, entirely separate session type — **matching-pairs**
+  (`MatchingSession.tsx`, `categoryHasMatchingMode()`/`buildMatchingBoard()` in `engine.ts`):
+  click a logo, click a name, get an immediate correct/flash-red-then-clear-selection result, no
+  question/answer/score shape at all (deliberately not part of the `QuizQuestion` union — see
+  `types.ts`'s own comment). Its own results screen (`MatchingResultsScreen.tsx`, mistakes-based,
+  fewer-is-better) and its own localStorage best-score key prefix
+  (`getBestMatching`/`updateBestMatchingIfLower` in `best-score.ts`), separate from the regular
+  round's score-based one — a mistake count and a score aren't comparable, so sharing a key would
+  corrupt one or the other's "best."
+- **Mashups** (`mashups-questions.ts`, Plan 5, the last category to ship): **odd-one-out** MC
+  ("which of these teams is NOT based in the same state as the others?" — 3 sports teams sharing a
+  state plus one from elsewhere, genuinely different distractor logic from every other generator,
+  which all assume a single designated subject plus random same-pool distractors), and a second
+  session type — **speed round** (`SpeedRoundSession.tsx`, `categoryHasSpeedRoundMode()`/
+  `buildSpeedRoundPool()` in `engine.ts`): a 60-second countdown pulling ~5 questions from every
+  one of the 8 existing multiple-choice generators across Geography/Officeholders/Midterms/Sports
+  (deliberately excluding map-click, unsuited to rapid-fire pace, and matching, not a
+  `QuizQuestion` at all) shuffled into one ~40-question pool, answered with immediate feedback and
+  a 400ms auto-advance — no manual "Next" click, the one session type where that's true. Its own
+  results screen (`SpeedRoundResultsScreen.tsx`) and its own best-score key prefix
+  (`getBestSpeedRound`/`updateBestSpeedRoundIfHigher`, `geopolitix:quiz-speed-best:*`) — a speed
+  round's score (routinely 15-30+ across its larger pool) isn't comparable to the regular
+  10-question round's max of 10, so, same reasoning as Matching above, sharing a key would corrupt
+  one or the other's "best." **One real bug caught live during Plan 5's own verification, not
+  theoretical:** the 60-second countdown's `setInterval` callback called `onComplete` (the parent
+  `QuizCategoryClient`'s `setPhase`) from *inside* `setSecondsLeft`'s functional updater — a state
+  updater is supposed to be a pure calculation of the next value, and calling a different
+  component's setState from within one is a genuine React rules-of-hooks violation, not just a
+  style nit: it surfaced as both the literal console warning ("Cannot update a component while
+  rendering a different component") AND an actually-premature round end in one real Playwright
+  run. (A second, separate "ends after only 2 answers" reading during debugging turned out to be a
+  false positive from the verification script's own `.textContent()` call auto-waiting ~30s for a
+  not-yet-existent element each iteration, not a product bug — worth remembering as its own
+  lesson: an unexpectedly-early "done" signal during verification needs the same live-recheck
+  discipline as any other surprising result, since the test harness itself can be the actual bug.)
+  Fixed by moving the completion check into its own effect that reacts to `secondsLeft` hitting 0,
+  leaving the interval's updater to only ever compute the next second count.
+
+**Best-score persistence is entirely `localStorage`, no auth/Supabase** (Plan 1 design decision,
+`src/lib/quiz/best-score.ts`) — three independent shapes under three key-prefix families, exactly
+because a score, a mistake-count, and a speed-round score are not comparable to each other:
+regular rounds (`geopolitix:quiz-best:{category}:{stateAbbr|"any"}` — the `stateAbbr` slot exists
+for a possible future per-state narrowing mode, unused by any category today), matching
+(`geopolitix:quiz-matching-best:{category}`), speed round
+(`geopolitix:quiz-speed-best:{category}`). Every write is a "write only if it beats the existing
+best" pattern (`updateBestScoreIfHigher`/`updateBestMatchingIfLower`/
+`updateBestSpeedRoundIfHigher`), wrapped in try/catch and returning `null` on any failure (private
+browsing, blocked storage, corrupt JSON) — a best-score note is decorative, never something that
+should block play, same philosophy as this app's sync-freshness notes elsewhere in this doc.

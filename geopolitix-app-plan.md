@@ -343,10 +343,21 @@ and a Wikipedia-sourced bio for one `sports_teams`/`college_football_programs`/
 Scoreboard (confirmed vs. contested, by House/Senate/Governors), list/map of featured races.
 Must clearly state this **is not a real-time results service**.
 
-### `/quiz` — Quiz Mode (Phase 3)
-Reuses existing tables, no new data source. E.g. "What is the capital of state X?", "Who is
-the senior senator of this state?", "Point to state X", "What NFL team is based in this
-city?" Modes: by topic or mixed.
+### `/quiz`, `/quiz/[category]` — Quiz Mode (Phase 3, shipped 2026-09-03)
+Reuses existing tables/query helpers, no new data source or sync script. Five categories, each
+its own `/quiz/[category]` page: **Geography** (capital, flag, and map-click questions —
+"Click on {state}."), **Officeholders** (current governor, legislator-photo-to-state),
+**2026 Midterms** (candidate party, incumbency), **Sports** (team logo, team-to-state, plus a
+matching-pairs mode), **Mashups** (odd-one-out — "which of these teams is NOT based in the same
+state as the others?" — plus a 60-second speed round mixing every other category's multiple-
+choice question types together). Every question is multiple choice or map-click; a question type
+whose real answer space has fewer than 4 distinct values (e.g. candidate party) asks with fewer
+options rather than forcing a separate true/false format. Regular rounds are 10 questions with
+immediate per-question feedback; matching and speed-round are separate, parallel session types
+with their own results screen and their own `localStorage` best-score key (no accounts/auth — see
+§9's Open Decisions). Full architecture, all 5 categories, and the real bugs caught building it
+(a Strict-Mode map cleanup bug, a speed-round timer/setState bug) are documented in CLAUDE.md's
+Status section.
 
 ---
 
@@ -445,8 +456,9 @@ Getting from "JSON stand-in" to the real infrastructure. Current progress is tra
 
 - ~~`races_2026` source~~ — **resolved**, see §3.
 - ~~User authentication~~ — **resolved**: no app-level auth; the deployment itself is gated by
-  Vercel Authentication instead (§7 step 8). Revisit only if something worth saving per-user
-  (quiz progress) gets built.
+  Vercel Authentication instead (§7 step 8). Quiz best-scores (shipped 2026-09-03) ended up
+  needing no accounts after all — they're plain per-browser `localStorage`, not a Supabase table,
+  so this decision still stands unrevisited.
 - **Open:** MapLibre vs. Mapbox (recommendation: MapLibre, already in use, no reason to switch).
 - **Open:** Congress history depth in the UI — full depth is the data default (matches Senate's
   existing history view); capping is a UI task (collapse/paginate) once House/Governors history
