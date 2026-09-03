@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { MultipleChoiceQuestion, AnsweredQuestion } from "@/lib/quiz/types";
+import { vibrateWrongAnswer } from "@/lib/quiz/haptics";
 import { MultipleChoiceQuestionView } from "./MultipleChoiceQuestionView";
 
 export const SPEED_ROUND_SECONDS = 60;
@@ -61,6 +62,7 @@ export function SpeedRoundSession({
   function answer(optionIndex: number) {
     if (!currentQuestion || chosenIndex !== null || endedRef.current) return;
     const correct = optionIndex === currentQuestion.correctIndex;
+    if (!correct) vibrateWrongAnswer();
     const nextAnswers: AnsweredQuestion[] = [
       ...answers,
       { format: "multiple-choice", question: currentQuestion, chosenIndex: optionIndex, correct },

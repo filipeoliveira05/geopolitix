@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { QuizQuestion, AnsweredQuestion } from "./types";
+import { vibrateWrongAnswer } from "./haptics";
 
 export function useQuizSession(questions: QuizQuestion[]) {
   const [index, setIndex] = useState(0);
@@ -16,15 +17,12 @@ export function useQuizSession(questions: QuizQuestion[]) {
     if (!currentQuestion || currentQuestion.format !== "multiple-choice" || chosenIndex !== null) {
       return;
     }
+    const correct = optionIndex === currentQuestion.correctIndex;
+    if (!correct) vibrateWrongAnswer();
     setChosenIndex(optionIndex);
     setAnswers((prev) => [
       ...prev,
-      {
-        format: "multiple-choice",
-        question: currentQuestion,
-        chosenIndex: optionIndex,
-        correct: optionIndex === currentQuestion.correctIndex,
-      },
+      { format: "multiple-choice", question: currentQuestion, chosenIndex: optionIndex, correct },
     ]);
   }
 
@@ -32,15 +30,12 @@ export function useQuizSession(questions: QuizQuestion[]) {
     if (!currentQuestion || currentQuestion.format !== "map-click" || mapClickAnswer !== null) {
       return;
     }
+    const correct = clickedStateId === currentQuestion.targetStateId;
+    if (!correct) vibrateWrongAnswer();
     setMapClickAnswer(clickedStateId);
     setAnswers((prev) => [
       ...prev,
-      {
-        format: "map-click",
-        question: currentQuestion,
-        clickedStateId,
-        correct: clickedStateId === currentQuestion.targetStateId,
-      },
+      { format: "map-click", question: currentQuestion, clickedStateId, correct },
     ]);
   }
 

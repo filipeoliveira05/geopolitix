@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { MatchingPair } from "@/lib/quiz/types";
 import { pickRandom } from "@/lib/quiz/random";
+import { vibrateWrongAnswer } from "@/lib/quiz/haptics";
 
 type Tile = { pairId: string; content: string };
 
@@ -48,6 +49,7 @@ export function MatchingSession({
       setSelectedName(null);
       if (next.size === pairs.length) onComplete(mistakes);
     } else {
+      vibrateWrongAnswer();
       setMistakes((m) => m + 1);
       setFlash({ image: imagePairId, name: namePairId });
       setTimeout(() => {
