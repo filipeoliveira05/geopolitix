@@ -873,9 +873,17 @@ Build order: **Phase 1 politics → Phase 2 geography → Phase 3 quiz.** Don't 
   {name: "subtitle", weight: 1}]`, so office/league/state text sitting only in the subtitle (e.g.
   "NFL", "Senator") becomes searchable, while a name match (e.g. "Texas" finding the state itself,
   not every entry whose subtitle merely mentions "TX") still outranks a subtitle-only one thanks to
-  the weight split. The index fetch is lazy (`useQuery`'s `enabled` flips on the search
-  button's hover/focus/click, `staleTime: Infinity`) so nobody who never touches search pays the
-  payload cost. Departed legislators get a generic "Former member of Congress" subtitle rather than
+  the weight split. The index fetch is prefetched at idle (added 2026-09-03, replacing an
+  earlier hover/focus/click-only trigger) — a `useEffect` on `GlobalHeader` mount calls
+  `requestIdleCallback` (`setTimeout` fallback for Safari, which doesn't have it) to flip the same
+  `wantsIndex` flag `useQuery`'s `enabled` reads, deferred so the fetch never competes with the
+  current route's own render/data work for bandwidth or main-thread time; hover/focus/click on the
+  search button still flip it too, belt-and-suspenders for the rare case someone opens search
+  before the browser goes idle. `staleTime: Infinity` either way, so a session only ever fetches
+  once — this just moves WHEN that one fetch starts, from "the user's about to need it" to "as
+  soon as the app's likely done with its own work," which in practice means the "Loading search
+  index…" flash a user actually hit on first open is gone in the common case. Departed legislators
+  get a generic "Former member of Congress" subtitle rather than
   their actual last chamber/state — accurate subtitles would need fetching all ~45k `terms` rows
   just for display text, defeating the point of a light index; a deliberate trade-off, not a gap.
   `SearchOverlay` is only mounted while open (`{searchOpen && <SearchOverlay .../>}` in
@@ -1420,3 +1428,45 @@ best" pattern (`updateBestScoreIfHigher`/`updateBestMatchingIfLower`/
 `updateBestSpeedRoundIfHigher`), wrapped in try/catch and returning `null` on any failure (private
 browsing, blocked storage, corrupt JSON) — a best-score note is decorative, never something that
 should block play, same philosophy as this app's sync-freshness notes elsewhere in this doc.
+
+**v1 UX polish pass (2026-09-03, driven by the user's first real on-phone testing of Geography)**
+— every fix below applies to every category, not just the one actually tested, since all of them
+share the same generators/screens:
+- **Randomized question mix and order** — `buildCategorySession()` previously split
+  `SESSION_LENGTH` into fixed even/thirds counts per generator and concatenated the blocks in a
+  fixed order (Geography always ran exactly 3 capital, then 3 flag, then 4 map-click questions,
+  every session) — an obviously hardcoded pattern to a repeat player. `randomSplit()` (`random.ts`)
+  now randomizes each generator's count per session (a random composition of `SESSION_LENGTH`,
+  every part ≥1), and the combined array is shuffled (`pickRandom(qs, qs.length)`, the same
+  full-shuffle idiom `buildSpeedRoundPool()` already used below it) before being returned.
+- **Multiple-choice feedback strengthened** — `MultipleChoiceQuestionView`'s right/wrong
+  highlighting was a 10%-opacity tint over a colored border, hard to see especially in dark mode;
+  now a solid emerald/red fill with a check/x icon (`src/components/quiz/icons.tsx`, shared with
+  the results screen below).
+- **Results screen redesigned** (`QuizResultsScreen.tsx`) — score is now a big `font-display`
+  number colored by percentage tier (emerald ≥80%, amber 50-79%, red <50%; the same tier-color
+  pairs `StatePanel`/`UsMap` already use elsewhere in the app, not new tokens), with a "New best!"
+  tag shown only when a session actually beats a PRIOR best — read before the
+  `updateBestScoreIfHigher` call, not after, so someone's very first-ever play (which trivially
+  "sets" a best with nothing to have beaten) doesn't claim one. Missed questions moved into a
+  `Card`, each row given a uniform-size thumbnail/`MapPinIcon` slot (an earlier pass left a bare,
+  unwrapped icon next to a full-size thumbnail box, so rows visibly jumped in width depending on
+  which one showed) and prompt+answer stacked as two deliberate lines rather than one inline text
+  run that wrapped inconsistently depending on prompt length; the leading x icon is vertically
+  centered against that slot, not the row's first text line. A missed map-click row shows "You
+  clicked {state}." instead of repeating the target state its own prompt already names ("Click on
+  Rhode Island." followed by "✓ Rhode Island" was pure redundancy there — unlike a multiple-choice
+  miss, whose prompt never reveals the answer).
+- **Start screen redesigned** (`QuizStartScreen.tsx`) — wrapped in a `Card` with a per-category
+  icon (`category-icons.tsx`: globe/landmark/ballot-box/trophy/shuffle, hand-drawn SVGs matching
+  this app's existing icon convention, not a library) and, when one exists, a plain "Best: X/Y"
+  line read from the same `best-score.ts` data the results screen uses — was previously a bare
+  title/description/buttons with a lot of unused space. The ballot-box icon needed a redraw after
+  its first version (a box with a curved strap on top) read as a shopping bag, not a ballot box —
+  caught from an actual screenshot, not assumed correct from the path data alone.
+- **Haptics on wrong answers** (`src/lib/quiz/haptics.ts`'s `vibrateWrongAnswer()`) —
+  `navigator.vibrate(120)` fires on any wrong answer across the regular round (both
+  multiple-choice and map-click, via `useQuizSession.ts`), speed round, and matching mismatches.
+  Android Chrome only — iOS Safari doesn't expose the Vibration API to web pages at all, so it's a
+  silent no-op there, not a gap to fix; confirmed live (Android Chrome device) as a real 120ms
+  buzz on a wrong answer.
