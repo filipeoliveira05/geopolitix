@@ -178,6 +178,14 @@ export async function getSportsTeamById(id: string): Promise<SportsTeam | null> 
   return data ? sportsTeamFromRow(data as unknown as SportsTeamRow) : null;
 }
 
+/** Every sports team nationwide — powers the quiz's Sports category (logo-guess, state-guess,
+ * and the logo-matching board). */
+export async function getAllSportsTeams(): Promise<SportsTeam[]> {
+  const { data, error } = await supabase.from("sports_teams").select(SPORTS_TEAM_COLUMNS);
+  if (error) throw error;
+  return (data as unknown as SportsTeamRow[]).map(sportsTeamFromRow);
+}
+
 type CollegeProgramRow = {
   id: string;
   school: string;
