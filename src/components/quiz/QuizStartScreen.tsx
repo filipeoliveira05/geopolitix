@@ -11,11 +11,15 @@ export function QuizStartScreen({
   poolSize,
   isLoading,
   onStart,
+  hasMatchingMode,
+  onStartMatching,
 }: {
   category: QuizCategoryMeta;
   poolSize: number;
   isLoading: boolean;
   onStart: () => void;
+  hasMatchingMode: boolean;
+  onStartMatching: () => void;
 }) {
   const canStart = !isLoading && poolSize >= MIN_POOL_SIZE;
 
@@ -27,12 +31,22 @@ export function QuizStartScreen({
       {isLoading ? (
         <p className="mt-6 text-sm text-muted">Loading…</p>
       ) : canStart ? (
-        <button
-          onClick={onStart}
-          className="mt-6 rounded bg-seal px-6 py-3 text-sm font-medium text-white"
-        >
-          Start
-        </button>
+        <div className="mt-6 flex justify-center gap-3">
+          <button
+            onClick={onStart}
+            className="rounded bg-seal px-6 py-3 text-sm font-medium text-white"
+          >
+            Start Quiz
+          </button>
+          {hasMatchingMode && (
+            <button
+              onClick={onStartMatching}
+              className="rounded border border-rule px-6 py-3 text-sm text-ink"
+            >
+              Play Matching
+            </button>
+          )}
+        </div>
       ) : (
         <p className="mt-6 text-sm text-muted">Not enough data available for this category yet.</p>
       )}
