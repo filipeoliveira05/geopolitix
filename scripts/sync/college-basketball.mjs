@@ -212,6 +212,9 @@ async function main() {
       state_id: location.state,
       conference: p.conference,
       wikipedia_title: p.wikipediaTitle,
+      // Powers /college-basketball/[id]'s own per-row freshness note — see sports.mjs's identical
+      // comment on why every row in a given run ends up with the same timestamp here.
+      last_synced_at: new Date().toISOString(),
     });
   }
   for (const s of skipped) changeLog.record("skipped (no city/state match)", s);

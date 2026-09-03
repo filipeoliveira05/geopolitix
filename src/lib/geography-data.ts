@@ -42,6 +42,7 @@ export type SportsTeam = {
   wikipediaTitle: string | null;
   logoUrl: string | null;
   bioSummary: string | null;
+  lastSyncedAt: Date | null;
 };
 
 // Shared shape for both college_football_programs and college_basketball_programs — identical
@@ -58,6 +59,7 @@ export type CollegeProgram = {
   wikipediaTitle: string | null;
   logoUrl: string | null;
   bioSummary: string | null;
+  lastSyncedAt: Date | null;
 };
 
 type StateRow = {
@@ -135,10 +137,11 @@ type SportsTeamRow = {
   wikipedia_title: string | null;
   logo_url: string | null;
   bio_summary: string | null;
+  last_synced_at: string | null;
 };
 
 const SPORTS_TEAM_COLUMNS =
-  "id, name, league, city_name, state_id, wikipedia_title, logo_url, bio_summary";
+  "id, name, league, city_name, state_id, wikipedia_title, logo_url, bio_summary, last_synced_at";
 
 function sportsTeamFromRow(row: SportsTeamRow): SportsTeam {
   return {
@@ -150,6 +153,7 @@ function sportsTeamFromRow(row: SportsTeamRow): SportsTeam {
     wikipediaTitle: row.wikipedia_title,
     logoUrl: row.logo_url,
     bioSummary: row.bio_summary,
+    lastSyncedAt: row.last_synced_at ? new Date(row.last_synced_at) : null,
   };
 }
 
@@ -184,10 +188,11 @@ type CollegeProgramRow = {
   wikipedia_title: string | null;
   logo_url: string | null;
   bio_summary: string | null;
+  last_synced_at: string | null;
 };
 
 const COLLEGE_PROGRAM_COLUMNS =
-  "id, school, nickname, city_name, state_id, conference, wikipedia_title, logo_url, bio_summary";
+  "id, school, nickname, city_name, state_id, conference, wikipedia_title, logo_url, bio_summary, last_synced_at";
 
 function collegeProgramFromRow(row: CollegeProgramRow): CollegeProgram {
   return {
@@ -200,6 +205,7 @@ function collegeProgramFromRow(row: CollegeProgramRow): CollegeProgram {
     wikipediaTitle: row.wikipedia_title,
     logoUrl: row.logo_url,
     bioSummary: row.bio_summary,
+    lastSyncedAt: row.last_synced_at ? new Date(row.last_synced_at) : null,
   };
 }
 

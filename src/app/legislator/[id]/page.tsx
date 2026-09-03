@@ -9,7 +9,6 @@ import {
 } from "@/lib/legislators-data";
 import { PartyBadge } from "@/components/PartyBadge";
 import { SyncFreshnessNote } from "@/components/SyncFreshnessNote";
-import { getJobFreshness } from "@/lib/sync-freshness";
 import {
   WikipediaVerifiedBadge,
   WikipediaSourcedBadge,
@@ -47,7 +46,6 @@ export default async function LegislatorPage(props: PageProps<"/legislator/[id]"
 
   const terms = await getTermsForLegislator(id);
   const currentTerm = terms.find((t) => t.isCurrent) ?? terms[0] ?? null;
-  const syncedAt = await getJobFreshness(["legislators"]);
 
   return (
     <div className="mx-auto w-full max-w-3xl flex-1 animate-fade-in p-6 sm:p-10">
@@ -139,7 +137,7 @@ export default async function LegislatorPage(props: PageProps<"/legislator/[id]"
       </div>
 
       <footer className="mt-6 py-6 text-center">
-        <SyncFreshnessNote label="Legislators" syncedAt={syncedAt} />
+        <SyncFreshnessNote label="This legislator" syncedAt={legislator.lastSyncedAt} />
       </footer>
     </div>
   );

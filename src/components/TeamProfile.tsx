@@ -23,22 +23,14 @@ export type TeamProfileData = {
   categoryLabel: string; // "NFL", "MLS", ... or a conference name
   bioSummary: string | null;
   wikipediaTitle: string | null;
+  // This exact row's own last_synced_at, not a table-wide/job-wide figure — a sports/college
+  // table's own sync upserts every row in one call per run, so this happens to be identical
+  // across every row in the same table today, but reads from the row itself rather than
+  // sync_logs regardless, matching legislators/governors/candidates' identical per-row approach.
+  lastSyncedAt: Date | null;
 };
 
-export function TeamProfile({
-  team,
-  syncLabel,
-  syncedAt,
-}: {
-  team: TeamProfileData;
-  // The specific table this row's own sync job (sports/college_football/college_basketball)
-  // last touched, not GlobalFooter's site-wide "oldest core political job" figure — that footer
-  // was showing a legislators/governors/races timestamp on a sports page, which is honest about
-  // the site but not about this row's actual data (caught live: a college program page read "2
-  // days ago" while the state page's own per-job note for the same sync read "10 hours ago").
-  syncLabel: string;
-  syncedAt: Date | null;
-}) {
+export function TeamProfile({ team, syncLabel }: { team: TeamProfileData; syncLabel: string }) {
   const stateName = getStateName(team.stateId) ?? team.stateId;
   return (
     <div className="mx-auto w-full max-w-3xl flex-1 animate-fade-in p-6 sm:p-10">
@@ -73,7 +65,7 @@ export function TeamProfile({
       </div>
 
       <footer className="mt-6 py-6 text-center">
-        <SyncFreshnessNote label={syncLabel} syncedAt={syncedAt} />
+        <SyncFreshnessNote label={syncLabel} syncedAt={team.lastSyncedAt} />
       </footer>
     </div>
   );

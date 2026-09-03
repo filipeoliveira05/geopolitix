@@ -18,6 +18,7 @@ export type Legislator = {
   wikipediaTitle: string | null;
   wikipediaVerified: boolean;
   wikipediaCheckedNo: boolean;
+  lastSyncedAt: Date | null;
 };
 
 export type Term = {
@@ -62,6 +63,7 @@ type LegislatorRow = {
   wikipedia_title: string | null;
   wikipedia_verified: boolean;
   wikipedia_checked_no: boolean;
+  last_synced_at: string | null;
 };
 
 const TERM_WITH_LEGISLATOR_SELECT = "*, legislator:legislators(*)";
@@ -79,6 +81,7 @@ function legislatorFromRow(row: LegislatorRow): Legislator {
     wikipediaTitle: row.wikipedia_title,
     wikipediaVerified: row.wikipedia_verified,
     wikipediaCheckedNo: row.wikipedia_checked_no,
+    lastSyncedAt: row.last_synced_at ? new Date(row.last_synced_at) : null,
   };
 }
 

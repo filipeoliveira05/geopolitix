@@ -1,7 +1,6 @@
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { getCollegeBasketballProgramById } from "@/lib/geography-data";
-import { getJobFreshness } from "@/lib/sync-freshness";
 import { TeamProfile } from "@/components/TeamProfile";
 
 export async function generateMetadata(
@@ -18,7 +17,6 @@ export default async function CollegeBasketballProgramPage(
   const { id } = await props.params;
   const program = await getCollegeBasketballProgramById(id);
   if (!program) notFound();
-  const syncedAt = await getJobFreshness(["college_basketball"]);
 
   return (
     <TeamProfile
@@ -31,9 +29,9 @@ export default async function CollegeBasketballProgramPage(
         categoryLabel: program.conference ?? "NCAA Division I",
         bioSummary: program.bioSummary,
         wikipediaTitle: program.wikipediaTitle,
+        lastSyncedAt: program.lastSyncedAt,
       }}
-      syncLabel="College basketball"
-      syncedAt={syncedAt}
+      syncLabel="This program"
     />
   );
 }

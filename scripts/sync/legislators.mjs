@@ -126,6 +126,11 @@ function buildLegislator(person) {
     // needed once LEGISLATORS_SCOPE=current stopped always fetching
     // legislators-historical.yaml (see the wikipedia_title migration).
     wikipedia_title: person.id?.wikipedia ?? null,
+    // Powers /legislator/[id]'s own per-row freshness note (see candidates.last_synced_at's
+    // identical use, added first). Every row this function builds is actually upserted below
+    // (BACKFILL_ONLY mode never calls this function at all — see the empty-arrays comment above),
+    // so stamping here is safe.
+    last_synced_at: new Date().toISOString(),
   };
 }
 
@@ -276,7 +281,7 @@ async function backfillLegislatorBios(supabase, warnings, changeLog, { budgetMs,
         recordProcessed();
         return;
       }
-      const updates = { bio_summary: bioSummary };
+      const updates = { bio_summary: bioSummary, last_synced_at: new Date().toISOString() };
       if (!photoOk && photoUrl) updates.photo_url = photoUrl;
       // A single one-shot call (no internal retry loop to leave running in
       // the background), so an ordinary race — no signal to thread through,

@@ -16,6 +16,7 @@ export type Governor = {
   party: string | null;
   startDate: string | null;
   endDate: string | null;
+  lastSyncedAt: Date | null;
 };
 
 type GovernorRow = {
@@ -31,6 +32,7 @@ type GovernorRow = {
   party: string | null;
   start_date: string | null;
   end_date: string | null;
+  last_synced_at: string | null;
 };
 
 function fromRow(row: GovernorRow): Governor {
@@ -47,6 +49,7 @@ function fromRow(row: GovernorRow): Governor {
     party: row.party,
     startDate: row.start_date,
     endDate: row.end_date,
+    lastSyncedAt: row.last_synced_at ? new Date(row.last_synced_at) : null,
   };
 }
 
@@ -163,6 +166,7 @@ export type GovernorTerm = {
   wikipediaTitle: string | null;
   wikipediaVerified: boolean;
   wikipediaCheckedNo: boolean;
+  lastSyncedAt: Date | null;
 };
 
 type GovernorTermRow = {
@@ -180,6 +184,7 @@ type GovernorTermRow = {
   wikipedia_title: string | null;
   wikipedia_verified: boolean;
   wikipedia_checked_no: boolean;
+  last_synced_at: string | null;
 };
 
 function termFromRow(row: GovernorTermRow): GovernorTerm {
@@ -198,6 +203,7 @@ function termFromRow(row: GovernorTermRow): GovernorTerm {
     wikipediaTitle: row.wikipedia_title,
     wikipediaVerified: row.wikipedia_verified,
     wikipediaCheckedNo: row.wikipedia_checked_no,
+    lastSyncedAt: row.last_synced_at ? new Date(row.last_synced_at) : null,
   };
 }
 
@@ -217,6 +223,7 @@ function governorFromTerm(term: GovernorTerm): Governor {
     party: term.party,
     startDate: term.startDate,
     endDate: term.endDate,
+    lastSyncedAt: term.lastSyncedAt,
   };
 }
 

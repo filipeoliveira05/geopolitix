@@ -97,6 +97,10 @@ function buildGovernor(abbr, person) {
     party: normalizeParty(person.party) || null,
     start_date: null,
     end_date: null,
+    // Powers /governor/[id]'s own per-row freshness note for a current officeholder. Note this
+    // only reflects name/party/state — bio/photo are written separately by governor-history.mjs's
+    // copyCurrentBiosToGovernors(), which stamps its own update with the same column.
+    last_synced_at: new Date().toISOString(),
   };
 }
 

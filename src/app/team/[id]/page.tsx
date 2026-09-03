@@ -1,7 +1,6 @@
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { getSportsTeamById } from "@/lib/geography-data";
-import { getJobFreshness } from "@/lib/sync-freshness";
 import { TeamProfile } from "@/components/TeamProfile";
 
 export async function generateMetadata(props: PageProps<"/team/[id]">): Promise<Metadata> {
@@ -14,7 +13,6 @@ export default async function TeamPage(props: PageProps<"/team/[id]">) {
   const { id } = await props.params;
   const team = await getSportsTeamById(id);
   if (!team) notFound();
-  const syncedAt = await getJobFreshness(["sports"]);
 
   return (
     <TeamProfile
@@ -27,9 +25,9 @@ export default async function TeamPage(props: PageProps<"/team/[id]">) {
         categoryLabel: team.league,
         bioSummary: team.bioSummary,
         wikipediaTitle: team.wikipediaTitle,
+        lastSyncedAt: team.lastSyncedAt,
       }}
-      syncLabel="Sports"
-      syncedAt={syncedAt}
+      syncLabel="This team"
     />
   );
 }

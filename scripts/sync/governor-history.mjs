@@ -240,6 +240,12 @@ async function syncState(supabase, state, currentGovernorsByState, warnings, sco
       start_date: term.start,
       end_date: term.end,
       is_current: isCurrent,
+      // Powers /governor/[id]'s own per-row freshness note for a historical governor. Note
+      // GOVERNOR_HISTORY_SCOPE=current (the weekly cadence) only rebuilds a state's CURRENT term
+      // row each week — a genuinely historical (non-current) term's row only gets touched by a
+      // full-historical manual resync, so this column will legitimately differ a lot between the
+      // two, which is the whole point of moving off a single shared job-level timestamp.
+      last_synced_at: new Date().toISOString(),
     });
   }
 
@@ -341,6 +347,11 @@ async function copyCurrentBiosToGovernors(supabase, warnings) {
         wikipedia_title: term.wikipedia_title,
         wikipedia_verified: term.wikipedia_verified,
         wikipedia_checked_no: term.wikipedia_checked_no,
+        // This is the only place a current governor's bio/photo actually gets written (OpenStates
+        // itself never provides them — see governors.mjs's own header comment) — same reasoning
+        // as candidates.last_synced_at needing a stamp on its bio-backfill update, not just its
+        // name/party-matching one.
+        last_synced_at: new Date().toISOString(),
       })
       .eq("id", term.governor_id);
     if (updateError) {
@@ -471,7 +482,11 @@ async function backfillBios(supabase, warnings, changeLog, { scope = "full" } = 
       processed++;
       return;
     }
-    const updates = { photo_url: photoUrl, bio_summary: bioSummary };
+    const updates = {
+      photo_url: photoUrl,
+      bio_summary: bioSummary,
+      last_synced_at: new Date().toISOString(),
+    };
     if (BARE_QID_PATTERN.test(name)) updates.name = cleanNameFromTitle(title);
     const { error: updateError } = await supabase
       .from("governor_terms")

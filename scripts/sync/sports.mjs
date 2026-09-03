@@ -202,6 +202,12 @@ async function main() {
     city_name: t.city,
     state_id: t.stateAbbr,
     wikipedia_title: t.wikipediaTitle,
+    // Powers /team/[id]'s own per-row freshness note. Every row here is upserted in one call
+    // below regardless of whether its content changed, so — unlike legislators.mjs's per-person
+    // staggered scope/backfill cadence — every team in a given run ends up with the same
+    // timestamp; still the correct column to read from, just not more granular than the job-level
+    // note happened to already show for this particular table.
+    last_synced_at: new Date().toISOString(),
   }));
 
   const { data: existingTeams, error: existingTeamsError } = await supabase
