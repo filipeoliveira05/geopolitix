@@ -11,7 +11,8 @@ import {
   type GovernorTerm,
 } from "@/lib/governors-data";
 import { PartyBadge } from "@/components/PartyBadge";
-import { GlobalFooter } from "@/components/GlobalFooter";
+import { SyncFreshnessNote } from "@/components/SyncFreshnessNote";
+import { getJobFreshness } from "@/lib/sync-freshness";
 import {
   WikipediaVerifiedBadge,
   WikipediaSourcedBadge,
@@ -30,6 +31,10 @@ type Profile = {
   wikipediaCheckedNo: boolean;
   stateId: string;
   terms: GovernorTerm[];
+  // Which sync job actually last touched this specific row — a current officeholder's data comes
+  // from governors.mjs, a historical governor's from governor-history.mjs, and the two run on
+  // independent schedules (see CLAUDE.md), so this can't be inferred from a single shared job.
+  syncJob: "governors" | "governor_history";
 };
 
 /**
@@ -54,6 +59,7 @@ async function loadProfile(id: string): Promise<Profile | null> {
       wikipediaCheckedNo: governor.wikipediaCheckedNo,
       stateId: governor.stateId,
       terms,
+      syncJob: "governors",
     };
   }
 
@@ -72,6 +78,7 @@ async function loadProfile(id: string): Promise<Profile | null> {
     wikipediaCheckedNo: mostRecent.wikipediaCheckedNo,
     stateId: mostRecent.stateId,
     terms,
+    syncJob: "governor_history",
   };
 }
 
@@ -89,6 +96,7 @@ export default async function GovernorPage(props: PageProps<"/governor/[id]">) {
   if (!profile) notFound();
 
   const stateName = getStateName(profile.stateId) ?? profile.stateId;
+  const syncedAt = await getJobFreshness([profile.syncJob]);
 
   return (
     <div className="mx-auto w-full max-w-3xl flex-1 animate-fade-in p-6 sm:p-10">
@@ -168,7 +176,12 @@ export default async function GovernorPage(props: PageProps<"/governor/[id]">) {
         )}
       </div>
 
-      <GlobalFooter />
+      <footer className="mt-6 py-6 text-center">
+        <SyncFreshnessNote
+          label={profile.syncJob === "governors" ? "Governor" : "Governor history"}
+          syncedAt={syncedAt}
+        />
+      </footer>
     </div>
   );
 }

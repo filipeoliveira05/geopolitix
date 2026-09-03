@@ -1,7 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { getStateName } from "@/lib/states";
-import { GlobalFooter } from "@/components/GlobalFooter";
+import { SyncFreshnessNote } from "@/components/SyncFreshnessNote";
 import { WikipediaSourcedBadge } from "@/components/WikipediaVerifiedBadge";
 import { SectionHeading } from "@/components/SectionHeading";
 import { BackToMapLink } from "@/components/BackToMapLink";
@@ -25,7 +25,20 @@ export type TeamProfileData = {
   wikipediaTitle: string | null;
 };
 
-export function TeamProfile({ team }: { team: TeamProfileData }) {
+export function TeamProfile({
+  team,
+  syncLabel,
+  syncedAt,
+}: {
+  team: TeamProfileData;
+  // The specific table this row's own sync job (sports/college_football/college_basketball)
+  // last touched, not GlobalFooter's site-wide "oldest core political job" figure — that footer
+  // was showing a legislators/governors/races timestamp on a sports page, which is honest about
+  // the site but not about this row's actual data (caught live: a college program page read "2
+  // days ago" while the state page's own per-job note for the same sync read "10 hours ago").
+  syncLabel: string;
+  syncedAt: Date | null;
+}) {
   const stateName = getStateName(team.stateId) ?? team.stateId;
   return (
     <div className="mx-auto w-full max-w-3xl flex-1 animate-fade-in p-6 sm:p-10">
@@ -59,7 +72,9 @@ export function TeamProfile({ team }: { team: TeamProfileData }) {
         <p className="mt-1 text-sm text-muted">{team.bioSummary ?? "No biography available yet."}</p>
       </div>
 
-      <GlobalFooter />
+      <footer className="mt-6 py-6 text-center">
+        <SyncFreshnessNote label={syncLabel} syncedAt={syncedAt} />
+      </footer>
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { getCollegeFootballProgramById } from "@/lib/geography-data";
+import { getJobFreshness } from "@/lib/sync-freshness";
 import { TeamProfile } from "@/components/TeamProfile";
 
 export async function generateMetadata(
@@ -17,6 +18,7 @@ export default async function CollegeFootballProgramPage(
   const { id } = await props.params;
   const program = await getCollegeFootballProgramById(id);
   if (!program) notFound();
+  const syncedAt = await getJobFreshness(["college_football"]);
 
   return (
     <TeamProfile
@@ -30,6 +32,8 @@ export default async function CollegeFootballProgramPage(
         bioSummary: program.bioSummary,
         wikipediaTitle: program.wikipediaTitle,
       }}
+      syncLabel="College football"
+      syncedAt={syncedAt}
     />
   );
 }

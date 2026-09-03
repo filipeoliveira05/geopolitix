@@ -49,8 +49,10 @@ export const viewport: Viewport = {
 // No global footer here — the home page (/) is a deliberately chrome-free
 // h-dvh fullscreen map (see UsMap's own framing conventions), and adding
 // any extra row here would either overflow that fixed viewport height or
-// get clipped. GlobalFooter (src/components/GlobalFooter.tsx) is instead
-// dropped into every other top-level page individually, which use normal
+// get clipped. Every other top-level page instead renders its own
+// page-specific SyncFreshnessNote/SyncFreshnessRow (src/lib/sync-freshness.ts)
+// reflecting the sync job(s) that actually populate that page's own data —
+// not a single shared site-wide footer — since those pages use normal
 // scrolling document flow.
 //
 // GlobalHeader IS shared across every route, including / — it self-adjusts
