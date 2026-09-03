@@ -1,12 +1,25 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { buildSearchIndex } from "@/lib/search-index";
 import { SearchOverlay } from "@/components/SearchOverlay";
 import { ThemeToggle } from "@/components/ThemeToggle";
+
+// `requestIdleCallback` isn't in Safari — fall back to a short timeout so
+// the prefetch still happens after the current route's own render/data
+// work has had a chance to go first, just without the "truly idle"
+// guarantee.
+function onIdle(callback: () => void): () => void {
+  if (typeof window.requestIdleCallback === "function") {
+    const id = window.requestIdleCallback(callback);
+    return () => window.cancelIdleCallback(id);
+  }
+  const id = window.setTimeout(callback, 1);
+  return () => window.clearTimeout(id);
+}
 
 // Rendered on every route (src/app/layout.tsx) — the one place all three
 // phases (politics/geography/quiz) hang a nav entry off, instead of every
@@ -23,12 +36,14 @@ export function GlobalHeader() {
   const pathname = usePathname();
   const isHome = pathname === "/";
   const [searchOpen, setSearchOpen] = useState(false);
-  // Prefetch on hover/focus (before the click that opens the overlay) so
-  // the index is likely already loading — or done — by the time the panel
-  // actually appears. Once true, stays true: nobody who never touches
-  // search pays this fetch's cost, but a second visit to the button
-  // shouldn't refetch.
+  // Prefetched once per app load, deferred to idle time (not on mount
+  // directly) so it never competes with the current route's own render/
+  // data-fetch work for bandwidth or main-thread time. Hover/focus/click on
+  // the search button also still flips this — belt-and-suspenders for the
+  // rare case someone opens search before the browser goes idle. Once true,
+  // stays true: a second visit to the button shouldn't refetch.
   const [wantsIndex, setWantsIndex] = useState(false);
+  useEffect(() => onIdle(() => setWantsIndex(true)), []);
   const { data: entries, isLoading } = useQuery({
     queryKey: ["search-index"],
     queryFn: buildSearchIndex,
