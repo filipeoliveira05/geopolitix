@@ -1,5 +1,5 @@
-// Every quiz question format shares these two shapes — more formats (map-click, matching,
-// speed-round) are added to the QuizQuestion union by later plans, not this one.
+// Every quiz question format shares only `prompt` — the rest of each shape is format-specific.
+// More formats (matching, speed-round) are added by later plans, not this one.
 
 export type MultipleChoiceQuestion = {
   format: "multiple-choice";
@@ -11,10 +11,27 @@ export type MultipleChoiceQuestion = {
   correctIndex: number;
 };
 
-export type QuizQuestion = MultipleChoiceQuestion;
+export type MapClickQuestion = {
+  format: "map-click";
+  prompt: string;
+  targetStateId: string;
+  targetStateName: string;
+};
 
-export type AnsweredQuestion = {
+export type QuizQuestion = MultipleChoiceQuestion | MapClickQuestion;
+
+export type AnsweredMultipleChoice = {
+  format: "multiple-choice";
   question: MultipleChoiceQuestion;
   chosenIndex: number;
   correct: boolean;
 };
+
+export type AnsweredMapClick = {
+  format: "map-click";
+  question: MapClickQuestion;
+  clickedStateId: string;
+  correct: boolean;
+};
+
+export type AnsweredQuestion = AnsweredMultipleChoice | AnsweredMapClick;
