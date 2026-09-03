@@ -56,10 +56,12 @@ export function GlobalHeader() {
           <Link href="/midterms-2026" className="text-muted hover:text-seal">
             Midterms 2026
           </Link>
-          {/* Phase 2/3 — light up once those sections exist; no functional
-              change needed here when they do, just flip these to real links. */}
+          {/* Phase 2 — light up once that section exists; no functional change needed here when
+              it does, just flip this to a real link. */}
           <span className="hidden cursor-default text-muted/50 sm:inline">Geography</span>
-          <span className="hidden cursor-default text-muted/50 sm:inline">Quiz</span>
+          <Link href="/quiz" className="hidden text-muted hover:text-seal sm:inline">
+            Quiz
+          </Link>
           <button
             onClick={openSearch}
             onMouseEnter={() => setWantsIndex(true)}
