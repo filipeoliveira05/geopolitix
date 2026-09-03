@@ -13,6 +13,7 @@ import type { GovernorTerm } from "@/lib/governors-data";
 import { candidateHref, primaryPendingMessage, type Race } from "@/lib/races-data";
 import type { City, SportsTeam, CollegeProgram } from "@/lib/geography-data";
 import { CollapsibleGroup } from "@/components/CollapsibleGroup";
+import { formatPopulation } from "@/lib/format";
 
 type TabKey = "current" | "history" | "geography" | "midterms";
 
@@ -504,7 +505,7 @@ function GeographyTab({
               {population && (
                 <div>
                   <div className="text-[10px] font-medium uppercase tracking-wide text-muted">Population</div>
-                  <div className="font-display text-lg">{population.toLocaleString()}</div>
+                  <div className="font-display text-lg">{formatPopulation(population)}</div>
                 </div>
               )}
               {region && (
@@ -536,7 +537,7 @@ function GeographyTab({
                       )}
                     </td>
                     <td className="py-1.5 text-right align-middle font-mono text-muted">
-                      {city.population ? city.population.toLocaleString() : "—"}
+                      {city.population ? formatPopulation(city.population) : "—"}
                     </td>
                   </tr>
                 ))}

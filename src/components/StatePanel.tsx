@@ -10,6 +10,7 @@ import {
 import { getGovernor, getGovernorAsOf, governorFullName } from "@/lib/governors-data";
 import { getStateGeography } from "@/lib/geography-data";
 import { getStateName } from "@/lib/states";
+import { formatPopulation } from "@/lib/format";
 import { asOfDateForYear, yearLabel, type ElectionYear } from "@/lib/election-years";
 import { PartyBadge } from "@/components/PartyBadge";
 import { RepresentativesList } from "@/components/RepresentativesList";
@@ -116,7 +117,7 @@ export function StatePanel({
           <p className="text-sm text-muted">
             {geography.capitalName && <>Capital: {geography.capitalName}</>}
             {geography.capitalName && geography.population && " · "}
-            {geography.population && <>Population: {geography.population.toLocaleString()}</>}
+            {geography.population && <>Population: {formatPopulation(geography.population)}</>}
           </p>
         ) : null}
         <Link href={`/state/${abbr}`} className="link-accent mt-1 inline-block text-sm text-seal">
