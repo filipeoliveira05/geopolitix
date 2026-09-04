@@ -127,3 +127,53 @@ export function buildOfficeholderPartyQuestions(
     }),
   );
 }
+
+/**
+ * The minimum number of distinct same-state distractor names needed to keep a name-guess
+ * question's 4 options entirely within the subject's own state — one less than the default
+ * option count, since the subject's own name doesn't count as a distractor.
+ */
+const SAME_STATE_DISTRACTOR_MINIMUM = 3;
+
+/**
+ * "This is the governor of {state}." (unique — a state has exactly one) vs. "This is one of the
+ * U.S. Senators from {state}." / "This is one of {state}'s U.S. Representatives." — a state has
+ * TWO senators and (almost always) multiple representatives, so "the senator/representative from
+ * X" would falsely imply there's only one; caught from live user feedback before this shipped.
+ */
+function nameCluePrompt(f: OfficeholderPhotoFact): string {
+  if (f.roleLabel === "governor") return `This is the governor of ${f.stateName}. Who is it?`;
+  if (f.roleLabel === "senator") return `This is one of the U.S. Senators from ${f.stateName}. Who is it?`;
+  return `This is one of ${f.stateName}'s U.S. Representatives. Who is it?`;
+}
+
+/**
+ * Combines the photo AND the state as clues (rather than a bare photo-only guess, which teaches
+ * little beyond face-recognition) to guess the specific person's name — see nameCluePrompt above
+ * for the exact wording per role. Distractors are drawn from the SAME state first, when that
+ * state has at least 3 other distinct officeholders in the pool (its other senator, its governor,
+ * another House delegation member) — this is what makes the state clue actually load-bearing: a
+ * wrong guess has to be someone who could plausibly hold this exact office in this exact state,
+ * not just any nationwide name. Falls back to the full nationwide pool for a state that doesn't
+ * have 3 other officeholders to draw from (e.g. a lone at-large House seat plus a same-party
+ * Senate pair).
+ */
+export function buildOfficeholderNameQuestions(
+  legislators: LegislatorStateFact[],
+  governors: GovernorFact[],
+  count: number,
+): MultipleChoiceQuestion[] {
+  const pool = buildOfficeholderPool(legislators, governors);
+  const subjects = pickRandom(pool, count);
+  return subjects.map((subject) => {
+    const sameState = pool.filter((f) => f.stateId === subject.stateId && f.name !== subject.name);
+    const distinctSameStateNames = new Set(sameState.map((f) => f.name)).size;
+    const distractorPool =
+      distinctSameStateNames >= SAME_STATE_DISTRACTOR_MINIMUM ? [subject, ...sameState] : pool;
+    return buildMultipleChoiceQuestion(subject, distractorPool, {
+      getPrompt: nameCluePrompt,
+      getOptionText: (f) => f.name,
+      getImageUrl: (f) => f.photoUrl,
+    });
+  });
+}

@@ -3,6 +3,7 @@ import {
   buildGovernorQuestions,
   buildOfficeholderPhotoQuestions,
   buildOfficeholderPartyQuestions,
+  buildOfficeholderNameQuestions,
 } from "./officeholders-questions";
 import type { GovernorFact } from "@/lib/governors-data";
 import type { LegislatorStateFact } from "@/lib/legislators-data";
@@ -152,6 +153,76 @@ describe("buildOfficeholderPartyQuestions", () => {
     const questions = buildOfficeholderPartyQuestions(legislators, [], 3);
     for (const q of questions) {
       expect(q.imageCaption).not.toBe("Legislator0");
+    }
+  });
+});
+
+/** 4 legislators (2 senators, 2 reps) all representing the same state, for same-state-distractor tests. */
+function makeSameStateLegislators(stateId: string, stateName: string): LegislatorStateFact[] {
+  return ["senate", "senate", "house", "house"].map((chamber, i) => ({
+    legislatorId: `${stateId}-L${i}`,
+    legislatorName: `${stateId}Legislator${i}`,
+    party: i % 2 === 0 ? "Democrat" : "Republican",
+    chamber: chamber as "senate" | "house",
+    photoUrl: `https://example.com/${stateId}-photo${i}.png`,
+    stateId,
+    stateName,
+  }));
+}
+
+describe("buildOfficeholderNameQuestions", () => {
+  it("builds the requested number of questions from the combined legislator+governor pool", () => {
+    const questions = buildOfficeholderNameQuestions(makeLegislatorFacts(10), makeGovernorFacts(10), 5);
+    expect(questions).toHaveLength(5);
+  });
+
+  it("phrases the prompt without implying a state has only one senator/representative", () => {
+    const legislators = makeSameStateLegislators("SX", "StateX");
+    const questions = buildOfficeholderNameQuestions(legislators, [], 4);
+    for (const q of questions) {
+      expect(q.prompt).toMatch(
+        /^This is one of the U\.S\. Senators from StateX\. Who is it\?$|^This is one of StateX's U\.S\. Representatives\. Who is it\?$/,
+      );
+      expect(q.imageUrl).toMatch(/^https:\/\/example\.com\/SX-photo\d+\.png$/);
+    }
+  });
+
+  it("phrases the governor prompt as unique, since a state has only one", () => {
+    const governors = makeGovernorFacts(10);
+    const questions = buildOfficeholderNameQuestions([], governors, 10);
+    for (const q of questions) {
+      const matchingFact = governors.find((g) => g.photoUrl === q.imageUrl);
+      expect(q.prompt).toBe(`This is the governor of ${matchingFact?.stateName}. Who is it?`);
+    }
+  });
+
+  it("draws distractors from the same state when it has at least 3 other officeholders", () => {
+    const sameState = makeSameStateLegislators("SX", "StateX");
+    const governor: GovernorFact = {
+      stateId: "SX",
+      stateName: "StateX",
+      governorName: "SXGovernor",
+      photoUrl: "https://example.com/SX-governor.png",
+      party: "Democrat",
+    };
+    // Plenty of other-state noise that should NOT be picked once same-state has enough options.
+    const otherStates = makeLegislatorFacts(30);
+    const questions = buildOfficeholderNameQuestions([...sameState, ...otherStates], [governor], 4);
+    for (const q of questions) {
+      if (!q.prompt.includes("StateX")) continue;
+      for (const option of q.options) {
+        expect(option).toMatch(/^SX/);
+      }
+    }
+  });
+
+  it("falls back to the nationwide pool when a state has fewer than 3 other officeholders", () => {
+    // makeLegislatorFacts gives every legislator a distinct state, so no subject ever has 3
+    // same-state co-officeholders — every question must fall back to nationwide distractors.
+    const legislators = makeLegislatorFacts(10);
+    const questions = buildOfficeholderNameQuestions(legislators, [], 5);
+    for (const q of questions) {
+      expect(q.options).toHaveLength(4);
     }
   });
 });
