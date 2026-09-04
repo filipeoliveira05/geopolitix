@@ -1377,8 +1377,10 @@ entirely since `isIncumbent` is already boolean with no pool-based distractor to
   behaves the same across Strict Mode's synthetic double-invoke as it would in a single real
   mount.
 - **Officeholders** (`officeholders-questions.ts`): "who is the current governor of X" MC (photo
-  reveal added 2026-09-04, see below), and a legislator-photo MC ("Which state is this
-  senator/representative from?" — reworded 2026-09-04, see below).
+  reveal added 2026-09-04, see below). Grew to 6 question types total in a 2026-09-04 same-day
+  follow-up session (state-guess, party-guess, combined-clue name-guess, chamber-guess, House
+  seat count) — see the "Officeholders new-question-types batch" entry near the end of this
+  section for the full writeup, including the wording bug caught from live user feedback.
 - **2026 Midterms** (`midterms-questions.ts`): candidate-party MC (the 2-3-option case above) and
   incumbency Yes/No, both naming the specific race as of 2026-09-04 (see below). Draws only from
   Senate + Governor races (`getSenateAndGovernorRaces()`) — House's 435 races are deliberately
@@ -1407,7 +1409,7 @@ entirely since `isIncumbent` is already boolean with no pool-based distractor to
   which all assume a single designated subject plus random same-pool distractors), and a second
   session type — **speed round** (`SpeedRoundSession.tsx`, `categoryHasSpeedRoundMode()`/
   `buildSpeedRoundPool()` in `engine.ts`): a 60-second countdown pulling ~5 questions from every
-  one of the 8 existing multiple-choice generators across Geography/Officeholders/Midterms/Sports
+  one of the 19 existing multiple-choice generators across Geography/Officeholders/Midterms/Sports
   (deliberately excluding map-click, unsuited to rapid-fire pace, and matching, not a
   `QuizQuestion` at all) shuffled into one ~40-question pool, answered with immediate feedback and
   a 400ms auto-advance — no manual "Next" click, the one session type where that's true. Its own
@@ -1644,3 +1646,52 @@ tradeoff the user chose over bumping `SESSION_LENGTH`, see `buildCategorySession
   image required, distinct from `revealCaption` which the view only renders alongside
   `revealImageUrl`), naming the real largest city and its population whenever the asked-about
   city wasn't actually it.
+
+**Officeholders new-question-types batch (2026-09-04, separate same-day follow-up session)** —
+driven by the user's own hand-written list of question-type ideas, worked through one at a time,
+each shipped as its own commit with live Playwright verification before moving to the next. Took
+Officeholders from 2 question types to 6; the user explicitly paused before the remaining two
+ideas (district number per representative, and a "name the two current senators of a state"
+question) rather than building everything in the list — deprioritized, not abandoned.
+- **`buildOfficeholderPhotoQuestions`** (renamed from `buildLegislatorPhotoQuestions`) — the user
+  pointed out that a proposed new "which state does this officeholder belong to?" question would
+  just be the existing legislator-photo question with governors added to the pool, not a genuinely
+  new question type. Folded governors into the SAME pool instead of shipping a near-duplicate:
+  `GovernorFact` gained a `party` field (`governors-data.ts`, needed for the caption badge), and
+  the prompt is now role-aware ("Which state is this senator/representative/governor from?").
+  Governors with no synced photo are silently excluded, same as a photo-less legislator already
+  was.
+- **`buildOfficeholderPartyQuestions`** — "What party is Senator/Representative/Governor X of
+  Y?", reusing the same merged pool and the 2-4-option-by-real-distinct-values pattern
+  `buildCandidatePartyQuestions` (Midterms) already established. Excludes any officeholder with no
+  known party (a handful of governor rows) — same reasoning `candidateFactsFromRaces` already
+  uses. No party badge on the photo caption, unlike the state-guess question above — that would
+  give away the answer here.
+- **`buildOfficeholderNameQuestions`** — combined photo+state clue guessing the specific person's
+  name. The user explicitly preferred this over a plain "guess the legislator from their photo"
+  idea once both were on the table, reasoning that a bare photo alone teaches little beyond raw
+  face-recognition; including the state as a second clue is what makes the question actually
+  educational. Distractors are drawn from the subject's OWN state first when it has ≥3 other
+  officeholders in the pool (`SAME_STATE_DISTRACTOR_MINIMUM`) — this is what makes the state clue
+  load-bearing rather than decorative, since a wrong guess then has to be someone who could
+  plausibly hold this exact office in this exact state; falls back to the nationwide pool for a
+  sparser state. **Prompt wording caught a real correctness bug from live user feedback before
+  shipping**: the first version read "This is the senator/representative from {state}. Who is
+  it?", which falsely implies uniqueness — a state has TWO senators and (almost always) several
+  representatives, so "the" was simply wrong for those two roles. Fixed to "This is one of the
+  U.S. Senators from {state}." / "This is one of {state}'s U.S. Representatives." — governor alone
+  keeps "the," since a state has exactly one.
+- **`buildChamberQuestions`** — "Which chamber of Congress does this legislator serve in?", U.S.
+  Senate vs. U.S. House of Representatives. Legislators only, not governors (no chamber to guess).
+  Only 2 possible values nationwide, so `optionCount: 2` like the party question above. The
+  photo/name/party caption is safe to show up front — none of it hints at chamber the way it would
+  spoil the party question's caption.
+- **`buildHouseSeatCountQuestions`** — "How many U.S. House seats does {state} have?", text-only
+  (a seat count has no photo). Needed a new `src/lib/districts-data.ts` (`getHouseSeatCountsByState()`),
+  the first query against the Postgres `districts` metadata table (previously only its Storage
+  topology blob was ever read) — counts rows per `state_id` rather than counting occupied `terms`
+  rows, since a vacancy would silently undercount a state's real apportionment. Distractor options
+  are plain nationwide-random seat-count values (no proximity-to-correct-answer weighting, same as
+  every other numeric MC question in the app), deduped by rendered text like every other generator
+  — small states clustering around 1-2 seats means duplicate values are common but never double-
+  counted as separate options.

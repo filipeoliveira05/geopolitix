@@ -347,8 +347,11 @@ Must clearly state this **is not a real-time results service**.
 Reuses existing tables/query helpers, no new data source or sync script. Five categories, each
 its own `/quiz/[category]` page: **Geography** (10 question types as of a 2026-09-04 follow-up —
 capital, flag, map-click, name↔abbreviation, city→state, largest-city, is-capital,
-is-largest-city, and state/city population comparisons), **Officeholders** (current governor,
-legislator-photo-to-state), **2026 Midterms** (candidate party, incumbency), **Sports** (team
+is-largest-city, and state/city population comparisons), **Officeholders** (6 question types as
+of a 2026-09-04 follow-up — current governor, officeholder-photo-to-state (senators/reps/
+governors combined), officeholder party, combined photo+state name-guess, legislator chamber
+(Senate vs. House), and House seat count per state), **2026 Midterms** (candidate party,
+incumbency), **Sports** (team
 logo, team-to-state, plus a matching-pairs mode), **Mashups** (odd-one-out — "which of these
 teams is NOT based in the same state as the others?" — plus a 60-second speed round mixing every
 other category's multiple-choice question types together). Every question is multiple choice or
