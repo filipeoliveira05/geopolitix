@@ -85,6 +85,25 @@ export function buildTeamCityQuestions(
   );
 }
 
+export function buildTeamByCityQuestions(
+  teams: SportsTeam[],
+  count: number,
+): MultipleChoiceQuestion[] {
+  const subjects = pickRandom(teams, count);
+  return subjects.map((subject) => {
+    // Excludes every OTHER team based in the same city from the distractor pool — several cities
+    // (New York, Los Angeles, Chicago) host multiple synced teams, and a distractor option that's
+    // also genuinely based in the asked-about city would make the question have more than one
+    // correct answer. No image: the team name is the answer here (reverse of
+    // buildTeamCityQuestions), so showing the subject's logo up front would give it away.
+    const otherCitiesPool = teams.filter((t) => t.cityName !== subject.cityName);
+    return buildMultipleChoiceQuestion(subject, [subject, ...otherCitiesPool], {
+      getPrompt: (t) => `Which of these teams is based in ${t.cityName}?`,
+      getOptionText: (t) => t.name,
+    });
+  });
+}
+
 export function buildMatchingPairs(teams: SportsTeam[], count: number): MatchingPair[] {
   const withLogo = teams.filter((t) => t.logoUrl !== null);
   const subjects = pickRandom(withLogo, count);
