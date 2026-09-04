@@ -40,6 +40,13 @@ export function buildTeamStateQuestions(
     buildMultipleChoiceQuestion(subject, facts, {
       getPrompt: (t) => `Which state is the ${t.name} based in?`,
       getOptionText: (t) => t.stateName,
+      // Shown immediately, not gated behind answering — the team name is already in the prompt,
+      // so the logo doesn't spoil the state answer (same reasoning as the midterms questions). No
+      // caption — the team name is already right there in the prompt text, so repeating it under
+      // the logo would be redundant (unlike e.g. the Legislator question, whose prompt never names
+      // the subject). Not every team has a logo (not filtered out like buildTeamLogoQuestions
+      // does), so this degrades gracefully to no image for those.
+      getImageUrl: (t) => t.logoUrl,
     }),
   );
 }

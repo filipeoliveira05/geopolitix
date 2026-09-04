@@ -52,10 +52,28 @@ describe("buildTeamStateQuestions", () => {
     expect(buildTeamStateQuestions(makeTeams(10), 5)).toHaveLength(5);
   });
 
-  it("has no image and phrases the prompt naming the team", () => {
+  it("phrases the prompt naming the team", () => {
     const [q] = buildTeamStateQuestions(makeTeams(10), 1);
-    expect(q.imageUrl).toBeNull();
     expect(q.prompt).toMatch(/^Which state is the Team\d+ based in\?$/);
+  });
+
+  it("shows the team's logo immediately (not gated behind answering), with no redundant caption", () => {
+    const teams = makeTeams(10);
+    const questions = buildTeamStateQuestions(teams, 5);
+    for (const q of questions) {
+      const subjectName = q.prompt.match(/^Which state is the (.+) based in\?$/)?.[1];
+      const subject = teams.find((t) => t.name === subjectName);
+      expect(q.imageUrl).toBe(subject?.logoUrl);
+      expect(q.imageCaption).toBeNull();
+    }
+  });
+
+  it("degrades gracefully to no image when the team has no logo", () => {
+    const teams = makeTeams(10);
+    teams[0] = { ...teams[0], logoUrl: null };
+    const questions = buildTeamStateQuestions(teams, 10);
+    const q = questions.find((q) => q.prompt.includes("Team0"));
+    expect(q?.imageUrl).toBeNull();
   });
 
   it("has 4 options with a real correct answer", () => {
