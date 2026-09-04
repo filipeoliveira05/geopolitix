@@ -6,6 +6,7 @@ import {
   buildAbbreviationQuestions,
   buildCityStateQuestions,
   buildLargestCityQuestions,
+  buildIsCapitalQuestions,
 } from "./geography-questions";
 import type { StateFact, CityFact } from "@/lib/geography-data";
 
@@ -16,6 +17,7 @@ function makeCities(n: number): CityFact[] {
     stateId: `S${i}`,
     stateName: `State${i}`,
     population: 1000 + i,
+    isCapital: false,
   }));
 }
 
@@ -182,6 +184,7 @@ describe("buildLargestCityQuestions", () => {
           stateId: `S${i}`,
           stateName: `State${i}`,
           population: isLargest ? 100000 : 100 + j,
+          isCapital: false,
         });
       }
     }
@@ -225,7 +228,14 @@ describe("buildLargestCityQuestions", () => {
 
   it("skips a state with fewer than 3 other synced cities", () => {
     const cities: CityFact[] = [
-      { cityId: "a", cityName: "OnlyCity", stateId: "S0", stateName: "State0", population: 500 },
+      {
+        cityId: "a",
+        cityName: "OnlyCity",
+        stateId: "S0",
+        stateName: "State0",
+        population: 500,
+        isCapital: false,
+      },
       ...makeCitiesWithDecoys(5).filter((c) => c.stateId !== "S0"),
     ];
     const prompts = buildLargestCityQuestions(cities, makeFacts(6), 4).map((q) => q.prompt);
@@ -238,6 +248,88 @@ describe("buildLargestCityQuestions", () => {
     );
     const [q] = buildLargestCityQuestions(cities, makeFacts(1), 1);
     expect(q.options[q.correctIndex]).not.toBe("BigCity0");
+  });
+});
+
+describe("buildIsCapitalQuestions", () => {
+  // One capital + 3 non-capitals per state, so every generated state has a real "No" pool to
+  // draw from as well as its one "Yes" case.
+  function makeCitiesWithCapitals(n: number): CityFact[] {
+    const cities: CityFact[] = [];
+    for (let i = 0; i < n; i++) {
+      cities.push({
+        cityId: `${i}-capital`,
+        cityName: `Capital${i}`,
+        stateId: `S${i}`,
+        stateName: `State${i}`,
+        population: 1000,
+        isCapital: true,
+      });
+      for (let j = 0; j < 3; j++) {
+        cities.push({
+          cityId: `${i}-${j}`,
+          cityName: `City${i}_${j}`,
+          stateId: `S${i}`,
+          stateName: `State${i}`,
+          population: 2000 + j,
+          isCapital: false,
+        });
+      }
+    }
+    return cities;
+  }
+
+  it("builds the requested number of questions", () => {
+    const questions = buildIsCapitalQuestions(makeCitiesWithCapitals(10), makeFacts(10), 5);
+    expect(questions).toHaveLength(5);
+  });
+
+  it("only produces a plain Yes/No option set", () => {
+    const questions = buildIsCapitalQuestions(makeCitiesWithCapitals(10), makeFacts(10), 5);
+    for (const q of questions) {
+      expect(q.options).toEqual(["Yes", "No"]);
+    }
+  });
+
+  it("answers Yes when naming the real capital, No when naming a non-capital city", () => {
+    const questions = buildIsCapitalQuestions(makeCitiesWithCapitals(20), makeFacts(20), 20);
+    for (const q of questions) {
+      const cityName = q.prompt.match(/^Is (\S+) the capital/)?.[1];
+      if (cityName?.startsWith("Capital")) {
+        expect(q.correctIndex).toBe(0);
+      } else {
+        expect(q.correctIndex).toBe(1);
+      }
+    }
+  });
+
+  it("uses both Yes and No cases across enough questions", () => {
+    const questions = buildIsCapitalQuestions(makeCitiesWithCapitals(20), makeFacts(20), 20);
+    const correctIndices = new Set(questions.map((q) => q.correctIndex));
+    expect(correctIndices.size).toBe(2);
+  });
+
+  it("skips a state with no synced capital", () => {
+    const cities = [
+      ...makeCitiesWithCapitals(2).filter((c) => c.stateId !== "S0" || !c.isCapital),
+    ];
+    const prompts = buildIsCapitalQuestions(cities, makeFacts(2), 1).map((q) => q.prompt);
+    expect(prompts[0]).toContain("State1");
+  });
+
+  it("uses the subject state's flag as the image", () => {
+    const questions = buildIsCapitalQuestions(makeCitiesWithCapitals(10), makeFacts(10), 5);
+    for (const q of questions) {
+      const stateIndex = q.prompt.match(/State(\d+)\?$/)?.[1];
+      expect(q.imageUrl).toBe(`https://example.com/flag${stateIndex}.png`);
+    }
+  });
+
+  it("skips a state whose flag is missing from the states pool", () => {
+    const cities = makeCitiesWithCapitals(2);
+    const statesMissingOneFlag = makeFacts(2).filter((s) => s.stateId !== "S0");
+    const prompts = buildIsCapitalQuestions(cities, statesMissingOneFlag, 1).map((q) => q.prompt);
+    expect(prompts[0]).toContain("State1");
   });
 });
 

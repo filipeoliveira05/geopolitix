@@ -64,6 +64,52 @@ export function buildCityStateQuestions(
   );
 }
 
+/**
+ * A plain Yes/No question, same shape as buildIncumbencyQuestions — isCapital is already
+ * boolean, no pool-based distractor needed. For a random eligible state (one with both a
+ * capital and at least one non-capital city synced), picks either the real capital (Yes) or a
+ * random non-capital city (No), 50/50 — a uniform random city pick would skew heavily toward
+ * "No" (~10 non-capitals synced per 1 capital per state). Shows the state's flag, same as
+ * buildLargestCityQuestions, so the subject state is visually clear alongside the named city.
+ */
+export function buildIsCapitalQuestions(
+  cities: CityFact[],
+  states: StateFact[],
+  count: number,
+): MultipleChoiceQuestion[] {
+  const flagByState = new Map(states.map((s) => [s.stateId, s.flagUrl]));
+  const citiesByState = new Map<string, CityFact[]>();
+  for (const city of cities) {
+    if (!citiesByState.has(city.stateId)) citiesByState.set(city.stateId, []);
+    citiesByState.get(city.stateId)!.push(city);
+  }
+  const eligibleStates = Array.from(citiesByState.values()).filter(
+    (list) =>
+      list.some((c) => c.isCapital) &&
+      list.some((c) => !c.isCapital) &&
+      flagByState.has(list[0].stateId),
+  );
+
+  const subjects = pickRandom(eligibleStates, count);
+  return subjects.map((stateCities) => {
+    const capital = stateCities.find((c) => c.isCapital)!;
+    const nonCapitals = stateCities.filter((c) => !c.isCapital);
+    const city = Math.random() < 0.5 ? capital : pickRandom(nonCapitals, 1)[0];
+    return {
+      format: "multiple-choice",
+      prompt: `Is ${city.cityName} the capital of ${city.stateName}?`,
+      imageUrl: flagByState.get(city.stateId) ?? null,
+      imageCaption: null,
+      imageCaptionParty: undefined,
+      revealImageUrl: null,
+      revealCaption: null,
+      optionsAreParties: false,
+      options: ["Yes", "No"],
+      correctIndex: city.isCapital ? 0 : 1,
+    };
+  });
+}
+
 type LargestCityFact = { cityName: string; stateName: string; flagUrl: string };
 
 /**

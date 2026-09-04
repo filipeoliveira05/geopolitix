@@ -275,6 +275,7 @@ export type CityFact = {
   stateId: string;
   stateName: string;
   population: number | null;
+  isCapital: boolean;
 };
 
 /**
@@ -289,7 +290,7 @@ export type CityFact = {
 export async function getAllCitiesWithState(): Promise<CityFact[]> {
   const { data, error } = await supabase
     .from("cities")
-    .select("id, name, state_id, population, states!cities_state_id_fkey(name)");
+    .select("id, name, state_id, population, is_capital, states!cities_state_id_fkey(name)");
   if (error) throw error;
   return (
     data as unknown as {
@@ -297,6 +298,7 @@ export async function getAllCitiesWithState(): Promise<CityFact[]> {
       name: string;
       state_id: string;
       population: number | null;
+      is_capital: boolean;
       states: { name: string } | null;
     }[]
   )
@@ -307,6 +309,7 @@ export async function getAllCitiesWithState(): Promise<CityFact[]> {
       stateId: row.state_id,
       stateName: row.states!.name,
       population: row.population,
+      isCapital: row.is_capital,
     }));
 }
 
