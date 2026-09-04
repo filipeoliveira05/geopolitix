@@ -8,6 +8,7 @@ function makeGovernorFacts(n: number): GovernorFact[] {
     stateId: `S${i}`,
     stateName: `State${i}`,
     governorName: `Governor${i}`,
+    photoUrl: `https://example.com/governor-photo${i}.png`,
   }));
 }
 
@@ -44,6 +45,17 @@ describe("buildGovernorQuestions", () => {
   it("has no image (governor questions are text-only)", () => {
     const [q] = buildGovernorQuestions(makeGovernorFacts(10), 1);
     expect(q.imageUrl).toBeNull();
+  });
+
+  it("sets the correct governor's photo/name as the reveal image, shown only after answering", () => {
+    const facts = makeGovernorFacts(10);
+    const questions = buildGovernorQuestions(facts, 5);
+    for (const q of questions) {
+      const correctOption = q.options[q.correctIndex];
+      const matchingFact = facts.find((f) => f.governorName === correctOption);
+      expect(q.revealImageUrl).toBe(matchingFact?.photoUrl);
+      expect(q.revealCaption).toBe(matchingFact?.governorName);
+    }
   });
 });
 

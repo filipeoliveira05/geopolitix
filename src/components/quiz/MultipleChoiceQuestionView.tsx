@@ -54,6 +54,22 @@ export function MultipleChoiceQuestionView({
           );
         })}
       </div>
+      {answered && question.revealImageUrl && (
+        <div className="mt-4 flex items-center gap-3">
+          <div className="relative h-16 w-16 shrink-0">
+            <Image
+              src={question.revealImageUrl}
+              alt=""
+              fill
+              unoptimized
+              className="rounded object-cover"
+            />
+          </div>
+          {question.revealCaption && (
+            <p className="text-sm font-medium text-ink">{question.revealCaption}</p>
+          )}
+        </div>
+      )}
     </div>
   );
 }

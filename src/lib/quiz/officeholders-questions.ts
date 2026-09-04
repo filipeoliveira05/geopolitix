@@ -13,6 +13,8 @@ export function buildGovernorQuestions(
     buildMultipleChoiceQuestion(subject, facts, {
       getPrompt: (s) => `Who is the current governor of ${s.stateName}?`,
       getOptionText: (f) => f.governorName,
+      getRevealImageUrl: (s) => s.photoUrl,
+      getRevealCaption: (s) => s.governorName,
     }),
   );
 }

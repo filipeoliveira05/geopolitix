@@ -11,6 +11,12 @@ export type MultipleChoiceQuestion = {
   // image question type (flags, team logos), which have nothing worth captioning.
   imageCaption?: string | null;
   imageCaptionParty?: string | null;
+  // Shown only AFTER answering, below the options — e.g. the correct governor's own photo, so a
+  // text-only question ("Who is the governor of X?") still teaches a face-to-name association.
+  // Distinct from imageUrl/imageCaption above, which show BEFORE answering for photo-guess
+  // question types (e.g. Legislator) — the two never apply to the same question.
+  revealImageUrl?: string | null;
+  revealCaption?: string | null;
   options: string[];
   correctIndex: number;
 };

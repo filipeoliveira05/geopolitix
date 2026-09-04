@@ -83,6 +83,26 @@ describe("buildMultipleChoiceQuestion", () => {
     expect(q.imageCaptionParty).toBeNull();
   });
 
+  it("sets revealImageUrl/revealCaption from getRevealImageUrl/getRevealCaption when provided", () => {
+    const q = buildMultipleChoiceQuestion(pool[0], pool, {
+      getPrompt: () => "prompt",
+      getOptionText: (item) => item.label,
+      getRevealImageUrl: () => "https://example.com/reveal.png",
+      getRevealCaption: (item) => item.label,
+    });
+    expect(q.revealImageUrl).toBe("https://example.com/reveal.png");
+    expect(q.revealCaption).toBe("Alpha");
+  });
+
+  it("defaults revealImageUrl/revealCaption to null when not provided", () => {
+    const q = buildMultipleChoiceQuestion(pool[0], pool, {
+      getPrompt: () => "prompt",
+      getOptionText: (item) => item.label,
+    });
+    expect(q.revealImageUrl).toBeNull();
+    expect(q.revealCaption).toBeNull();
+  });
+
   it("throws when the pool has fewer than 4 distinct option texts", () => {
     const smallPool: Item[] = [
       { id: "a", label: "Alpha" },
