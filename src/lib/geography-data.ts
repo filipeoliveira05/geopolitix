@@ -229,6 +229,14 @@ async function getCollegeProgramsForState(
   return (data as unknown as CollegeProgramRow[]).map(collegeProgramFromRow);
 }
 
+async function getAllCollegePrograms(
+  table: "college_football_programs" | "college_basketball_programs",
+): Promise<CollegeProgram[]> {
+  const { data, error } = await supabase.from(table).select(COLLEGE_PROGRAM_COLUMNS);
+  if (error) throw error;
+  return (data as unknown as CollegeProgramRow[]).map(collegeProgramFromRow);
+}
+
 async function getCollegeProgramById(
   table: "college_football_programs" | "college_basketball_programs",
   id: string,
@@ -250,6 +258,16 @@ export function getCollegeFootballForState(stateAbbr: string): Promise<CollegePr
 /** Every NCAA Division I men's basketball program in this state. */
 export function getCollegeBasketballForState(stateAbbr: string): Promise<CollegeProgram[]> {
   return getCollegeProgramsForState("college_basketball_programs", stateAbbr);
+}
+
+/** Every NCAA Division I FBS college football program nationwide. */
+export function getAllCollegeFootball(): Promise<CollegeProgram[]> {
+  return getAllCollegePrograms("college_football_programs");
+}
+
+/** Every NCAA Division I men's basketball program nationwide. */
+export function getAllCollegeBasketball(): Promise<CollegeProgram[]> {
+  return getAllCollegePrograms("college_basketball_programs");
 }
 
 /** A single college football program by id, for /college-football/[id]. */

@@ -2,9 +2,12 @@ import {
   getAllStateCapitalsAndFlags,
   getAllCitiesWithState,
   getAllSportsTeams,
+  getAllCollegeFootball,
+  getAllCollegeBasketball,
   type StateFact,
   type CityFact,
   type SportsTeam,
+  type CollegeProgram,
 } from "@/lib/geography-data";
 import { getAllCurrentGovernors, type GovernorFact } from "@/lib/governors-data";
 import { getAllCurrentLegislatorsWithPhoto, type LegislatorStateFact } from "@/lib/legislators-data";
@@ -43,7 +46,12 @@ import {
   buildTeamCityQuestions,
   buildTeamByCityQuestions,
   buildTeamByStateQuestions,
+  buildSchoolFromNicknameQuestions,
+  buildCollegeConferenceQuestions,
   buildMatchingPairs,
+  restrictToPowerConferences,
+  COLLEGE_FOOTBALL_POWER_CONFERENCES,
+  COLLEGE_BASKETBALL_POWER_CONFERENCES,
 } from "./sports-questions";
 import { countOddOneOutEligibleStates, buildOddOneOutQuestions } from "./mashups-questions";
 import { pickRandom, randomSplit } from "./random";
@@ -61,11 +69,16 @@ type OfficeholdersPool = {
   houseSeatCounts: HouseSeatCountFact[];
 };
 type MidtermsPool = { candidates: CandidateFact[] };
+type SportsPool = {
+  teams: SportsTeam[];
+  collegeFootball: CollegeProgram[];
+  collegeBasketball: CollegeProgram[];
+};
 type MashupsPool = {
   geography: GeographyPool;
   officeholders: OfficeholdersPool;
   midterms: MidtermsPool;
-  sports: SportsTeam[];
+  sports: SportsPool;
 };
 
 /**
@@ -101,24 +114,42 @@ export async function fetchCategoryPool(category: QuizCategoryId): Promise<unkno
       const pool: MidtermsPool = { candidates: candidateFactsFromRaces(races) };
       return pool;
     }
-    case "sports":
-      return getAllSportsTeams();
+    case "sports": {
+      const [teams, collegeFootball, collegeBasketball] = await Promise.all([
+        getAllSportsTeams(),
+        getAllCollegeFootball(),
+        getAllCollegeBasketball(),
+      ]);
+      const pool: SportsPool = { teams, collegeFootball, collegeBasketball };
+      return pool;
+    }
     case "mashups": {
-      const [states, cities, governors, legislatorsWithPhoto, houseSeatCounts, races, sports] =
-        await Promise.all([
-          getAllStateCapitalsAndFlags(),
-          getAllCitiesWithState(),
-          getAllCurrentGovernors(),
-          getAllCurrentLegislatorsWithPhoto(),
-          getHouseSeatCountsByState(),
-          getSenateAndGovernorRaces(),
-          getAllSportsTeams(),
-        ]);
+      const [
+        states,
+        cities,
+        governors,
+        legislatorsWithPhoto,
+        houseSeatCounts,
+        races,
+        teams,
+        collegeFootball,
+        collegeBasketball,
+      ] = await Promise.all([
+        getAllStateCapitalsAndFlags(),
+        getAllCitiesWithState(),
+        getAllCurrentGovernors(),
+        getAllCurrentLegislatorsWithPhoto(),
+        getHouseSeatCountsByState(),
+        getSenateAndGovernorRaces(),
+        getAllSportsTeams(),
+        getAllCollegeFootball(),
+        getAllCollegeBasketball(),
+      ]);
       const pool: MashupsPool = {
         geography: { states, cities },
         officeholders: { governors, legislatorsWithPhoto, houseSeatCounts },
         midterms: { candidates: candidateFactsFromRaces(races) },
-        sports,
+        sports: { teams, collegeFootball, collegeBasketball },
       };
       return pool;
     }
@@ -147,9 +178,9 @@ export function getCategoryPoolSize(category: QuizCategoryId, pool: unknown): nu
     case "midterms":
       return (pool as MidtermsPool).candidates.length;
     case "sports":
-      return (pool as SportsTeam[]).length;
+      return (pool as SportsPool).teams.length;
     case "mashups":
-      return countOddOneOutEligibleStates((pool as MashupsPool).sports);
+      return countOddOneOutEligibleStates((pool as MashupsPool).sports.teams);
     default:
       return 0;
   }
@@ -222,7 +253,7 @@ export function buildCategorySession(category: QuizCategoryId, pool: unknown): Q
       return pickRandom(questions, questions.length);
     }
     case "sports": {
-      const teams = pool as SportsTeam[];
+      const { teams, collegeFootball, collegeBasketball } = pool as SportsPool;
       const [
         logoCount,
         teamStateCount,
@@ -230,7 +261,9 @@ export function buildCategorySession(category: QuizCategoryId, pool: unknown): Q
         teamCityCount,
         teamByCityCount,
         teamByStateCount,
-      ] = randomSplit(SESSION_LENGTH, 6);
+        nicknameCount,
+        collegeConferenceCount,
+      ] = randomSplit(SESSION_LENGTH, 8);
       const questions: QuizQuestion[] = [
         ...buildTeamLogoQuestions(teams, logoCount),
         ...buildTeamStateQuestions(teams, teamStateCount),
@@ -238,12 +271,18 @@ export function buildCategorySession(category: QuizCategoryId, pool: unknown): Q
         ...buildTeamCityQuestions(teams, teamCityCount),
         ...buildTeamByCityQuestions(teams, teamByCityCount),
         ...buildTeamByStateQuestions(teams, teamByStateCount),
+        ...buildSchoolFromNicknameQuestions(collegeFootball, collegeBasketball, nicknameCount),
+        ...buildCollegeConferenceQuestions(
+          collegeFootball,
+          collegeBasketball,
+          collegeConferenceCount,
+        ),
       ];
       return pickRandom(questions, questions.length);
     }
     case "mashups": {
       const { sports } = pool as MashupsPool;
-      return buildOddOneOutQuestions(sports, SESSION_LENGTH);
+      return buildOddOneOutQuestions(sports.teams, SESSION_LENGTH);
     }
     default:
       throw new Error(`No quiz engine registered for category "${category}"`);
@@ -263,7 +302,7 @@ export function categoryHasMatchingMode(category: QuizCategoryId): boolean {
 export function buildMatchingBoard(category: QuizCategoryId, pool: unknown): MatchingPair[] {
   switch (category) {
     case "sports": {
-      const teams = pool as SportsTeam[];
+      const { teams } = pool as SportsPool;
       const available = teams.filter((t) => t.logoUrl !== null).length;
       return buildMatchingPairs(teams, Math.min(MATCHING_PAIR_COUNT, available));
     }
@@ -336,12 +375,37 @@ export function buildSpeedRoundPool(pool: unknown): MultipleChoiceQuestion[] {
     ),
     ...buildCandidatePartyQuestions(midterms.candidates, Math.min(n, midterms.candidates.length)),
     ...buildIncumbencyQuestions(midterms.candidates, Math.min(n, midterms.candidates.length)),
-    ...buildTeamLogoQuestions(sports, Math.min(n, sports.filter((t) => t.logoUrl !== null).length)),
-    ...buildTeamStateQuestions(sports, Math.min(n, sports.length)),
-    ...buildLeagueQuestions(sports, Math.min(n, sports.length)),
-    ...buildTeamCityQuestions(sports, Math.min(n, sports.length)),
-    ...buildTeamByCityQuestions(sports, Math.min(n, sports.length)),
-    ...buildTeamByStateQuestions(sports, Math.min(n, sports.length)),
+    ...buildTeamLogoQuestions(
+      sports.teams,
+      Math.min(n, sports.teams.filter((t) => t.logoUrl !== null).length),
+    ),
+    ...buildTeamStateQuestions(sports.teams, Math.min(n, sports.teams.length)),
+    ...buildLeagueQuestions(sports.teams, Math.min(n, sports.teams.length)),
+    ...buildTeamCityQuestions(sports.teams, Math.min(n, sports.teams.length)),
+    ...buildTeamByCityQuestions(sports.teams, Math.min(n, sports.teams.length)),
+    ...buildTeamByStateQuestions(sports.teams, Math.min(n, sports.teams.length)),
+    ...buildSchoolFromNicknameQuestions(
+      sports.collegeFootball,
+      sports.collegeBasketball,
+      Math.min(
+        n,
+        [
+          ...restrictToPowerConferences(sports.collegeFootball, COLLEGE_FOOTBALL_POWER_CONFERENCES),
+          ...restrictToPowerConferences(sports.collegeBasketball, COLLEGE_BASKETBALL_POWER_CONFERENCES),
+        ].filter((p) => p.nickname !== null).length,
+      ),
+    ),
+    ...buildCollegeConferenceQuestions(
+      sports.collegeFootball,
+      sports.collegeBasketball,
+      Math.min(
+        n,
+        restrictToPowerConferences(sports.collegeFootball, COLLEGE_FOOTBALL_POWER_CONFERENCES)
+          .length +
+          restrictToPowerConferences(sports.collegeBasketball, COLLEGE_BASKETBALL_POWER_CONFERENCES)
+            .length,
+      ),
+    ),
   ];
   return pickRandom(combined, combined.length);
 }

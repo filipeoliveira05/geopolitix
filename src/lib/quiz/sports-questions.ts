@@ -1,8 +1,28 @@
-import type { SportsTeam } from "@/lib/geography-data";
+import type { SportsTeam, CollegeProgram } from "@/lib/geography-data";
 import { getStateName } from "@/lib/states";
 import { pickRandom } from "./random";
 import { buildMultipleChoiceQuestion } from "./build-multiple-choice";
 import type { MultipleChoiceQuestion, MatchingPair } from "./types";
+
+// The full college pool (138 football + 365 basketball programs) is dominated by mid-major/
+// FCS-adjacent schools nobody outside their own state would recognize — asking a nickname or
+// conference question against the full pool is closer to unguessable trivia than a fair
+// question, especially with no pro-team-style logo recognition to fall back on. Restricted to
+// the nationally recognizable "power conference" programs instead: football's real Power 4
+// (Big Ten/SEC/ACC/Big 12, 67/138 programs) plus, for basketball specifically, Big East — a
+// basketball-only power conference (Villanova/UConn/Georgetown play no FBS football at all).
+export const COLLEGE_FOOTBALL_POWER_CONFERENCES = new Set(["Big Ten", "SEC", "ACC", "Big 12"]);
+export const COLLEGE_BASKETBALL_POWER_CONFERENCES = new Set([
+  ...COLLEGE_FOOTBALL_POWER_CONFERENCES,
+  "Big East",
+]);
+
+export function restrictToPowerConferences(
+  programs: CollegeProgram[],
+  powerConferences: Set<string>,
+): CollegeProgram[] {
+  return programs.filter((p) => p.conference !== null && powerConferences.has(p.conference));
+}
 
 export function buildTeamLogoQuestions(
   teams: SportsTeam[],
@@ -128,6 +148,51 @@ export function buildTeamByStateQuestions(
       getRevealCaption: (t) => t.name,
     });
   });
+}
+
+export function buildSchoolFromNicknameQuestions(
+  collegeFootball: CollegeProgram[],
+  collegeBasketball: CollegeProgram[],
+  count: number,
+): MultipleChoiceQuestion[] {
+  const pool = [
+    ...restrictToPowerConferences(collegeFootball, COLLEGE_FOOTBALL_POWER_CONFERENCES),
+    ...restrictToPowerConferences(collegeBasketball, COLLEGE_BASKETBALL_POWER_CONFERENCES),
+  ].filter((p) => p.nickname !== null);
+  const subjects = pickRandom(pool, count);
+  return subjects.map((subject) =>
+    buildMultipleChoiceQuestion(subject, pool, {
+      getPrompt: (p) => `Which school's team is called the ${p.nickname}?`,
+      getOptionText: (p) => p.school,
+      // No image up front — a program's logo usually names or strongly hints at the school
+      // itself, which would give away the answer to a question that's asking for the school.
+      // Reveals it below the options after answering instead, same reveal timing as the sports
+      // by-city/by-state questions above.
+      getRevealImageUrl: (p) => p.logoUrl,
+      getRevealCaption: (p) => p.school,
+    }),
+  );
+}
+
+export function buildCollegeConferenceQuestions(
+  collegeFootball: CollegeProgram[],
+  collegeBasketball: CollegeProgram[],
+  count: number,
+): MultipleChoiceQuestion[] {
+  const pool = [
+    ...restrictToPowerConferences(collegeFootball, COLLEGE_FOOTBALL_POWER_CONFERENCES),
+    ...restrictToPowerConferences(collegeBasketball, COLLEGE_BASKETBALL_POWER_CONFERENCES),
+  ];
+  const subjects = pickRandom(pool, count);
+  return subjects.map((subject) =>
+    buildMultipleChoiceQuestion(subject, pool, {
+      getPrompt: (p) => `Which conference does ${p.school} play in?`,
+      getOptionText: (p) => p.conference as string,
+      // School is already named in the prompt, so showing the logo doesn't spoil the conference
+      // answer — same reasoning as buildLeagueQuestions.
+      getImageUrl: (p) => p.logoUrl,
+    }),
+  );
 }
 
 export function buildMatchingPairs(teams: SportsTeam[], count: number): MatchingPair[] {
