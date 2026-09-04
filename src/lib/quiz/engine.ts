@@ -39,6 +39,7 @@ import {
 import {
   buildTeamLogoQuestions,
   buildTeamStateQuestions,
+  buildLeagueQuestions,
   buildMatchingPairs,
 } from "./sports-questions";
 import { countOddOneOutEligibleStates, buildOddOneOutQuestions } from "./mashups-questions";
@@ -219,10 +220,11 @@ export function buildCategorySession(category: QuizCategoryId, pool: unknown): Q
     }
     case "sports": {
       const teams = pool as SportsTeam[];
-      const [logoCount, teamStateCount] = randomSplit(SESSION_LENGTH, 2);
+      const [logoCount, teamStateCount, leagueCount] = randomSplit(SESSION_LENGTH, 3);
       const questions: QuizQuestion[] = [
         ...buildTeamLogoQuestions(teams, logoCount),
         ...buildTeamStateQuestions(teams, teamStateCount),
+        ...buildLeagueQuestions(teams, leagueCount),
       ];
       return pickRandom(questions, questions.length);
     }
@@ -323,6 +325,7 @@ export function buildSpeedRoundPool(pool: unknown): MultipleChoiceQuestion[] {
     ...buildIncumbencyQuestions(midterms.candidates, Math.min(n, midterms.candidates.length)),
     ...buildTeamLogoQuestions(sports, Math.min(n, sports.filter((t) => t.logoUrl !== null).length)),
     ...buildTeamStateQuestions(sports, Math.min(n, sports.length)),
+    ...buildLeagueQuestions(sports, Math.min(n, sports.length)),
   ];
   return pickRandom(combined, combined.length);
 }

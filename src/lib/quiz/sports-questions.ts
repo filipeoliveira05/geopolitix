@@ -51,6 +51,23 @@ export function buildTeamStateQuestions(
   );
 }
 
+export function buildLeagueQuestions(
+  teams: SportsTeam[],
+  count: number,
+): MultipleChoiceQuestion[] {
+  const subjects = pickRandom(teams, count);
+  return subjects.map((subject) =>
+    buildMultipleChoiceQuestion(subject, teams, {
+      getPrompt: (t) => `Which league does the ${t.name} play in?`,
+      getOptionText: (t) => t.league,
+      // Team is already named in the prompt, so the logo doesn't spoil the league answer — same
+      // reasoning as buildTeamStateQuestions. No caption for the same reason: repeating the name
+      // under the logo would be redundant.
+      getImageUrl: (t) => t.logoUrl,
+    }),
+  );
+}
+
 export function buildMatchingPairs(teams: SportsTeam[], count: number): MatchingPair[] {
   const withLogo = teams.filter((t) => t.logoUrl !== null);
   const subjects = pickRandom(withLogo, count);
