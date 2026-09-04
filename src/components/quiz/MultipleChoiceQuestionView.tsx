@@ -2,6 +2,7 @@ import Image from "next/image";
 import type { MultipleChoiceQuestion } from "@/lib/quiz/types";
 import { PartyBadge } from "@/components/PartyBadge";
 import { partyStyle } from "@/lib/party-colors";
+import { formatPopulation } from "@/lib/format";
 import { CheckIcon, XIcon } from "./icons";
 
 // Solid fills (not a faint tint) so right/wrong is unmistakable at a glance on both light and
@@ -67,6 +68,11 @@ export function MultipleChoiceQuestionView({
                   </span>
                 )}
               </span>
+              {answered && question.optionPopulations?.[i] != null && (
+                <span className="font-mono text-xs opacity-80">
+                  {formatPopulation(question.optionPopulations[i] as number)}
+                </span>
+              )}
               {answered && isCorrect && <CheckIcon />}
               {answered && isChosen && !isCorrect && <XIcon />}
             </button>
@@ -88,6 +94,9 @@ export function MultipleChoiceQuestionView({
             <p className="text-sm font-medium text-ink">{question.revealCaption}</p>
           )}
         </div>
+      )}
+      {answered && question.revealText && (
+        <p className="mt-4 font-mono text-xs text-muted">{question.revealText}</p>
       )}
     </div>
   );

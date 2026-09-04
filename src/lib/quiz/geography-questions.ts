@@ -1,4 +1,5 @@
 import type { StateFact, CityFact } from "@/lib/geography-data";
+import { formatPopulation } from "@/lib/format";
 import { pickRandom } from "./random";
 import { buildMultipleChoiceQuestion } from "./build-multiple-choice";
 import type { MultipleChoiceQuestion, MapClickQuestion } from "./types";
@@ -205,6 +206,10 @@ export function buildIsLargestCityQuestions(
 
   return pickRandom(eligible, count).map(({ largest, others, flagUrl }) => {
     const city = Math.random() < 0.5 ? largest : pickRandom(others, 1)[0];
+    const isLargest = city.cityId === largest.cityId;
+    const revealText = isLargest
+      ? `${city.cityName}: ${formatPopulation(city.population as number)} — the largest in ${city.stateName}.`
+      : `${city.cityName}: ${formatPopulation(city.population as number)}. Largest: ${largest.cityName}, ${formatPopulation(largest.population as number)}.`;
     return {
       format: "multiple-choice",
       prompt: `Is ${city.cityName} the largest city in ${city.stateName}?`,
@@ -213,9 +218,95 @@ export function buildIsLargestCityQuestions(
       imageCaptionParty: undefined,
       revealImageUrl: null,
       revealCaption: null,
+      revealText,
       optionsAreParties: false,
       options: ["Yes", "No"],
-      correctIndex: city.cityId === largest.cityId ? 0 : 1,
+      correctIndex: isLargest ? 0 : 1,
+    };
+  });
+}
+
+/**
+ * "Which state has a higher population?" — a genuine two-way comparison, not a subject+pool
+ * question, so this bypasses buildMultipleChoiceQuestion entirely (same reasoning as the Yes/No
+ * generators above): the two options ARE the two states being compared, not a correct answer
+ * plus unrelated distractors. The prompt stays generic since naming both states again would just
+ * repeat what the two option buttons already show.
+ */
+export function buildStatePopulationQuestions(
+  states: StateFact[],
+  count: number,
+): MultipleChoiceQuestion[] {
+  const populated = states.filter((s) => s.population !== null);
+  const subjects = pickRandom(populated, count);
+  return subjects.map((stateA) => {
+    const others = populated.filter(
+      (s) => s.stateId !== stateA.stateId && s.population !== stateA.population,
+    );
+    const stateB = pickRandom(others, 1)[0];
+    const pair = pickRandom(
+      [
+        { label: stateA.stateName, population: stateA.population as number },
+        { label: stateB.stateName, population: stateB.population as number },
+      ],
+      2,
+    );
+    const correctIndex = pair[0].population > pair[1].population ? 0 : 1;
+    return {
+      format: "multiple-choice",
+      prompt: "Which state has a higher population?",
+      imageUrl: null,
+      imageCaption: null,
+      imageCaptionParty: undefined,
+      revealImageUrl: null,
+      revealCaption: null,
+      optionsAreParties: false,
+      optionPopulations: pair.map((p) => p.population),
+      options: pair.map((p) => p.label),
+      correctIndex,
+    };
+  });
+}
+
+/**
+ * "Which city has a higher population?" — same two-way-comparison shape as
+ * buildStatePopulationQuestions, over the city pool instead. Each option is labeled
+ * "{cityName}, {stateId}", not the bare city name — several city names repeat across different
+ * states in the synced pool (e.g. multiple "Portland"s), and a bare name would make the two
+ * options ambiguous or, worse, identical text for two different real cities.
+ */
+export function buildCityPopulationQuestions(
+  cities: CityFact[],
+  count: number,
+): MultipleChoiceQuestion[] {
+  const populated = cities.filter((c) => c.population !== null);
+  const subjects = pickRandom(populated, count);
+  return subjects.map((cityA) => {
+    const others = populated.filter(
+      (c) => c.cityId !== cityA.cityId && c.population !== cityA.population,
+    );
+    const cityB = pickRandom(others, 1)[0];
+    const labelOf = (c: CityFact) => `${c.cityName}, ${c.stateId}`;
+    const pair = pickRandom(
+      [
+        { label: labelOf(cityA), population: cityA.population as number },
+        { label: labelOf(cityB), population: cityB.population as number },
+      ],
+      2,
+    );
+    const correctIndex = pair[0].population > pair[1].population ? 0 : 1;
+    return {
+      format: "multiple-choice",
+      prompt: "Which city has a higher population?",
+      imageUrl: null,
+      imageCaption: null,
+      imageCaptionParty: undefined,
+      revealImageUrl: null,
+      revealCaption: null,
+      optionsAreParties: false,
+      optionPopulations: pair.map((p) => p.population),
+      options: pair.map((p) => p.label),
+      correctIndex,
     };
   });
 }

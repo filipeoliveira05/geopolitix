@@ -21,10 +21,23 @@ export type MultipleChoiceQuestion = {
   // question types (e.g. Legislator) — the two never apply to the same question.
   revealImageUrl?: string | null;
   revealCaption?: string | null;
+  // Shown only AFTER answering, as its own line below the options — same reveal timing as
+  // revealImageUrl/revealCaption, but for a question with no image to caption (e.g. the
+  // is-largest-city Yes/No question revealing the actual population figures once answered).
+  // Deliberately a separate field rather than reusing revealCaption, which the view only renders
+  // alongside revealImageUrl — this one has no image at all.
+  revealText?: string | null;
   // When true, each option string IS a party name (e.g. "Democrat") — the view renders a
   // "(D)"-style badge next to it. Never inferred from option text alone (a state name or team
   // name option should never accidentally get a badge), so a question type opts in explicitly.
   optionsAreParties?: boolean;
+  // Shown next to each option, but only AFTER answering (same reveal timing as
+  // revealImageUrl/revealCaption) — the two population-comparison question types' whole point is
+  // guessing, so showing this pre-answer would give the answer away. Index-aligned with
+  // `options`; a null entry (never expected in practice, since both generators only pair states/
+  // cities with a known population) simply shows nothing for that option. Undefined for every
+  // other question type.
+  optionPopulations?: (number | null)[];
   options: string[];
   correctIndex: number;
 };

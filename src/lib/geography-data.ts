@@ -267,6 +267,7 @@ export type StateFact = {
   stateName: string;
   capitalName: string;
   flagUrl: string;
+  population: number | null;
 };
 
 export type CityFact = {
@@ -314,16 +315,16 @@ export async function getAllCitiesWithState(): Promise<CityFact[]> {
 }
 
 /**
- * Every state's name/capital/flag in one shot — powers the quiz's Geography category (capital
- * and flag question types), which needs the full ~51-state pool up front rather than one state
- * at a time the way getStateGeography() reads. Two small queries (51 states, 51 is_capital
- * cities — one per state, see CLAUDE.md's geography.mjs writeup), joined in memory by state_id
- * rather than a single embedded query, since `cities` has no FK aimed back at
- * `states.capital_city_id` in this direction.
+ * Every state's name/capital/flag/population in one shot — powers the quiz's Geography category
+ * (capital, flag, and state-population-comparison question types), which needs the full
+ * ~51-state pool up front rather than one state at a time the way getStateGeography() reads. Two
+ * small queries (51 states, 51 is_capital cities — one per state, see CLAUDE.md's geography.mjs
+ * writeup), joined in memory by state_id rather than a single embedded query, since `cities` has
+ * no FK aimed back at `states.capital_city_id` in this direction.
  */
 export async function getAllStateCapitalsAndFlags(): Promise<StateFact[]> {
   const [statesResult, capitalsResult] = await Promise.all([
-    supabase.from("states").select("id, name, flag_url"),
+    supabase.from("states").select("id, name, flag_url, population"),
     supabase.from("cities").select("name, state_id").eq("is_capital", true),
   ]);
   if (statesResult.error) throw statesResult.error;
@@ -333,11 +334,24 @@ export async function getAllStateCapitalsAndFlags(): Promise<StateFact[]> {
     (capitalsResult.data as { name: string; state_id: string }[]).map((c) => [c.state_id, c.name]),
   );
 
-  return (statesResult.data as { id: string; name: string; flag_url: string | null }[])
+  return (
+    statesResult.data as {
+      id: string;
+      name: string;
+      flag_url: string | null;
+      population: number | null;
+    }[]
+  )
     .map((s): StateFact | null => {
       const capitalName = capitalNameByState.get(s.id);
       if (!capitalName || !s.flag_url) return null;
-      return { stateId: s.id, stateName: s.name, capitalName, flagUrl: s.flag_url };
+      return {
+        stateId: s.id,
+        stateName: s.name,
+        capitalName,
+        flagUrl: s.flag_url,
+        population: s.population,
+      };
     })
     .filter((fact): fact is StateFact => fact !== null);
 }

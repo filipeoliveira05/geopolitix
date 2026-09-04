@@ -18,6 +18,8 @@ import {
   buildLargestCityQuestions,
   buildIsCapitalQuestions,
   buildIsLargestCityQuestions,
+  buildStatePopulationQuestions,
+  buildCityPopulationQuestions,
 } from "./geography-questions";
 import { buildGovernorQuestions, buildLegislatorPhotoQuestions } from "./officeholders-questions";
 import {
@@ -160,7 +162,9 @@ export function buildCategorySession(category: QuizCategoryId, pool: unknown): Q
         largestCityCount,
         isCapitalCount,
         isLargestCityCount,
-      ] = randomSplit(SESSION_LENGTH, 8);
+        statePopulationCount,
+        cityPopulationCount,
+      ] = randomSplit(SESSION_LENGTH, 10);
       const questions: QuizQuestion[] = [
         ...buildCapitalQuestions(facts, capitalCount),
         ...buildFlagQuestions(facts, flagCount),
@@ -170,6 +174,8 @@ export function buildCategorySession(category: QuizCategoryId, pool: unknown): Q
         ...buildLargestCityQuestions(cities, facts, largestCityCount),
         ...buildIsCapitalQuestions(cities, facts, isCapitalCount),
         ...buildIsLargestCityQuestions(cities, facts, isLargestCityCount),
+        ...buildStatePopulationQuestions(facts, statePopulationCount),
+        ...buildCityPopulationQuestions(cities, cityPopulationCount),
       ];
       return pickRandom(questions, questions.length);
     }
@@ -267,6 +273,8 @@ export function buildSpeedRoundPool(pool: unknown): MultipleChoiceQuestion[] {
       geography.states,
       Math.min(n, geography.cities.length),
     ),
+    ...buildStatePopulationQuestions(geography.states, Math.min(n, geography.states.length)),
+    ...buildCityPopulationQuestions(geography.cities, Math.min(n, geography.cities.length)),
     ...buildGovernorQuestions(officeholders.governors, Math.min(n, officeholders.governors.length)),
     ...buildLegislatorPhotoQuestions(
       officeholders.legislatorsWithPhoto,

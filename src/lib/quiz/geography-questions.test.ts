@@ -8,6 +8,8 @@ import {
   buildLargestCityQuestions,
   buildIsCapitalQuestions,
   buildIsLargestCityQuestions,
+  buildStatePopulationQuestions,
+  buildCityPopulationQuestions,
 } from "./geography-questions";
 import type { StateFact, CityFact } from "@/lib/geography-data";
 
@@ -28,6 +30,7 @@ function makeFacts(n: number): StateFact[] {
     stateName: `State${i}`,
     capitalName: `Capital${i}`,
     flagUrl: `https://example.com/flag${i}.png`,
+    population: 1000 + i,
   }));
 }
 
@@ -417,6 +420,150 @@ describe("buildIsLargestCityQuestions", () => {
       (q) => q.prompt,
     );
     expect(prompts[0]).toContain("State1");
+  });
+
+  it("reveals the real largest city's name and population only when the subject isn't it", () => {
+    const questions = buildIsLargestCityQuestions(makeCities(10), makeFacts(10), 10);
+    for (const q of questions) {
+      if (q.correctIndex === 1) {
+        expect(q.revealText).toMatch(/^SmallCity\d+: 100\. Largest: BigCity\d+, 100 000\.$/);
+      } else {
+        expect(q.revealText).toMatch(/^BigCity\d+: 100 000 — the largest in State\d+\.$/);
+      }
+    }
+  });
+});
+
+describe("buildStatePopulationQuestions", () => {
+  it("builds the requested number of questions", () => {
+    const questions = buildStatePopulationQuestions(makeFacts(10), 5);
+    expect(questions).toHaveLength(5);
+  });
+
+  it("has exactly 2 options, both real state names", () => {
+    const facts = makeFacts(10);
+    const questions = buildStatePopulationQuestions(facts, 5);
+    for (const q of questions) {
+      expect(q.options).toHaveLength(2);
+      for (const option of q.options) {
+        expect(facts.some((f) => f.stateName === option)).toBe(true);
+      }
+    }
+  });
+
+  it("picks the genuinely higher-population state as correct", () => {
+    const facts = makeFacts(10); // population strictly increases with index
+    const questions = buildStatePopulationQuestions(facts, 10);
+    for (const q of questions) {
+      const populations = q.options.map(
+        (name) => facts.find((f) => f.stateName === name)!.population!,
+      );
+      const correctPopulation = populations[q.correctIndex];
+      expect(correctPopulation).toBe(Math.max(...populations));
+    }
+  });
+
+  it("sets optionPopulations index-aligned with options, matching each state's real population", () => {
+    const facts = makeFacts(10);
+    const questions = buildStatePopulationQuestions(facts, 10);
+    for (const q of questions) {
+      expect(q.optionPopulations).toHaveLength(2);
+      q.options.forEach((name, i) => {
+        const realPopulation = facts.find((f) => f.stateName === name)!.population;
+        expect(q.optionPopulations?.[i]).toBe(realPopulation);
+      });
+    }
+  });
+
+  it("uses a generic prompt naming neither state", () => {
+    const [q] = buildStatePopulationQuestions(makeFacts(10), 1);
+    expect(q.prompt).toBe("Which state has a higher population?");
+  });
+
+  it("has no image", () => {
+    const [q] = buildStatePopulationQuestions(makeFacts(10), 1);
+    expect(q.imageUrl).toBeNull();
+  });
+
+  it("ignores states with a null population", () => {
+    const facts = makeFacts(3).map((f, i) => (i === 0 ? { ...f, population: null } : f));
+    const questions = buildStatePopulationQuestions(facts, 2);
+    for (const q of questions) {
+      expect(q.options).not.toContain("State0");
+    }
+  });
+
+  it("never pairs two states with the exact same population", () => {
+    const facts = [
+      { ...makeFacts(1)[0], stateId: "A", stateName: "TiedA", population: 500 },
+      { ...makeFacts(1)[0], stateId: "B", stateName: "TiedB", population: 500 },
+      { ...makeFacts(1)[0], stateId: "C", stateName: "Distinct", population: 999 },
+    ];
+    const questions = buildStatePopulationQuestions(facts, 2);
+    for (const q of questions) {
+      expect(new Set(q.options).size).toBe(2);
+      expect(q.options).not.toEqual(expect.arrayContaining(["TiedA", "TiedB"]));
+    }
+  });
+});
+
+describe("buildCityPopulationQuestions", () => {
+  it("builds the requested number of questions", () => {
+    const questions = buildCityPopulationQuestions(makeCities(10), 5);
+    expect(questions).toHaveLength(5);
+  });
+
+  it("labels each option as 'cityName, stateId', disambiguating same-named cities", () => {
+    const questions = buildCityPopulationQuestions(makeCities(10), 5);
+    for (const q of questions) {
+      expect(q.options).toHaveLength(2);
+      for (const option of q.options) {
+        expect(option).toMatch(/^City\d+, S\d+$/);
+      }
+    }
+  });
+
+  it("picks the genuinely higher-population city as correct", () => {
+    const cities = makeCities(10); // population strictly increases with index
+    const questions = buildCityPopulationQuestions(cities, 10);
+    for (const q of questions) {
+      const populations = q.options.map((label) => {
+        const cityName = label.split(",")[0];
+        return cities.find((c) => c.cityName === cityName)!.population!;
+      });
+      expect(populations[q.correctIndex]).toBe(Math.max(...populations));
+    }
+  });
+
+  it("sets optionPopulations index-aligned with options, matching each city's real population", () => {
+    const cities = makeCities(10);
+    const questions = buildCityPopulationQuestions(cities, 10);
+    for (const q of questions) {
+      expect(q.optionPopulations).toHaveLength(2);
+      q.options.forEach((label, i) => {
+        const cityName = label.split(",")[0];
+        const realPopulation = cities.find((c) => c.cityName === cityName)!.population;
+        expect(q.optionPopulations?.[i]).toBe(realPopulation);
+      });
+    }
+  });
+
+  it("uses a generic prompt naming neither city", () => {
+    const [q] = buildCityPopulationQuestions(makeCities(10), 1);
+    expect(q.prompt).toBe("Which city has a higher population?");
+  });
+
+  it("has no image", () => {
+    const [q] = buildCityPopulationQuestions(makeCities(10), 1);
+    expect(q.imageUrl).toBeNull();
+  });
+
+  it("ignores cities with a null population", () => {
+    const cities = makeCities(3).map((c, i) => (i === 0 ? { ...c, population: null } : c));
+    const questions = buildCityPopulationQuestions(cities, 2);
+    for (const q of questions) {
+      expect(q.options.some((o) => o.startsWith("City0,"))).toBe(false);
+    }
   });
 });
 
