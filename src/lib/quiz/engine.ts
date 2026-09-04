@@ -265,7 +265,7 @@ export function buildCategorySession(category: QuizCategoryId, pool: unknown): Q
         collegeConferenceCount,
       ] = randomSplit(SESSION_LENGTH, 8);
       const questions: QuizQuestion[] = [
-        ...buildTeamLogoQuestions(teams, logoCount),
+        ...buildTeamLogoQuestions(teams, collegeFootball, collegeBasketball, logoCount),
         ...buildTeamStateQuestions(teams, teamStateCount),
         ...buildLeagueQuestions(teams, leagueCount),
         ...buildTeamCityQuestions(teams, teamCityCount),
@@ -377,7 +377,16 @@ export function buildSpeedRoundPool(pool: unknown): MultipleChoiceQuestion[] {
     ...buildIncumbencyQuestions(midterms.candidates, Math.min(n, midterms.candidates.length)),
     ...buildTeamLogoQuestions(
       sports.teams,
-      Math.min(n, sports.teams.filter((t) => t.logoUrl !== null).length),
+      sports.collegeFootball,
+      sports.collegeBasketball,
+      Math.min(
+        n,
+        sports.teams.filter((t) => t.logoUrl !== null).length +
+          restrictToPowerConferences(sports.collegeFootball, COLLEGE_FOOTBALL_POWER_CONFERENCES)
+            .filter((p) => p.logoUrl !== null).length +
+          restrictToPowerConferences(sports.collegeBasketball, COLLEGE_BASKETBALL_POWER_CONFERENCES)
+            .filter((p) => p.logoUrl !== null).length,
+      ),
     ),
     ...buildTeamStateQuestions(sports.teams, Math.min(n, sports.teams.length)),
     ...buildLeagueQuestions(sports.teams, Math.min(n, sports.teams.length)),

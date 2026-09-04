@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { buildTeamLogoQuestions, buildTeamStateQuestions, buildMatchingPairs } from "./sports-questions";
-import type { SportsTeam } from "@/lib/geography-data";
+import type { SportsTeam, CollegeProgram } from "@/lib/geography-data";
 
 // Real state abbreviations, not synthetic ones — getStateName() is pure/local (no Supabase call)
 // and genuinely resolves these; a fake abbreviation would make buildTeamStateQuestions filter the
@@ -21,14 +21,48 @@ function makeTeams(n: number): SportsTeam[] {
   }));
 }
 
+function makeCollegePrograms(n: number, conference: string): CollegeProgram[] {
+  return Array.from({ length: n }, (_, i) => ({
+    id: `C${conference}${i}`,
+    school: `School${conference}${i}`,
+    nickname: `Nickname${i}`,
+    cityName: `City${i}`,
+    stateId: REAL_STATE_ABBRS[i % REAL_STATE_ABBRS.length],
+    conference,
+    wikipediaTitle: null,
+    logoUrl: `https://example.com/college-logo${conference}${i}.png`,
+    bioSummary: null,
+    lastSyncedAt: null,
+  }));
+}
+
 describe("buildTeamLogoQuestions", () => {
   it("builds the requested number of questions", () => {
-    expect(buildTeamLogoQuestions(makeTeams(10), 5)).toHaveLength(5);
+    expect(buildTeamLogoQuestions(makeTeams(10), [], [], 5)).toHaveLength(5);
+  });
+
+  it("includes power-conference college programs (by school name) alongside pro teams", () => {
+    const teams = makeTeams(3);
+    const football = makeCollegePrograms(5, "Big Ten");
+    const questions = buildTeamLogoQuestions(teams, football, [], 8);
+    const schoolAnswers = questions.filter((q) =>
+      q.options[q.correctIndex].startsWith("SchoolBig Ten"),
+    );
+    expect(schoolAnswers.length).toBeGreaterThan(0);
+  });
+
+  it("excludes non-power-conference college programs", () => {
+    const teams = makeTeams(5);
+    const nonPower = makeCollegePrograms(20, "Sun Belt");
+    const questions = buildTeamLogoQuestions(teams, nonPower, [], 3);
+    for (const q of questions) {
+      expect(q.options[q.correctIndex].startsWith("SchoolSun Belt")).toBe(false);
+    }
   });
 
   it("uses the subject team's logo as the image and team names as options", () => {
     const teams = makeTeams(10);
-    const questions = buildTeamLogoQuestions(teams, 5);
+    const questions = buildTeamLogoQuestions(teams, [], [], 5);
     for (const q of questions) {
       expect(q.imageUrl).toMatch(/^https:\/\/example\.com\/logo\d+\.png$/);
       const correctOption = q.options[q.correctIndex];
@@ -40,7 +74,7 @@ describe("buildTeamLogoQuestions", () => {
   it("skips teams with no logo", () => {
     const teams = makeTeams(5);
     teams[0] = { ...teams[0], logoUrl: null };
-    const questions = buildTeamLogoQuestions(teams, 4);
+    const questions = buildTeamLogoQuestions(teams, [], [], 4);
     for (const q of questions) {
       expect(q.options[q.correctIndex]).not.toBe("Team0");
     }

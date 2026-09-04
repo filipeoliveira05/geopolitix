@@ -24,17 +24,44 @@ export function restrictToPowerConferences(
   return programs.filter((p) => p.conference !== null && powerConferences.has(p.conference));
 }
 
+type LogoSubject = { key: string; logoUrl: string; label: string };
+
+function teamsToLogoSubjects(teams: SportsTeam[]): LogoSubject[] {
+  return teams
+    .filter((t) => t.logoUrl !== null)
+    .map((t) => ({ key: t.id, logoUrl: t.logoUrl as string, label: t.name }));
+}
+
+function programsToLogoSubjects(programs: CollegeProgram[]): LogoSubject[] {
+  return programs
+    .filter((p) => p.logoUrl !== null)
+    .map((p) => ({ key: p.id, logoUrl: p.logoUrl as string, label: p.school }));
+}
+
 export function buildTeamLogoQuestions(
   teams: SportsTeam[],
+  collegeFootball: CollegeProgram[],
+  collegeBasketball: CollegeProgram[],
   count: number,
 ): MultipleChoiceQuestion[] {
-  const withLogo = teams.filter((t) => t.logoUrl !== null);
-  const subjects = pickRandom(withLogo, count);
+  // Same power-conference restriction as the nickname/conference questions — a college logo
+  // without pro-team-style national recognition is even harder to guess than a nickname/
+  // conference question, since there's no name in the prompt at all to narrow it down.
+  const pool: LogoSubject[] = [
+    ...teamsToLogoSubjects(teams),
+    ...programsToLogoSubjects(
+      restrictToPowerConferences(collegeFootball, COLLEGE_FOOTBALL_POWER_CONFERENCES),
+    ),
+    ...programsToLogoSubjects(
+      restrictToPowerConferences(collegeBasketball, COLLEGE_BASKETBALL_POWER_CONFERENCES),
+    ),
+  ];
+  const subjects = pickRandom(pool, count);
   return subjects.map((subject) =>
-    buildMultipleChoiceQuestion(subject, withLogo, {
+    buildMultipleChoiceQuestion(subject, pool, {
       getPrompt: () => "Which team is this?",
-      getOptionText: (t) => t.name,
-      getImageUrl: (t) => t.logoUrl,
+      getOptionText: (s) => s.label,
+      getImageUrl: (s) => s.logoUrl,
     }),
   );
 }
