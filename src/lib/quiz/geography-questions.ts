@@ -64,6 +64,20 @@ export function buildCityStateQuestions(
   );
 }
 
+/** Buckets a city pool by state — shared by every per-state Geography question type below. */
+function groupCitiesByState(cities: CityFact[]): Map<string, CityFact[]> {
+  const map = new Map<string, CityFact[]>();
+  for (const city of cities) {
+    if (!map.has(city.stateId)) map.set(city.stateId, []);
+    map.get(city.stateId)!.push(city);
+  }
+  return map;
+}
+
+function flagUrlByState(states: StateFact[]): Map<string, string> {
+  return new Map(states.map((s) => [s.stateId, s.flagUrl]));
+}
+
 /**
  * A plain Yes/No question, same shape as buildIncumbencyQuestions — isCapital is already
  * boolean, no pool-based distractor needed. For a random eligible state (one with both a
@@ -77,12 +91,8 @@ export function buildIsCapitalQuestions(
   states: StateFact[],
   count: number,
 ): MultipleChoiceQuestion[] {
-  const flagByState = new Map(states.map((s) => [s.stateId, s.flagUrl]));
-  const citiesByState = new Map<string, CityFact[]>();
-  for (const city of cities) {
-    if (!citiesByState.has(city.stateId)) citiesByState.set(city.stateId, []);
-    citiesByState.get(city.stateId)!.push(city);
-  }
+  const flagByState = flagUrlByState(states);
+  const citiesByState = groupCitiesByState(cities);
   const eligibleStates = Array.from(citiesByState.values()).filter(
     (list) =>
       list.some((c) => c.isCapital) &&
@@ -121,12 +131,8 @@ function largestCityPerState(
   cities: CityFact[],
   states: StateFact[],
 ): { fact: LargestCityFact; otherCityNames: string[] }[] {
-  const flagByState = new Map(states.map((s) => [s.stateId, s.flagUrl]));
-  const citiesByState = new Map<string, CityFact[]>();
-  for (const city of cities) {
-    if (!citiesByState.has(city.stateId)) citiesByState.set(city.stateId, []);
-    citiesByState.get(city.stateId)!.push(city);
-  }
+  const flagByState = flagUrlByState(states);
+  const citiesByState = groupCitiesByState(cities);
 
   const result: { fact: LargestCityFact; otherCityNames: string[] }[] = [];
   for (const [stateId, cityList] of citiesByState) {
@@ -167,6 +173,50 @@ export function buildLargestCityQuestions(
       getOptionText: (f) => f.cityName,
       getImageUrl: (f) => f.flagUrl,
     });
+  });
+}
+
+/**
+ * "Is X the largest city in Y?" Yes/No — for a random eligible state (one with a determinable
+ * largest city and at least one other synced city), picks either the real largest city (Yes) or
+ * a random other city (No), 50/50. Deliberately not phrased around the capital ("is X ALSO the
+ * largest city") — that reads oddly when the capital itself is never named in the prompt, and
+ * this phrasing works identically whether or not the picked city happens to be the capital.
+ */
+export function buildIsLargestCityQuestions(
+  cities: CityFact[],
+  states: StateFact[],
+  count: number,
+): MultipleChoiceQuestion[] {
+  const flagByState = flagUrlByState(states);
+  const citiesByState = groupCitiesByState(cities);
+
+  type Group = { largest: CityFact; others: CityFact[]; flagUrl: string };
+  const eligible: Group[] = [];
+  for (const [stateId, cityList] of citiesByState) {
+    const flagUrl = flagByState.get(stateId);
+    const populated = cityList.filter((c) => c.population !== null);
+    if (!flagUrl || populated.length === 0) continue;
+    const largest = populated.reduce((a, b) => ((b.population as number) > (a.population as number) ? b : a));
+    const others = cityList.filter((c) => c.cityId !== largest.cityId);
+    if (others.length === 0) continue;
+    eligible.push({ largest, others, flagUrl });
+  }
+
+  return pickRandom(eligible, count).map(({ largest, others, flagUrl }) => {
+    const city = Math.random() < 0.5 ? largest : pickRandom(others, 1)[0];
+    return {
+      format: "multiple-choice",
+      prompt: `Is ${city.cityName} the largest city in ${city.stateName}?`,
+      imageUrl: flagUrl,
+      imageCaption: null,
+      imageCaptionParty: undefined,
+      revealImageUrl: null,
+      revealCaption: null,
+      optionsAreParties: false,
+      options: ["Yes", "No"],
+      correctIndex: city.cityId === largest.cityId ? 0 : 1,
+    };
   });
 }
 

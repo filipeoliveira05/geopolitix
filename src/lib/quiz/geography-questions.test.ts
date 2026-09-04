@@ -7,6 +7,7 @@ import {
   buildCityStateQuestions,
   buildLargestCityQuestions,
   buildIsCapitalQuestions,
+  buildIsLargestCityQuestions,
 } from "./geography-questions";
 import type { StateFact, CityFact } from "@/lib/geography-data";
 
@@ -329,6 +330,92 @@ describe("buildIsCapitalQuestions", () => {
     const cities = makeCitiesWithCapitals(2);
     const statesMissingOneFlag = makeFacts(2).filter((s) => s.stateId !== "S0");
     const prompts = buildIsCapitalQuestions(cities, statesMissingOneFlag, 1).map((q) => q.prompt);
+    expect(prompts[0]).toContain("State1");
+  });
+});
+
+describe("buildIsLargestCityQuestions", () => {
+  // Two cities per state — BigCityN is the real largest, SmallCityN is the decoy.
+  function makeCities(n: number): CityFact[] {
+    const cities: CityFact[] = [];
+    for (let i = 0; i < n; i++) {
+      cities.push({
+        cityId: `${i}-big`,
+        cityName: `BigCity${i}`,
+        stateId: `S${i}`,
+        stateName: `State${i}`,
+        population: 100000,
+        isCapital: false,
+      });
+      cities.push({
+        cityId: `${i}-small`,
+        cityName: `SmallCity${i}`,
+        stateId: `S${i}`,
+        stateName: `State${i}`,
+        population: 100,
+        isCapital: false,
+      });
+    }
+    return cities;
+  }
+
+  it("builds the requested number of questions", () => {
+    const questions = buildIsLargestCityQuestions(makeCities(10), makeFacts(10), 5);
+    expect(questions).toHaveLength(5);
+  });
+
+  it("only produces a plain Yes/No option set", () => {
+    const questions = buildIsLargestCityQuestions(makeCities(10), makeFacts(10), 5);
+    for (const q of questions) {
+      expect(q.options).toEqual(["Yes", "No"]);
+    }
+  });
+
+  it("answers Yes when naming the real largest city, No when naming the smaller one", () => {
+    const questions = buildIsLargestCityQuestions(makeCities(10), makeFacts(10), 10);
+    for (const q of questions) {
+      if (q.prompt.includes("BigCity")) {
+        expect(q.correctIndex).toBe(0);
+      } else {
+        expect(q.correctIndex).toBe(1);
+      }
+    }
+  });
+
+  it("uses both Yes and No cases across enough questions", () => {
+    const questions = buildIsLargestCityQuestions(makeCities(10), makeFacts(10), 10);
+    const correctIndices = new Set(questions.map((q) => q.correctIndex));
+    expect(correctIndices.size).toBe(2);
+  });
+
+  it("phrases the prompt naming the subject city and state, with no mention of a capital", () => {
+    const [q] = buildIsLargestCityQuestions(makeCities(10), makeFacts(10), 1);
+    expect(q.prompt).toMatch(/^Is (Big|Small)City\d+ the largest city in State\d+\?$/);
+  });
+
+  it("uses the subject state's flag as the image", () => {
+    const questions = buildIsLargestCityQuestions(makeCities(10), makeFacts(10), 5);
+    for (const q of questions) {
+      const stateIndex = q.prompt.match(/State(\d+)\?$/)?.[1];
+      expect(q.imageUrl).toBe(`https://example.com/flag${stateIndex}.png`);
+    }
+  });
+
+  it("skips a state with only one synced city (nothing to compare it against)", () => {
+    const cities = [
+      { ...makeCities(2)[0] },
+      ...makeCities(2).filter((c) => c.stateId !== "S0"),
+    ];
+    const prompts = buildIsLargestCityQuestions(cities, makeFacts(2), 1).map((q) => q.prompt);
+    expect(prompts[0]).toContain("State1");
+  });
+
+  it("skips a state whose flag is missing from the states pool", () => {
+    const cities = makeCities(2);
+    const statesMissingOneFlag = makeFacts(2).filter((s) => s.stateId !== "S0");
+    const prompts = buildIsLargestCityQuestions(cities, statesMissingOneFlag, 1).map(
+      (q) => q.prompt,
+    );
     expect(prompts[0]).toContain("State1");
   });
 });
