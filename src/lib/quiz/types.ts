@@ -21,6 +21,10 @@ export type MultipleChoiceQuestion = {
   // question types (e.g. Legislator) — the two never apply to the same question.
   revealImageUrl?: string | null;
   revealCaption?: string | null;
+  // When true, each option string IS a party name (e.g. "Democrat") — the view renders a
+  // "(D)"-style badge next to it. Never inferred from option text alone (a state name or team
+  // name option should never accidentally get a badge), so a question type opts in explicitly.
+  optionsAreParties?: boolean;
   options: string[];
   correctIndex: number;
 };

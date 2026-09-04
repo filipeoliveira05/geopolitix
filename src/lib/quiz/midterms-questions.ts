@@ -80,6 +80,7 @@ export function buildCandidatePartyQuestions(
       // specific question, unlike the plain name/photo caption on the Legislator question.
       getImageUrl: (s) => s.photoUrl,
       getImageCaption: (s) => s.name,
+      optionsAreParties: true,
       optionCount,
     }),
   );

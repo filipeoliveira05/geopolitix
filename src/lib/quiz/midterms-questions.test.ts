@@ -109,6 +109,11 @@ describe("buildCandidatePartyQuestions", () => {
     expect(q.prompt).toMatch(/^What party is Candidate\d+ running as in the Texas Senate race\?$/);
   });
 
+  it("flags optionsAreParties so the view renders a party badge on each option", () => {
+    const [q] = buildCandidatePartyQuestions(twoPartyFacts, 1);
+    expect(q.optionsAreParties).toBe(true);
+  });
+
   it("has the subject's real party as the correct answer", () => {
     const questions = buildCandidatePartyQuestions(twoPartyFacts, 5);
     for (const q of questions) {

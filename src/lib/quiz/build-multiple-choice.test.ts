@@ -103,6 +103,21 @@ describe("buildMultipleChoiceQuestion", () => {
     expect(q.revealCaption).toBeNull();
   });
 
+  it("sets optionsAreParties from the opt, defaulting to false", () => {
+    const withoutFlag = buildMultipleChoiceQuestion(pool[0], pool, {
+      getPrompt: () => "prompt",
+      getOptionText: (item) => item.label,
+    });
+    expect(withoutFlag.optionsAreParties).toBe(false);
+
+    const withFlag = buildMultipleChoiceQuestion(pool[0], pool, {
+      getPrompt: () => "prompt",
+      getOptionText: (item) => item.label,
+      optionsAreParties: true,
+    });
+    expect(withFlag.optionsAreParties).toBe(true);
+  });
+
   it("throws when the pool has fewer than 4 distinct option texts", () => {
     const smallPool: Item[] = [
       { id: "a", label: "Alpha" },

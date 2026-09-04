@@ -18,6 +18,7 @@ export function buildMultipleChoiceQuestion<T>(
     getImageCaptionParty?: (subject: T) => string | null;
     getRevealImageUrl?: (subject: T) => string | null;
     getRevealCaption?: (subject: T) => string | null;
+    optionsAreParties?: boolean;
     // Defaults to 4 (every Geography/Officeholders question uses this many). A question type
     // whose real answer space has fewer than 4 distinct values (e.g. political party —
     // realistically only 2-3 values nationwide) passes a smaller count instead of forcing a
@@ -48,6 +49,7 @@ export function buildMultipleChoiceQuestion<T>(
     imageCaptionParty: opts.getImageCaptionParty ? opts.getImageCaptionParty(subject) : undefined,
     revealImageUrl: opts.getRevealImageUrl ? opts.getRevealImageUrl(subject) : null,
     revealCaption: opts.getRevealCaption ? opts.getRevealCaption(subject) : null,
+    optionsAreParties: opts.optionsAreParties ?? false,
     options,
     correctIndex: options.indexOf(correctText),
   };
