@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { buildGovernorQuestions, buildOfficeholderPhotoQuestions } from "./officeholders-questions";
+import {
+  buildGovernorQuestions,
+  buildOfficeholderPhotoQuestions,
+  buildOfficeholderPartyQuestions,
+} from "./officeholders-questions";
 import type { GovernorFact } from "@/lib/governors-data";
 import type { LegislatorStateFact } from "@/lib/legislators-data";
 
@@ -103,6 +107,51 @@ describe("buildOfficeholderPhotoQuestions", () => {
       expect(q.imageUrl).not.toBeNull();
       const matchingFact = governors.find((g) => g.photoUrl === q.imageUrl);
       expect(q.imageCaption).toBe(matchingFact?.governorName);
+    }
+  });
+});
+
+describe("buildOfficeholderPartyQuestions", () => {
+  it("builds the requested number of questions from the combined legislator+governor pool", () => {
+    const questions = buildOfficeholderPartyQuestions(makeLegislatorFacts(10), makeGovernorFacts(10), 5);
+    expect(questions).toHaveLength(5);
+  });
+
+  it("phrases the prompt naming the officeholder's role and state", () => {
+    const legislators = makeLegislatorFacts(10);
+    const governors = makeGovernorFacts(10);
+    const questions = buildOfficeholderPartyQuestions(legislators, governors, 10);
+    for (const q of questions) {
+      expect(q.prompt).toMatch(
+        /^What party is (Senator|Representative|Governor) \w+\d+ of State\d+\?$/,
+      );
+    }
+  });
+
+  it("renders options as parties, with only real party values (no fixed 4-option padding)", () => {
+    const legislators = makeLegislatorFacts(10); // Democrat/Republican only
+    const questions = buildOfficeholderPartyQuestions(legislators, [], 5);
+    for (const q of questions) {
+      expect(q.optionsAreParties).toBe(true);
+      expect(q.options.length).toBe(2);
+      expect(["Democrat", "Republican"]).toContain(q.options[q.correctIndex]);
+    }
+  });
+
+  it("shows the officeholder's photo and name, but no party badge (would spoil the answer)", () => {
+    const legislators = makeLegislatorFacts(10);
+    const questions = buildOfficeholderPartyQuestions(legislators, [], 5);
+    for (const q of questions) {
+      expect(q.imageUrl).toMatch(/^https:\/\/example\.com\/photo\d+\.png$/);
+      expect(q.imageCaptionParty).toBeUndefined();
+    }
+  });
+
+  it("excludes officeholders with no known party", () => {
+    const legislators = makeLegislatorFacts(6).map((f, i) => (i === 0 ? { ...f, party: null } : f));
+    const questions = buildOfficeholderPartyQuestions(legislators, [], 3);
+    for (const q of questions) {
+      expect(q.imageCaption).not.toBe("Legislator0");
     }
   });
 });
