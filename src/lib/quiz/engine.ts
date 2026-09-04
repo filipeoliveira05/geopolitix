@@ -48,6 +48,7 @@ import {
   buildTeamByStateQuestions,
   buildSchoolFromNicknameQuestions,
   buildCollegeConferenceQuestions,
+  buildProTeamCountQuestions,
   buildMatchingPairs,
   restrictToPowerConferences,
   COLLEGE_FOOTBALL_POWER_CONFERENCES,
@@ -263,7 +264,8 @@ export function buildCategorySession(category: QuizCategoryId, pool: unknown): Q
         teamByStateCount,
         nicknameCount,
         collegeConferenceCount,
-      ] = randomSplit(SESSION_LENGTH, 8);
+        proTeamCountCount,
+      ] = randomSplit(SESSION_LENGTH, 9);
       const questions: QuizQuestion[] = [
         ...buildTeamLogoQuestions(teams, collegeFootball, collegeBasketball, logoCount),
         ...buildTeamStateQuestions(teams, teamStateCount),
@@ -277,6 +279,7 @@ export function buildCategorySession(category: QuizCategoryId, pool: unknown): Q
           collegeBasketball,
           collegeConferenceCount,
         ),
+        ...buildProTeamCountQuestions(teams, proTeamCountCount),
       ];
       return pickRandom(questions, questions.length);
     }
@@ -415,6 +418,7 @@ export function buildSpeedRoundPool(pool: unknown): MultipleChoiceQuestion[] {
             .length,
       ),
     ),
+    ...buildProTeamCountQuestions(sports.teams, n),
   ];
   return pickRandom(combined, combined.length);
 }

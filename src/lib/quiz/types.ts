@@ -38,6 +38,13 @@ export type MultipleChoiceQuestion = {
   // cities with a known population) simply shows nothing for that option. Undefined for every
   // other question type.
   optionPopulations?: (number | null)[];
+  // Shown only AFTER answering, as a list below the options — e.g. the pro-team-count question
+  // revealing the actual synced teams for the asked-about state (name/league/logo each), so
+  // guessing a bucket ("0"/"1"/"2"/"3+") still teaches which real teams that state has. An empty
+  // array (as opposed to undefined, meaning "this question type has no team list at all") is a
+  // real, distinct state — the subject genuinely has zero synced teams — and the view renders an
+  // explicit "no teams" message for it rather than nothing.
+  revealTeams?: { name: string; league: string; logoUrl: string | null }[];
   options: string[];
   correctIndex: number;
 };

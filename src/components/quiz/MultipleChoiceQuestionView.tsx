@@ -98,6 +98,27 @@ export function MultipleChoiceQuestionView({
       {answered && question.revealText && (
         <p className="mt-4 font-mono text-xs text-muted">{question.revealText}</p>
       )}
+      {answered && question.revealTeams && (
+        <div className="mt-4 flex flex-col gap-2">
+          {question.revealTeams.length === 0 ? (
+            <p className="text-sm text-muted">No pro sports team in this state.</p>
+          ) : (
+            question.revealTeams.map((team) => (
+              <div key={team.name} className="flex items-center gap-3">
+                <div className="relative h-10 w-10 shrink-0">
+                  {team.logoUrl && (
+                    <Image src={team.logoUrl} alt="" fill unoptimized className="object-contain" />
+                  )}
+                </div>
+                <p className="text-sm text-ink">
+                  {team.name}{" "}
+                  <span className="text-muted">({team.league})</span>
+                </p>
+              </div>
+            ))
+          )}
+        </div>
+      )}
     </div>
   );
 }

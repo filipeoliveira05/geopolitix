@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { buildTeamLogoQuestions, buildTeamStateQuestions, buildMatchingPairs } from "./sports-questions";
+import {
+  buildTeamLogoQuestions,
+  buildTeamStateQuestions,
+  buildMatchingPairs,
+  buildProTeamCountQuestions,
+} from "./sports-questions";
 import type { SportsTeam, CollegeProgram } from "@/lib/geography-data";
 
 // Real state abbreviations, not synthetic ones — getStateName() is pure/local (no Supabase call)
@@ -116,6 +121,51 @@ describe("buildTeamStateQuestions", () => {
       expect(q.options).toHaveLength(4);
       expect(q.options[q.correctIndex]).toBeTruthy();
     }
+  });
+});
+
+describe("buildProTeamCountQuestions", () => {
+  function teamsForState(stateId: string, n: number): SportsTeam[] {
+    return Array.from({ length: n }, (_, i) => ({
+      id: `${stateId}-T${i}`,
+      name: `${stateId} Team${i}`,
+      league: "NFL",
+      cityName: "SomeCity",
+      stateId,
+      wikipediaTitle: null,
+      logoUrl: `https://example.com/${stateId}-logo${i}.png`,
+      bioSummary: null,
+      lastSyncedAt: null,
+    }));
+  }
+
+  it("builds the requested number of questions, covering every 51 states with no crash", () => {
+    const teams = [...teamsForState("AL", 1), ...teamsForState("AK", 2), ...teamsForState("AZ", 4)];
+    const questions = buildProTeamCountQuestions(teams, 51);
+    expect(questions).toHaveLength(51);
+    expect(questions.every((q) => q.options.join(",") === "0,1,2,3+")).toBe(true);
+  });
+
+  it("buckets 0/1/2 exactly and 3+ for anything higher, revealing the real teams", () => {
+    const teams = [...teamsForState("AL", 1), ...teamsForState("AK", 2), ...teamsForState("AZ", 4)];
+    const questions = buildProTeamCountQuestions(teams, 51);
+    const byStateName = (name: string) => questions.find((q) => q.prompt.includes(name));
+
+    const alabama = byStateName("Alabama")!;
+    expect(alabama.options[alabama.correctIndex]).toBe("1");
+    expect(alabama.revealTeams).toHaveLength(1);
+
+    const alaska = byStateName("Alaska")!;
+    expect(alaska.options[alaska.correctIndex]).toBe("2");
+    expect(alaska.revealTeams).toHaveLength(2);
+
+    const arizona = byStateName("Arizona")!;
+    expect(arizona.options[arizona.correctIndex]).toBe("3+");
+    expect(arizona.revealTeams).toHaveLength(4);
+
+    const colorado = byStateName("Colorado")!;
+    expect(colorado.options[colorado.correctIndex]).toBe("0");
+    expect(colorado.revealTeams).toHaveLength(0);
   });
 });
 

@@ -1,5 +1,5 @@
 import type { SportsTeam, CollegeProgram } from "@/lib/geography-data";
-import { getStateName } from "@/lib/states";
+import { getAllStates, getStateName } from "@/lib/states";
 import { pickRandom } from "./random";
 import { buildMultipleChoiceQuestion } from "./build-multiple-choice";
 import type { MultipleChoiceQuestion, MatchingPair } from "./types";
@@ -220,6 +220,50 @@ export function buildCollegeConferenceQuestions(
       getImageUrl: (p) => p.logoUrl,
     }),
   );
+}
+
+const TEAM_COUNT_BUCKETS = ["0", "1", "2", "3+"];
+
+function bucketForTeamCount(n: number): string {
+  if (n >= 3) return "3+";
+  return String(n);
+}
+
+export function buildProTeamCountQuestions(
+  teams: SportsTeam[],
+  count: number,
+): MultipleChoiceQuestion[] {
+  const teamsByState = new Map<string, SportsTeam[]>();
+  for (const t of teams) {
+    const list = teamsByState.get(t.stateId);
+    if (list) list.push(t);
+    else teamsByState.set(t.stateId, [t]);
+  }
+
+  const subjects = pickRandom(getAllStates(), count);
+  return subjects.map((state) => {
+    const stateTeams = teamsByState.get(state.abbr) ?? [];
+    const correctBucket = bucketForTeamCount(stateTeams.length);
+    return {
+      format: "multiple-choice",
+      prompt: `How many pro sports teams does ${state.name} have?`,
+      imageUrl: null,
+      imageCaption: null,
+      imageCaptionParty: undefined,
+      revealImageUrl: null,
+      revealCaption: null,
+      optionsAreParties: false,
+      options: TEAM_COUNT_BUCKETS,
+      correctIndex: TEAM_COUNT_BUCKETS.indexOf(correctBucket),
+      // Shown after answering regardless of the bucket size — including an explicit empty list
+      // for a genuine 0-team state, handled by the view.
+      revealTeams: stateTeams.map((t) => ({
+        name: t.name,
+        league: t.league,
+        logoUrl: t.logoUrl,
+      })),
+    };
+  });
 }
 
 export function buildMatchingPairs(teams: SportsTeam[], count: number): MatchingPair[] {
