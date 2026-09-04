@@ -1,4 +1,11 @@
-import { getAllStateCapitalsAndFlags, getAllSportsTeams, type StateFact, type SportsTeam } from "@/lib/geography-data";
+import {
+  getAllStateCapitalsAndFlags,
+  getAllCitiesWithState,
+  getAllSportsTeams,
+  type StateFact,
+  type CityFact,
+  type SportsTeam,
+} from "@/lib/geography-data";
 import { getAllCurrentGovernors, type GovernorFact } from "@/lib/governors-data";
 import { getAllCurrentLegislatorsWithPhoto, type LegislatorStateFact } from "@/lib/legislators-data";
 import { getSenateAndGovernorRaces } from "@/lib/races-data";
@@ -7,6 +14,7 @@ import {
   buildFlagQuestions,
   buildMapClickQuestions,
   buildAbbreviationQuestions,
+  buildCityStateQuestions,
 } from "./geography-questions";
 import { buildGovernorQuestions, buildLegislatorPhotoQuestions } from "./officeholders-questions";
 import {
@@ -29,10 +37,11 @@ export const SESSION_LENGTH = 10;
 export const MATCHING_PAIR_COUNT = 6;
 const SPEED_ROUND_PER_GENERATOR = 5;
 
+type GeographyPool = { states: StateFact[]; cities: CityFact[] };
 type OfficeholdersPool = { governors: GovernorFact[]; legislatorsWithPhoto: LegislatorStateFact[] };
 type MidtermsPool = { candidates: CandidateFact[] };
 type MashupsPool = {
-  geography: StateFact[];
+  geography: GeographyPool;
   officeholders: OfficeholdersPool;
   midterms: MidtermsPool;
   sports: SportsTeam[];
@@ -49,8 +58,14 @@ type MashupsPool = {
  */
 export async function fetchCategoryPool(category: QuizCategoryId): Promise<unknown> {
   switch (category) {
-    case "geography":
-      return getAllStateCapitalsAndFlags();
+    case "geography": {
+      const [states, cities] = await Promise.all([
+        getAllStateCapitalsAndFlags(),
+        getAllCitiesWithState(),
+      ]);
+      const pool: GeographyPool = { states, cities };
+      return pool;
+    }
     case "officeholders": {
       const [governors, legislatorsWithPhoto] = await Promise.all([
         getAllCurrentGovernors(),
@@ -67,15 +82,16 @@ export async function fetchCategoryPool(category: QuizCategoryId): Promise<unkno
     case "sports":
       return getAllSportsTeams();
     case "mashups": {
-      const [geography, governors, legislatorsWithPhoto, races, sports] = await Promise.all([
+      const [states, cities, governors, legislatorsWithPhoto, races, sports] = await Promise.all([
         getAllStateCapitalsAndFlags(),
+        getAllCitiesWithState(),
         getAllCurrentGovernors(),
         getAllCurrentLegislatorsWithPhoto(),
         getSenateAndGovernorRaces(),
         getAllSportsTeams(),
       ]);
       const pool: MashupsPool = {
-        geography,
+        geography: { states, cities },
         officeholders: { governors, legislatorsWithPhoto },
         midterms: { candidates: candidateFactsFromRaces(races) },
         sports,
@@ -96,8 +112,10 @@ export async function fetchCategoryPool(category: QuizCategoryId): Promise<unkno
  */
 export function getCategoryPoolSize(category: QuizCategoryId, pool: unknown): number {
   switch (category) {
-    case "geography":
-      return (pool as StateFact[]).length;
+    case "geography": {
+      const { states, cities } = pool as GeographyPool;
+      return Math.min(states.length, cities.length);
+    }
     case "officeholders": {
       const { governors, legislatorsWithPhoto } = pool as OfficeholdersPool;
       return Math.min(governors.length, legislatorsWithPhoto.length);
@@ -129,16 +147,15 @@ export function getCategoryPoolSize(category: QuizCategoryId, pool: unknown): nu
 export function buildCategorySession(category: QuizCategoryId, pool: unknown): QuizQuestion[] {
   switch (category) {
     case "geography": {
-      const facts = pool as StateFact[];
-      const [capitalCount, flagCount, mapClickCount, abbreviationCount] = randomSplit(
-        SESSION_LENGTH,
-        4,
-      );
+      const { states: facts, cities } = pool as GeographyPool;
+      const [capitalCount, flagCount, mapClickCount, abbreviationCount, cityStateCount] =
+        randomSplit(SESSION_LENGTH, 5);
       const questions: QuizQuestion[] = [
         ...buildCapitalQuestions(facts, capitalCount),
         ...buildFlagQuestions(facts, flagCount),
         ...buildMapClickQuestions(facts, mapClickCount),
         ...buildAbbreviationQuestions(facts, abbreviationCount),
+        ...buildCityStateQuestions(cities, cityStateCount),
       ];
       return pickRandom(questions, questions.length);
     }
@@ -217,9 +234,10 @@ export function buildSpeedRoundPool(pool: unknown): MultipleChoiceQuestion[] {
   const { geography, officeholders, midterms, sports } = pool as MashupsPool;
   const n = SPEED_ROUND_PER_GENERATOR;
   const combined: MultipleChoiceQuestion[] = [
-    ...buildCapitalQuestions(geography, Math.min(n, geography.length)),
-    ...buildFlagQuestions(geography, Math.min(n, geography.length)),
-    ...buildAbbreviationQuestions(geography, Math.min(n, geography.length)),
+    ...buildCapitalQuestions(geography.states, Math.min(n, geography.states.length)),
+    ...buildFlagQuestions(geography.states, Math.min(n, geography.states.length)),
+    ...buildAbbreviationQuestions(geography.states, Math.min(n, geography.states.length)),
+    ...buildCityStateQuestions(geography.cities, Math.min(n, geography.cities.length)),
     ...buildGovernorQuestions(officeholders.governors, Math.min(n, officeholders.governors.length)),
     ...buildLegislatorPhotoQuestions(
       officeholders.legislatorsWithPhoto,

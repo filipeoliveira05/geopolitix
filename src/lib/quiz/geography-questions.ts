@@ -1,4 +1,4 @@
-import type { StateFact } from "@/lib/geography-data";
+import type { StateFact, CityFact } from "@/lib/geography-data";
 import { pickRandom } from "./random";
 import { buildMultipleChoiceQuestion } from "./build-multiple-choice";
 import type { MultipleChoiceQuestion, MapClickQuestion } from "./types";
@@ -44,6 +44,24 @@ export function buildAbbreviationQuestions(
       getOptionText: (f) => (askForAbbreviation ? f.stateId : f.stateName),
     });
   });
+}
+
+/**
+ * "Which state is this city in?" MC — distractor state names are drawn from the same city pool
+ * (deduped by buildMultipleChoiceQuestion's own text-based dedup), so no separate states pool is
+ * needed even though a state can appear as the correct answer for several different cities.
+ */
+export function buildCityStateQuestions(
+  cities: CityFact[],
+  count: number,
+): MultipleChoiceQuestion[] {
+  const subjects = pickRandom(cities, count);
+  return subjects.map((subject) =>
+    buildMultipleChoiceQuestion(subject, cities, {
+      getPrompt: (c) => `Which state is ${c.cityName} in?`,
+      getOptionText: (c) => c.stateName,
+    }),
+  );
 }
 
 export function buildMapClickQuestions(facts: StateFact[], count: number): MapClickQuestion[] {

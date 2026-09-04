@@ -269,6 +269,37 @@ export type StateFact = {
   flagUrl: string;
 };
 
+export type CityFact = {
+  cityId: string;
+  cityName: string;
+  stateId: string;
+  stateName: string;
+};
+
+/**
+ * Every synced city (top-10-most-populous + capital per state) with its state name — powers the
+ * quiz's Geography category's "which state is this city in?" question type. Needs explicit FK
+ * disambiguation (`states!cities_state_id_fkey`, not the bare table name) — same PostgREST
+ * gotcha race_candidates hits (see CLAUDE.md): `cities` and `states` have TWO FKs between them
+ * (cities.state_id -> states.id, and the reverse states.capital_city_id -> cities.id), so the
+ * bare embed is ambiguous and PostgREST returns a 300 with no error surfaced by supabase-js,
+ * leaving the query promise unresolved forever.
+ */
+export async function getAllCitiesWithState(): Promise<CityFact[]> {
+  const { data, error } = await supabase
+    .from("cities")
+    .select("id, name, state_id, states!cities_state_id_fkey(name)");
+  if (error) throw error;
+  return (data as unknown as { id: string; name: string; state_id: string; states: { name: string } | null }[])
+    .filter((row) => row.states !== null)
+    .map((row) => ({
+      cityId: row.id,
+      cityName: row.name,
+      stateId: row.state_id,
+      stateName: row.states!.name,
+    }));
+}
+
 /**
  * Every state's name/capital/flag in one shot — powers the quiz's Geography category (capital
  * and flag question types), which needs the full ~51-state pool up front rather than one state

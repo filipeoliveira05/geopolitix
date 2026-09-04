@@ -4,8 +4,18 @@ import {
   buildFlagQuestions,
   buildMapClickQuestions,
   buildAbbreviationQuestions,
+  buildCityStateQuestions,
 } from "./geography-questions";
-import type { StateFact } from "@/lib/geography-data";
+import type { StateFact, CityFact } from "@/lib/geography-data";
+
+function makeCities(n: number): CityFact[] {
+  return Array.from({ length: n }, (_, i) => ({
+    cityId: `C${i}`,
+    cityName: `City${i}`,
+    stateId: `S${i}`,
+    stateName: `State${i}`,
+  }));
+}
 
 function makeFacts(n: number): StateFact[] {
   return Array.from({ length: n }, (_, i) => ({
@@ -118,6 +128,40 @@ describe("buildAbbreviationQuestions", () => {
 
   it("has no image (abbreviation questions are text-only)", () => {
     const [q] = buildAbbreviationQuestions(makeFacts(10), 1);
+    expect(q.imageUrl).toBeNull();
+  });
+});
+
+describe("buildCityStateQuestions", () => {
+  it("builds the requested number of questions", () => {
+    const questions = buildCityStateQuestions(makeCities(10), 5);
+    expect(questions).toHaveLength(5);
+  });
+
+  it("does not repeat a subject city across the session", () => {
+    const questions = buildCityStateQuestions(makeCities(10), 5);
+    const prompts = questions.map((q) => q.prompt);
+    expect(new Set(prompts).size).toBe(prompts.length);
+  });
+
+  it("phrases the prompt naming the subject city", () => {
+    const [q] = buildCityStateQuestions(makeCities(10), 1);
+    expect(q.prompt).toMatch(/^Which state is City\d+ in\?$/);
+  });
+
+  it("has the correct state among the options, matching the named city", () => {
+    const cities = makeCities(10);
+    const questions = buildCityStateQuestions(cities, 5);
+    for (const q of questions) {
+      const cityName = q.prompt.match(/^Which state is (\w+) in\?$/)?.[1];
+      const matchingCity = cities.find((c) => c.cityName === cityName);
+      expect(matchingCity).toBeDefined();
+      expect(q.options[q.correctIndex]).toBe(matchingCity?.stateName);
+    }
+  });
+
+  it("has no image (city-state questions are text-only)", () => {
+    const [q] = buildCityStateQuestions(makeCities(10), 1);
     expect(q.imageUrl).toBeNull();
   });
 });
