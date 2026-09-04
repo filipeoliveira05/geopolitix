@@ -21,7 +21,7 @@ import {
   buildStatePopulationQuestions,
   buildCityPopulationQuestions,
 } from "./geography-questions";
-import { buildGovernorQuestions, buildLegislatorPhotoQuestions } from "./officeholders-questions";
+import { buildGovernorQuestions, buildOfficeholderPhotoQuestions } from "./officeholders-questions";
 import {
   candidateFactsFromRaces,
   buildCandidatePartyQuestions,
@@ -184,7 +184,7 @@ export function buildCategorySession(category: QuizCategoryId, pool: unknown): Q
       const [governorCount, legislatorCount] = randomSplit(SESSION_LENGTH, 2);
       const questions: QuizQuestion[] = [
         ...buildGovernorQuestions(governors, governorCount),
-        ...buildLegislatorPhotoQuestions(legislatorsWithPhoto, legislatorCount),
+        ...buildOfficeholderPhotoQuestions(legislatorsWithPhoto, governors, legislatorCount),
       ];
       return pickRandom(questions, questions.length);
     }
@@ -276,9 +276,10 @@ export function buildSpeedRoundPool(pool: unknown): MultipleChoiceQuestion[] {
     ...buildStatePopulationQuestions(geography.states, Math.min(n, geography.states.length)),
     ...buildCityPopulationQuestions(geography.cities, Math.min(n, geography.cities.length)),
     ...buildGovernorQuestions(officeholders.governors, Math.min(n, officeholders.governors.length)),
-    ...buildLegislatorPhotoQuestions(
+    ...buildOfficeholderPhotoQuestions(
       officeholders.legislatorsWithPhoto,
-      Math.min(n, officeholders.legislatorsWithPhoto.length),
+      officeholders.governors,
+      Math.min(n, officeholders.legislatorsWithPhoto.length + officeholders.governors.length),
     ),
     ...buildCandidatePartyQuestions(midterms.candidates, Math.min(n, midterms.candidates.length)),
     ...buildIncumbencyQuestions(midterms.candidates, Math.min(n, midterms.candidates.length)),

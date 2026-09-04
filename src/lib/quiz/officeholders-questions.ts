@@ -19,17 +19,61 @@ export function buildGovernorQuestions(
   );
 }
 
-export function buildLegislatorPhotoQuestions(
-  facts: LegislatorStateFact[],
+type OfficeholderPhotoFact = {
+  name: string;
+  party: string | null;
+  roleLabel: "senator" | "representative" | "governor";
+  photoUrl: string;
+  stateId: string;
+  stateName: string;
+};
+
+function legislatorToPhotoFact(f: LegislatorStateFact): OfficeholderPhotoFact {
+  return {
+    name: f.legislatorName,
+    party: f.party,
+    roleLabel: f.chamber === "senate" ? "senator" : "representative",
+    photoUrl: f.photoUrl,
+    stateId: f.stateId,
+    stateName: f.stateName,
+  };
+}
+
+function governorToPhotoFact(f: GovernorFact): OfficeholderPhotoFact | null {
+  if (!f.photoUrl) return null;
+  return {
+    name: f.governorName,
+    party: f.party,
+    roleLabel: "governor",
+    photoUrl: f.photoUrl,
+    stateId: f.stateId,
+    stateName: f.stateName,
+  };
+}
+
+/**
+ * "Which state is this {senator/representative/governor} from?" — a governor's photo is folded
+ * into the same pool a legislator's already was, rather than a separate near-duplicate question,
+ * since the two only ever differed in which officeholder table the photo/name/party came from.
+ * Governors with no synced photo (OpenStates only backfills ~76%) are silently excluded, same as
+ * a legislator with no photo never enters getAllCurrentLegislatorsWithPhoto's pool.
+ */
+export function buildOfficeholderPhotoQuestions(
+  legislators: LegislatorStateFact[],
+  governors: GovernorFact[],
   count: number,
 ): MultipleChoiceQuestion[] {
-  const subjects = pickRandom(facts, count);
+  const pool: OfficeholderPhotoFact[] = [
+    ...legislators.map(legislatorToPhotoFact),
+    ...governors.map(governorToPhotoFact).filter((f): f is OfficeholderPhotoFact => f !== null),
+  ];
+  const subjects = pickRandom(pool, count);
   return subjects.map((subject) =>
-    buildMultipleChoiceQuestion(subject, facts, {
-      getPrompt: (s) => `Which state is this ${s.chamber === "senate" ? "senator" : "representative"} from?`,
+    buildMultipleChoiceQuestion(subject, pool, {
+      getPrompt: (s) => `Which state is this ${s.roleLabel} from?`,
       getOptionText: (f) => f.stateName,
       getImageUrl: (f) => f.photoUrl,
-      getImageCaption: (f) => f.legislatorName,
+      getImageCaption: (f) => f.name,
       getImageCaptionParty: (f) => f.party,
     }),
   );

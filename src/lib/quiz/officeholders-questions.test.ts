@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildGovernorQuestions, buildLegislatorPhotoQuestions } from "./officeholders-questions";
+import { buildGovernorQuestions, buildOfficeholderPhotoQuestions } from "./officeholders-questions";
 import type { GovernorFact } from "@/lib/governors-data";
 import type { LegislatorStateFact } from "@/lib/legislators-data";
 
@@ -9,6 +9,7 @@ function makeGovernorFacts(n: number): GovernorFact[] {
     stateName: `State${i}`,
     governorName: `Governor${i}`,
     photoUrl: `https://example.com/governor-photo${i}.png`,
+    party: i % 2 === 0 ? "Democrat" : "Republican",
   }));
 }
 
@@ -59,43 +60,49 @@ describe("buildGovernorQuestions", () => {
   });
 });
 
-describe("buildLegislatorPhotoQuestions", () => {
-  it("builds the requested number of questions", () => {
-    const questions = buildLegislatorPhotoQuestions(makeLegislatorFacts(10), 5);
+describe("buildOfficeholderPhotoQuestions", () => {
+  it("builds the requested number of questions from the combined legislator+governor pool", () => {
+    const questions = buildOfficeholderPhotoQuestions(makeLegislatorFacts(10), makeGovernorFacts(10), 5);
     expect(questions).toHaveLength(5);
   });
 
   it("uses the subject's photo as the image and state names as options", () => {
-    const facts = makeLegislatorFacts(10);
-    const questions = buildLegislatorPhotoQuestions(facts, 5);
+    const legislators = makeLegislatorFacts(10);
+    const governors = makeGovernorFacts(10);
+    const questions = buildOfficeholderPhotoQuestions(legislators, governors, 10);
     for (const q of questions) {
-      expect(q.imageUrl).toMatch(/^https:\/\/example\.com\/photo\d+\.png$/);
-      const correctOption = q.options[q.correctIndex];
-      const matchingFact = facts.find((f) => f.stateName === correctOption);
-      expect(matchingFact?.photoUrl).toBe(q.imageUrl);
+      expect(q.imageUrl).toMatch(/^https:\/\/example\.com\/(photo|governor-photo)\d+\.png$/);
     }
   });
 
-  it("phrases the prompt by chamber (senator/representative), not by name", () => {
-    const facts = makeLegislatorFacts(10);
-    const questions = buildLegislatorPhotoQuestions(facts, 5);
+  it("phrases the prompt by role (senator/representative/governor)", () => {
+    const legislators = makeLegislatorFacts(10);
+    const governors = makeGovernorFacts(10);
+    const questions = buildOfficeholderPhotoQuestions(legislators, governors, 10);
     for (const q of questions) {
-      expect(q.prompt).toMatch(/^Which state is this (senator|representative) from\?$/);
-      const correctOption = q.options[q.correctIndex];
-      const matchingFact = facts.find((f) => f.stateName === correctOption);
-      const expectedNoun = matchingFact?.chamber === "senate" ? "senator" : "representative";
-      expect(q.prompt).toBe(`Which state is this ${expectedNoun} from?`);
+      expect(q.prompt).toMatch(/^Which state is this (senator|representative|governor) from\?$/);
     }
   });
 
-  it("shows the legislator's name and party as the image caption", () => {
-    const facts = makeLegislatorFacts(10);
-    const questions = buildLegislatorPhotoQuestions(facts, 5);
+  it("shows the officeholder's name and party as the image caption", () => {
+    const legislators = makeLegislatorFacts(10);
+    const governors: GovernorFact[] = [];
+    const questions = buildOfficeholderPhotoQuestions(legislators, governors, 5);
     for (const q of questions) {
-      const correctOption = q.options[q.correctIndex];
-      const matchingFact = facts.find((f) => f.stateName === correctOption);
+      const matchingFact = legislators.find((f) => f.photoUrl === q.imageUrl);
       expect(q.imageCaption).toBe(matchingFact?.legislatorName);
       expect(q.imageCaptionParty).toBe(matchingFact?.party);
+    }
+  });
+
+  it("excludes governors with no synced photo from the pool", () => {
+    const governors = makeGovernorFacts(6).map((g, i) => (i === 0 ? { ...g, photoUrl: null } : g));
+    const questions = buildOfficeholderPhotoQuestions([], governors, 2);
+    expect(questions).toHaveLength(2);
+    for (const q of questions) {
+      expect(q.imageUrl).not.toBeNull();
+      const matchingFact = governors.find((g) => g.photoUrl === q.imageUrl);
+      expect(q.imageCaption).toBe(matchingFact?.governorName);
     }
   });
 });

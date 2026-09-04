@@ -282,6 +282,7 @@ export type GovernorFact = {
   stateName: string;
   governorName: string;
   photoUrl: string | null;
+  party: string | null;
 };
 
 /**
@@ -295,7 +296,7 @@ export type GovernorFact = {
 export async function getAllCurrentGovernors(): Promise<GovernorFact[]> {
   const { data, error } = await supabase
     .from("governors")
-    .select("first_name, last_name, state_id, photo_url");
+    .select("first_name, last_name, state_id, photo_url, party");
   if (error) throw error;
   return (
     data as {
@@ -303,13 +304,14 @@ export async function getAllCurrentGovernors(): Promise<GovernorFact[]> {
       last_name: string | null;
       state_id: string;
       photo_url: string | null;
+      party: string | null;
     }[]
   )
     .map((g): GovernorFact | null => {
       const stateName = getStateName(g.state_id);
       const governorName = [g.first_name, g.last_name].filter(Boolean).join(" ");
       if (!stateName || !governorName) return null;
-      return { stateId: g.state_id, stateName, governorName, photoUrl: g.photo_url };
+      return { stateId: g.state_id, stateName, governorName, photoUrl: g.photo_url, party: g.party };
     })
     .filter((g): g is GovernorFact => g !== null);
 }
