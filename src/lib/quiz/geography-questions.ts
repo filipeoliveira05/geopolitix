@@ -24,6 +24,28 @@ export function buildFlagQuestions(facts: StateFact[], count: number): MultipleC
   );
 }
 
+/**
+ * Name-to-abbreviation MC, randomized per question so both directions ("What is the
+ * abbreviation for X?" and "Which state has the abbreviation Y?") show up across a session.
+ * Needs no new data — StateFact.stateId already holds the USPS abbreviation.
+ */
+export function buildAbbreviationQuestions(
+  facts: StateFact[],
+  count: number,
+): MultipleChoiceQuestion[] {
+  const subjects = pickRandom(facts, count);
+  return subjects.map((subject) => {
+    const askForAbbreviation = Math.random() < 0.5;
+    return buildMultipleChoiceQuestion(subject, facts, {
+      getPrompt: (s) =>
+        askForAbbreviation
+          ? `What is the 2-letter abbreviation for ${s.stateName}?`
+          : `Which state has the abbreviation "${s.stateId}"?`,
+      getOptionText: (f) => (askForAbbreviation ? f.stateId : f.stateName),
+    });
+  });
+}
+
 export function buildMapClickQuestions(facts: StateFact[], count: number): MapClickQuestion[] {
   const subjects = pickRandom(facts, count);
   return subjects.map((s) => ({

@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { buildCapitalQuestions, buildFlagQuestions, buildMapClickQuestions } from "./geography-questions";
+import {
+  buildCapitalQuestions,
+  buildFlagQuestions,
+  buildMapClickQuestions,
+  buildAbbreviationQuestions,
+} from "./geography-questions";
 import type { StateFact } from "@/lib/geography-data";
 
 function makeFacts(n: number): StateFact[] {
@@ -73,6 +78,47 @@ describe("buildFlagQuestions", () => {
     for (const q of questions) {
       expect(q.prompt).toBe("Which state does this flag belong to?");
     }
+  });
+});
+
+describe("buildAbbreviationQuestions", () => {
+  it("builds the requested number of questions", () => {
+    const questions = buildAbbreviationQuestions(makeFacts(10), 5);
+    expect(questions).toHaveLength(5);
+  });
+
+  it("does not repeat a subject state across the session", () => {
+    const questions = buildAbbreviationQuestions(makeFacts(10), 5);
+    const prompts = questions.map((q) => q.prompt);
+    expect(new Set(prompts).size).toBe(prompts.length);
+  });
+
+  it("phrases each prompt as either name-to-abbreviation or abbreviation-to-name, matching its own options", () => {
+    const facts = makeFacts(10);
+    const questions = buildAbbreviationQuestions(facts, 10);
+    for (const q of questions) {
+      const correctOption = q.options[q.correctIndex];
+      if (/^What is the 2-letter abbreviation for /.test(q.prompt)) {
+        expect(correctOption).toMatch(/^S\d+$/);
+      } else {
+        expect(q.prompt).toMatch(/^Which state has the abbreviation "S\d+"\?$/);
+        expect(correctOption).toMatch(/^State\d+$/);
+      }
+    }
+  });
+
+  it("uses both directions across enough questions", () => {
+    const facts = makeFacts(20);
+    const questions = buildAbbreviationQuestions(facts, 20);
+    const directions = new Set(
+      questions.map((q) => (q.prompt.startsWith("What is the 2-letter abbreviation") ? "name" : "abbr")),
+    );
+    expect(directions.size).toBe(2);
+  });
+
+  it("has no image (abbreviation questions are text-only)", () => {
+    const [q] = buildAbbreviationQuestions(makeFacts(10), 1);
+    expect(q.imageUrl).toBeNull();
   });
 });
 

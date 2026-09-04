@@ -2,7 +2,12 @@ import { getAllStateCapitalsAndFlags, getAllSportsTeams, type StateFact, type Sp
 import { getAllCurrentGovernors, type GovernorFact } from "@/lib/governors-data";
 import { getAllCurrentLegislatorsWithPhoto, type LegislatorStateFact } from "@/lib/legislators-data";
 import { getSenateAndGovernorRaces } from "@/lib/races-data";
-import { buildCapitalQuestions, buildFlagQuestions, buildMapClickQuestions } from "./geography-questions";
+import {
+  buildCapitalQuestions,
+  buildFlagQuestions,
+  buildMapClickQuestions,
+  buildAbbreviationQuestions,
+} from "./geography-questions";
 import { buildGovernorQuestions, buildLegislatorPhotoQuestions } from "./officeholders-questions";
 import {
   candidateFactsFromRaces,
@@ -125,11 +130,15 @@ export function buildCategorySession(category: QuizCategoryId, pool: unknown): Q
   switch (category) {
     case "geography": {
       const facts = pool as StateFact[];
-      const [capitalCount, flagCount, mapClickCount] = randomSplit(SESSION_LENGTH, 3);
+      const [capitalCount, flagCount, mapClickCount, abbreviationCount] = randomSplit(
+        SESSION_LENGTH,
+        4,
+      );
       const questions: QuizQuestion[] = [
         ...buildCapitalQuestions(facts, capitalCount),
         ...buildFlagQuestions(facts, flagCount),
         ...buildMapClickQuestions(facts, mapClickCount),
+        ...buildAbbreviationQuestions(facts, abbreviationCount),
       ];
       return pickRandom(questions, questions.length);
     }
@@ -210,6 +219,7 @@ export function buildSpeedRoundPool(pool: unknown): MultipleChoiceQuestion[] {
   const combined: MultipleChoiceQuestion[] = [
     ...buildCapitalQuestions(geography, Math.min(n, geography.length)),
     ...buildFlagQuestions(geography, Math.min(n, geography.length)),
+    ...buildAbbreviationQuestions(geography, Math.min(n, geography.length)),
     ...buildGovernorQuestions(officeholders.governors, Math.min(n, officeholders.governors.length)),
     ...buildLegislatorPhotoQuestions(
       officeholders.legislatorsWithPhoto,
