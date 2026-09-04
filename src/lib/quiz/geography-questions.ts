@@ -64,6 +64,66 @@ export function buildCityStateQuestions(
   );
 }
 
+type LargestCityFact = { cityName: string; stateName: string; flagUrl: string };
+
+/**
+ * Per state: the single max-population city (the correct answer) plus every OTHER synced city
+ * in that same state (the distractor candidates) — so wrong options are real cities from the
+ * same state, not another state's largest city, which is a much easier tell to spot.
+ */
+function largestCityPerState(
+  cities: CityFact[],
+  states: StateFact[],
+): { fact: LargestCityFact; otherCityNames: string[] }[] {
+  const flagByState = new Map(states.map((s) => [s.stateId, s.flagUrl]));
+  const citiesByState = new Map<string, CityFact[]>();
+  for (const city of cities) {
+    if (!citiesByState.has(city.stateId)) citiesByState.set(city.stateId, []);
+    citiesByState.get(city.stateId)!.push(city);
+  }
+
+  const result: { fact: LargestCityFact; otherCityNames: string[] }[] = [];
+  for (const [stateId, cityList] of citiesByState) {
+    const flagUrl = flagByState.get(stateId);
+    const populated = cityList.filter((c) => c.population !== null);
+    if (!flagUrl || populated.length === 0) continue;
+    const largest = populated.reduce((a, b) => ((b.population as number) > (a.population as number) ? b : a));
+    result.push({
+      fact: { cityName: largest.cityName, stateName: largest.stateName, flagUrl },
+      otherCityNames: cityList.filter((c) => c.cityId !== largest.cityId).map((c) => c.cityName),
+    });
+  }
+  return result;
+}
+
+/**
+ * "What is the largest city in X?" MC — distinct from the capital, since a state's capital and
+ * its most populous city are often two different cities (e.g. Austin vs. Houston). Shows the
+ * state's flag so the subject state is unambiguous even though it's also named in the prompt.
+ * Skips a state with fewer than 3 other synced cities (can't fill 4 options from one state alone)
+ * — never hit in practice, since every state has a top-10-cities list, but a real, not
+ * hypothetical, guard given the pool is now per-state rather than nationwide.
+ */
+export function buildLargestCityQuestions(
+  cities: CityFact[],
+  states: StateFact[],
+  count: number,
+): MultipleChoiceQuestion[] {
+  const grouped = largestCityPerState(cities, states).filter((g) => g.otherCityNames.length >= 3);
+  const subjects = pickRandom(grouped, count);
+  return subjects.map(({ fact, otherCityNames }) => {
+    const pool: LargestCityFact[] = [
+      fact,
+      ...otherCityNames.map((cityName) => ({ ...fact, cityName })),
+    ];
+    return buildMultipleChoiceQuestion(fact, pool, {
+      getPrompt: (s) => `What is the largest city in ${s.stateName}?`,
+      getOptionText: (f) => f.cityName,
+      getImageUrl: (f) => f.flagUrl,
+    });
+  });
+}
+
 export function buildMapClickQuestions(facts: StateFact[], count: number): MapClickQuestion[] {
   const subjects = pickRandom(facts, count);
   return subjects.map((s) => ({

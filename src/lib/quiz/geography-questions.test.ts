@@ -5,6 +5,7 @@ import {
   buildMapClickQuestions,
   buildAbbreviationQuestions,
   buildCityStateQuestions,
+  buildLargestCityQuestions,
 } from "./geography-questions";
 import type { StateFact, CityFact } from "@/lib/geography-data";
 
@@ -14,6 +15,7 @@ function makeCities(n: number): CityFact[] {
     cityName: `City${i}`,
     stateId: `S${i}`,
     stateName: `State${i}`,
+    population: 1000 + i,
   }));
 }
 
@@ -163,6 +165,79 @@ describe("buildCityStateQuestions", () => {
   it("has no image (city-state questions are text-only)", () => {
     const [q] = buildCityStateQuestions(makeCities(10), 1);
     expect(q.imageUrl).toBeNull();
+  });
+});
+
+describe("buildLargestCityQuestions", () => {
+  // citiesPerState cities per state, the last one always the most populous — the rest are
+  // in-state decoys ("SmallCityN_j"), the last is the real largest city ("BigCityN").
+  function makeCitiesWithDecoys(n: number, citiesPerState = 4): CityFact[] {
+    const cities: CityFact[] = [];
+    for (let i = 0; i < n; i++) {
+      for (let j = 0; j < citiesPerState; j++) {
+        const isLargest = j === citiesPerState - 1;
+        cities.push({
+          cityId: `${i}-${j}`,
+          cityName: isLargest ? `BigCity${i}` : `SmallCity${i}_${j}`,
+          stateId: `S${i}`,
+          stateName: `State${i}`,
+          population: isLargest ? 100000 : 100 + j,
+        });
+      }
+    }
+    return cities;
+  }
+
+  it("builds the requested number of questions", () => {
+    const questions = buildLargestCityQuestions(makeCitiesWithDecoys(10), makeFacts(10), 5);
+    expect(questions).toHaveLength(5);
+  });
+
+  it("picks the higher-population city per state as the correct answer, not just any city", () => {
+    const questions = buildLargestCityQuestions(makeCitiesWithDecoys(10), makeFacts(10), 10);
+    for (const q of questions) {
+      expect(q.options[q.correctIndex]).toMatch(/^BigCity\d+$/);
+    }
+  });
+
+  it("phrases the prompt naming the subject state", () => {
+    const [q] = buildLargestCityQuestions(makeCitiesWithDecoys(10), makeFacts(10), 1);
+    expect(q.prompt).toMatch(/^What is the largest city in State\d+\?$/);
+  });
+
+  it("uses the subject state's flag as the image", () => {
+    const questions = buildLargestCityQuestions(makeCitiesWithDecoys(10), makeFacts(10), 5);
+    for (const q of questions) {
+      const stateIndex = q.prompt.match(/State(\d+)\?$/)?.[1];
+      expect(q.imageUrl).toBe(`https://example.com/flag${stateIndex}.png`);
+    }
+  });
+
+  it("draws every option from the same state as the subject — no other state's city leaks in", () => {
+    const questions = buildLargestCityQuestions(makeCitiesWithDecoys(10), makeFacts(10), 5);
+    for (const q of questions) {
+      const stateIndex = q.prompt.match(/State(\d+)\?$/)?.[1];
+      for (const option of q.options) {
+        expect(option).toMatch(new RegExp(`^(Big|Small)City${stateIndex}(_\\d+)?$`));
+      }
+    }
+  });
+
+  it("skips a state with fewer than 3 other synced cities", () => {
+    const cities: CityFact[] = [
+      { cityId: "a", cityName: "OnlyCity", stateId: "S0", stateName: "State0", population: 500 },
+      ...makeCitiesWithDecoys(5).filter((c) => c.stateId !== "S0"),
+    ];
+    const prompts = buildLargestCityQuestions(cities, makeFacts(6), 4).map((q) => q.prompt);
+    expect(prompts).not.toContain("What is the largest city in State0?");
+  });
+
+  it("ignores cities with a null population when picking the largest", () => {
+    const cities = makeCitiesWithDecoys(1).map((c) =>
+      c.cityName === "BigCity0" ? { ...c, population: null } : c,
+    );
+    const [q] = buildLargestCityQuestions(cities, makeFacts(1), 1);
+    expect(q.options[q.correctIndex]).not.toBe("BigCity0");
   });
 });
 
