@@ -8,6 +8,7 @@ import {
 } from "@/lib/geography-data";
 import { getAllCurrentGovernors, type GovernorFact } from "@/lib/governors-data";
 import { getAllCurrentLegislatorsWithPhoto, type LegislatorStateFact } from "@/lib/legislators-data";
+import { getHouseSeatCountsByState, type HouseSeatCountFact } from "@/lib/districts-data";
 import { getSenateAndGovernorRaces } from "@/lib/races-data";
 import {
   buildCapitalQuestions,
@@ -27,6 +28,7 @@ import {
   buildOfficeholderPartyQuestions,
   buildOfficeholderNameQuestions,
   buildChamberQuestions,
+  buildHouseSeatCountQuestions,
 } from "./officeholders-questions";
 import {
   candidateFactsFromRaces,
@@ -49,7 +51,11 @@ export const MATCHING_PAIR_COUNT = 6;
 const SPEED_ROUND_PER_GENERATOR = 5;
 
 type GeographyPool = { states: StateFact[]; cities: CityFact[] };
-type OfficeholdersPool = { governors: GovernorFact[]; legislatorsWithPhoto: LegislatorStateFact[] };
+type OfficeholdersPool = {
+  governors: GovernorFact[];
+  legislatorsWithPhoto: LegislatorStateFact[];
+  houseSeatCounts: HouseSeatCountFact[];
+};
 type MidtermsPool = { candidates: CandidateFact[] };
 type MashupsPool = {
   geography: GeographyPool;
@@ -78,11 +84,12 @@ export async function fetchCategoryPool(category: QuizCategoryId): Promise<unkno
       return pool;
     }
     case "officeholders": {
-      const [governors, legislatorsWithPhoto] = await Promise.all([
+      const [governors, legislatorsWithPhoto, houseSeatCounts] = await Promise.all([
         getAllCurrentGovernors(),
         getAllCurrentLegislatorsWithPhoto(),
+        getHouseSeatCountsByState(),
       ]);
-      const pool: OfficeholdersPool = { governors, legislatorsWithPhoto };
+      const pool: OfficeholdersPool = { governors, legislatorsWithPhoto, houseSeatCounts };
       return pool;
     }
     case "midterms": {
@@ -93,17 +100,19 @@ export async function fetchCategoryPool(category: QuizCategoryId): Promise<unkno
     case "sports":
       return getAllSportsTeams();
     case "mashups": {
-      const [states, cities, governors, legislatorsWithPhoto, races, sports] = await Promise.all([
-        getAllStateCapitalsAndFlags(),
-        getAllCitiesWithState(),
-        getAllCurrentGovernors(),
-        getAllCurrentLegislatorsWithPhoto(),
-        getSenateAndGovernorRaces(),
-        getAllSportsTeams(),
-      ]);
+      const [states, cities, governors, legislatorsWithPhoto, houseSeatCounts, races, sports] =
+        await Promise.all([
+          getAllStateCapitalsAndFlags(),
+          getAllCitiesWithState(),
+          getAllCurrentGovernors(),
+          getAllCurrentLegislatorsWithPhoto(),
+          getHouseSeatCountsByState(),
+          getSenateAndGovernorRaces(),
+          getAllSportsTeams(),
+        ]);
       const pool: MashupsPool = {
         geography: { states, cities },
-        officeholders: { governors, legislatorsWithPhoto },
+        officeholders: { governors, legislatorsWithPhoto, houseSeatCounts },
         midterms: { candidates: candidateFactsFromRaces(races) },
         sports,
       };
@@ -128,8 +137,8 @@ export function getCategoryPoolSize(category: QuizCategoryId, pool: unknown): nu
       return Math.min(states.length, cities.length);
     }
     case "officeholders": {
-      const { governors, legislatorsWithPhoto } = pool as OfficeholdersPool;
-      return Math.min(governors.length, legislatorsWithPhoto.length);
+      const { governors, legislatorsWithPhoto, houseSeatCounts } = pool as OfficeholdersPool;
+      return Math.min(governors.length, legislatorsWithPhoto.length, houseSeatCounts.length);
     }
     case "midterms":
       return (pool as MidtermsPool).candidates.length;
@@ -186,17 +195,16 @@ export function buildCategorySession(category: QuizCategoryId, pool: unknown): Q
       return pickRandom(questions, questions.length);
     }
     case "officeholders": {
-      const { governors, legislatorsWithPhoto } = pool as OfficeholdersPool;
-      const [governorCount, photoCount, partyCount, nameCount, chamberCount] = randomSplit(
-        SESSION_LENGTH,
-        5,
-      );
+      const { governors, legislatorsWithPhoto, houseSeatCounts } = pool as OfficeholdersPool;
+      const [governorCount, photoCount, partyCount, nameCount, chamberCount, seatCountCount] =
+        randomSplit(SESSION_LENGTH, 6);
       const questions: QuizQuestion[] = [
         ...buildGovernorQuestions(governors, governorCount),
         ...buildOfficeholderPhotoQuestions(legislatorsWithPhoto, governors, photoCount),
         ...buildOfficeholderPartyQuestions(legislatorsWithPhoto, governors, partyCount),
         ...buildOfficeholderNameQuestions(legislatorsWithPhoto, governors, nameCount),
         ...buildChamberQuestions(legislatorsWithPhoto, chamberCount),
+        ...buildHouseSeatCountQuestions(houseSeatCounts, seatCountCount),
       ];
       return pickRandom(questions, questions.length);
     }
@@ -306,6 +314,10 @@ export function buildSpeedRoundPool(pool: unknown): MultipleChoiceQuestion[] {
     ...buildChamberQuestions(
       officeholders.legislatorsWithPhoto,
       Math.min(n, officeholders.legislatorsWithPhoto.length),
+    ),
+    ...buildHouseSeatCountQuestions(
+      officeholders.houseSeatCounts,
+      Math.min(n, officeholders.houseSeatCounts.length),
     ),
     ...buildCandidatePartyQuestions(midterms.candidates, Math.min(n, midterms.candidates.length)),
     ...buildIncumbencyQuestions(midterms.candidates, Math.min(n, midterms.candidates.length)),

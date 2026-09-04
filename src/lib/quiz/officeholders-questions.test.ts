@@ -5,9 +5,19 @@ import {
   buildOfficeholderPartyQuestions,
   buildOfficeholderNameQuestions,
   buildChamberQuestions,
+  buildHouseSeatCountQuestions,
 } from "./officeholders-questions";
 import type { GovernorFact } from "@/lib/governors-data";
 import type { LegislatorStateFact } from "@/lib/legislators-data";
+import type { HouseSeatCountFact } from "@/lib/districts-data";
+
+function makeHouseSeatCountFacts(n: number): HouseSeatCountFact[] {
+  return Array.from({ length: n }, (_, i) => ({
+    stateId: `S${i}`,
+    stateName: `State${i}`,
+    seatCount: i + 1,
+  }));
+}
 
 function makeGovernorFacts(n: number): GovernorFact[] {
   return Array.from({ length: n }, (_, i) => ({
@@ -262,5 +272,27 @@ describe("buildChamberQuestions", () => {
       const matchingFact = facts.find((f) => f.legislatorName === q.imageCaption);
       expect(q.imageCaptionParty).toBe(matchingFact?.party);
     }
+  });
+});
+
+describe("buildHouseSeatCountQuestions", () => {
+  it("builds the requested number of questions", () => {
+    const questions = buildHouseSeatCountQuestions(makeHouseSeatCountFacts(10), 5);
+    expect(questions).toHaveLength(5);
+  });
+
+  it("phrases the prompt naming the subject state, with the correct seat count among 4 options", () => {
+    const facts = makeHouseSeatCountFacts(10);
+    const [q] = buildHouseSeatCountQuestions(facts, 1);
+    expect(q.prompt).toMatch(/^How many U\.S\. House seats does State\d+ have\?$/);
+    expect(q.options).toHaveLength(4);
+    const stateName = q.prompt.match(/does (State\d+) have/)?.[1];
+    const matchingFact = facts.find((f) => f.stateName === stateName);
+    expect(q.options[q.correctIndex]).toBe(String(matchingFact?.seatCount));
+  });
+
+  it("has no image (a seat count has nothing to show a photo of)", () => {
+    const [q] = buildHouseSeatCountQuestions(makeHouseSeatCountFacts(10), 1);
+    expect(q.imageUrl).toBeNull();
   });
 });

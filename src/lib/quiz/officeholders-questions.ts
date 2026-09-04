@@ -1,5 +1,6 @@
 import type { GovernorFact } from "@/lib/governors-data";
 import type { LegislatorStateFact } from "@/lib/legislators-data";
+import type { HouseSeatCountFact } from "@/lib/districts-data";
 import { pickRandom } from "./random";
 import { buildMultipleChoiceQuestion } from "./build-multiple-choice";
 import type { MultipleChoiceQuestion } from "./types";
@@ -198,6 +199,25 @@ export function buildChamberQuestions(
       getImageCaption: (f) => f.legislatorName,
       getImageCaptionParty: (f) => f.party,
       optionCount: 2,
+    }),
+  );
+}
+
+/**
+ * "How many U.S. House seats does {state} have?" — text-only (a seat count has no photo). Options
+ * are plain seat-count numbers, deduped like every other MC question, so a distractor is never
+ * the subject's own real count even when several other states happen to share it (small states
+ * cluster heavily around 1).
+ */
+export function buildHouseSeatCountQuestions(
+  facts: HouseSeatCountFact[],
+  count: number,
+): MultipleChoiceQuestion[] {
+  const subjects = pickRandom(facts, count);
+  return subjects.map((subject) =>
+    buildMultipleChoiceQuestion(subject, facts, {
+      getPrompt: (s) => `How many U.S. House seats does ${s.stateName} have?`,
+      getOptionText: (f) => String(f.seatCount),
     }),
   );
 }
