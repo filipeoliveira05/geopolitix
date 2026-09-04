@@ -1,4 +1,5 @@
-import type { Race } from "@/lib/races-data";
+import type { Race, RaceOffice } from "@/lib/races-data";
+import { getStateName } from "@/lib/states";
 import { pickRandom } from "./random";
 import { buildMultipleChoiceQuestion } from "./build-multiple-choice";
 import type { MultipleChoiceQuestion } from "./types";
@@ -7,6 +8,9 @@ export type CandidateFact = {
   name: string;
   party: string;
   isIncumbent: boolean;
+  stateName: string;
+  office: RaceOffice;
+  districtNumber: number | null;
 };
 
 function isRealCandidateName(name: string): boolean {
@@ -23,16 +27,32 @@ function isRealCandidateName(name: string): boolean {
 export function candidateFactsFromRaces(races: Race[]): CandidateFact[] {
   const facts: CandidateFact[] = [];
   for (const race of races) {
+    const stateName = getStateName(race.stateId);
+    if (!stateName) continue;
     for (const candidate of race.candidates) {
       if (!candidate.party || !isRealCandidateName(candidate.name)) continue;
       facts.push({
         name: candidate.name,
         party: candidate.party,
         isIncumbent: candidate.isIncumbent,
+        stateName,
+        office: race.office,
+        districtNumber: race.districtNumber,
       });
     }
   }
   return facts;
+}
+
+/**
+ * "Texas Senate" / "Texas Governor" / "Texas House" / "Texas House District 3" — the race an
+ * incumbency question is asking about, so "Is X the incumbent in this race?" (previously
+ * unanswerable — no race was ever named) actually names one.
+ */
+function raceLabel(stateName: string, office: RaceOffice, districtNumber: number | null): string {
+  const officeLabel = office === "senate" ? "Senate" : office === "governor" ? "Governor" : "House";
+  const district = office === "house" && districtNumber ? ` District ${districtNumber}` : "";
+  return `${stateName} ${officeLabel}${district}`;
 }
 
 /**
@@ -67,7 +87,7 @@ export function buildIncumbencyQuestions(
   const subjects = pickRandom(facts, count);
   return subjects.map((s) => ({
     format: "multiple-choice",
-    prompt: `Is ${s.name} the incumbent in this race?`,
+    prompt: `Is ${s.name} the incumbent in the ${raceLabel(s.stateName, s.office, s.districtNumber)} race?`,
     imageUrl: null,
     options: ["Yes", "No"],
     correctIndex: s.isIncumbent ? 0 : 1,

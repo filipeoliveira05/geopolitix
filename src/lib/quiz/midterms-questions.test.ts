@@ -33,10 +33,19 @@ function makeCandidate(overrides: Partial<Race["candidates"][number]>): Race["ca
 }
 
 describe("candidateFactsFromRaces", () => {
-  it("keeps a real candidate with a known party", () => {
+  it("keeps a real candidate with a known party, carrying the race's state/office/district", () => {
     const races = [makeRace({ candidates: [makeCandidate({})] })];
     const facts = candidateFactsFromRaces(races);
-    expect(facts).toEqual([{ name: "Jane Smith", party: "Democrat", isIncumbent: false }]);
+    expect(facts).toEqual([
+      {
+        name: "Jane Smith",
+        party: "Democrat",
+        isIncumbent: false,
+        stateName: "Texas",
+        office: "senate",
+        districtNumber: null,
+      },
+    ]);
   });
 
   it("drops a placeholder 'TBD' candidate", () => {
@@ -67,6 +76,9 @@ const twoPartyFacts: CandidateFact[] = Array.from({ length: 10 }, (_, i) => ({
   name: `Candidate${i}`,
   party: i % 2 === 0 ? "Democrat" : "Republican",
   isIncumbent: i % 3 === 0,
+  stateName: "Texas",
+  office: "senate",
+  districtNumber: null,
 }));
 
 describe("buildCandidatePartyQuestions", () => {
@@ -104,9 +116,56 @@ describe("buildIncumbencyQuestions", () => {
     }
   });
 
+  it("names the state/office (and district, for House) in the prompt", () => {
+    const senate: CandidateFact = {
+      name: "Inc",
+      party: "Democrat",
+      isIncumbent: true,
+      stateName: "Texas",
+      office: "senate",
+      districtNumber: null,
+    };
+    const houseAtLarge: CandidateFact = {
+      name: "Chal",
+      party: "Republican",
+      isIncumbent: false,
+      stateName: "Wyoming",
+      office: "house",
+      districtNumber: 0,
+    };
+    const houseDistrict: CandidateFact = {
+      name: "Rep",
+      party: "Democrat",
+      isIncumbent: true,
+      stateName: "Texas",
+      office: "house",
+      districtNumber: 3,
+    };
+    const [senateQ] = buildIncumbencyQuestions([senate], 1);
+    const [houseAtLargeQ] = buildIncumbencyQuestions([houseAtLarge], 1);
+    const [houseDistrictQ] = buildIncumbencyQuestions([houseDistrict], 1);
+    expect(senateQ.prompt).toBe("Is Inc the incumbent in the Texas Senate race?");
+    expect(houseAtLargeQ.prompt).toBe("Is Chal the incumbent in the Wyoming House race?");
+    expect(houseDistrictQ.prompt).toBe("Is Rep the incumbent in the Texas House District 3 race?");
+  });
+
   it("marks Yes correct for an incumbent, No correct for a non-incumbent", () => {
-    const incumbent: CandidateFact = { name: "Inc", party: "Democrat", isIncumbent: true };
-    const challenger: CandidateFact = { name: "Chal", party: "Republican", isIncumbent: false };
+    const incumbent: CandidateFact = {
+      name: "Inc",
+      party: "Democrat",
+      isIncumbent: true,
+      stateName: "Texas",
+      office: "senate",
+      districtNumber: null,
+    };
+    const challenger: CandidateFact = {
+      name: "Chal",
+      party: "Republican",
+      isIncumbent: false,
+      stateName: "Texas",
+      office: "senate",
+      districtNumber: null,
+    };
     const [incQ] = buildIncumbencyQuestions([incumbent], 1);
     const [chalQ] = buildIncumbencyQuestions([challenger], 1);
     expect(incQ.options[incQ.correctIndex]).toBe("Yes");
