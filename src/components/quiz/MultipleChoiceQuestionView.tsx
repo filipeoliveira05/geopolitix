@@ -1,5 +1,6 @@
 import Image from "next/image";
 import type { MultipleChoiceQuestion } from "@/lib/quiz/types";
+import { PartyBadge } from "@/components/PartyBadge";
 import { CheckIcon, XIcon } from "./icons";
 
 // Solid fills (not a faint tint) so right/wrong is unmistakable at a glance on both light and
@@ -20,8 +21,15 @@ export function MultipleChoiceQuestionView({
   return (
     <div>
       {question.imageUrl && (
-        <div className="relative mb-4 h-28 w-full">
-          <Image src={question.imageUrl} alt="" fill unoptimized className="object-contain" />
+        <div className="mb-4">
+          <div className="relative h-28 w-full">
+            <Image src={question.imageUrl} alt="" fill unoptimized className="object-contain" />
+          </div>
+          {question.imageCaption && (
+            <p className="mt-2 text-center text-sm font-medium text-ink">
+              {question.imageCaption} <PartyBadge party={question.imageCaptionParty ?? null} />
+            </p>
+          )}
         </div>
       )}
       <p className="mb-4 text-lg font-medium text-ink">{question.prompt}</p>

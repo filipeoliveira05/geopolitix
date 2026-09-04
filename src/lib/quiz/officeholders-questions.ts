@@ -24,9 +24,11 @@ export function buildLegislatorPhotoQuestions(
   const subjects = pickRandom(facts, count);
   return subjects.map((subject) =>
     buildMultipleChoiceQuestion(subject, facts, {
-      getPrompt: () => "Which state does this legislator represent?",
+      getPrompt: (s) => `Which state is this ${s.chamber === "senate" ? "senator" : "representative"} from?`,
       getOptionText: (f) => f.stateName,
       getImageUrl: (f) => f.photoUrl,
+      getImageCaption: (f) => f.legislatorName,
+      getImageCaptionParty: (f) => f.party,
     }),
   );
 }

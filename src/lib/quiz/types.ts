@@ -7,6 +7,10 @@ export type MultipleChoiceQuestion = {
   // Shown above the prompt when present — e.g. a state's flag, a legislator's photo. null for a
   // pure-text question (e.g. "What is the capital of Texas?").
   imageUrl: string | null;
+  // Shown under the image when present — e.g. a legislator's name/party. Unused by every other
+  // image question type (flags, team logos), which have nothing worth captioning.
+  imageCaption?: string | null;
+  imageCaptionParty?: string | null;
   options: string[];
   correctIndex: number;
 };

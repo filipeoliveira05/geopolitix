@@ -63,6 +63,26 @@ describe("buildMultipleChoiceQuestion", () => {
     expect(q.imageUrl).toBeNull();
   });
 
+  it("sets imageCaption/imageCaptionParty from getImageCaption/getImageCaptionParty when provided", () => {
+    const q = buildMultipleChoiceQuestion(pool[0], pool, {
+      getPrompt: () => "prompt",
+      getOptionText: (item) => item.label,
+      getImageCaption: (item) => item.label,
+      getImageCaptionParty: () => "Democrat",
+    });
+    expect(q.imageCaption).toBe("Alpha");
+    expect(q.imageCaptionParty).toBe("Democrat");
+  });
+
+  it("defaults imageCaption/imageCaptionParty to null when not provided", () => {
+    const q = buildMultipleChoiceQuestion(pool[0], pool, {
+      getPrompt: () => "prompt",
+      getOptionText: (item) => item.label,
+    });
+    expect(q.imageCaption).toBeNull();
+    expect(q.imageCaptionParty).toBeNull();
+  });
+
   it("throws when the pool has fewer than 4 distinct option texts", () => {
     const smallPool: Item[] = [
       { id: "a", label: "Alpha" },

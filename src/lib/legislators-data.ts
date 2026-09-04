@@ -329,6 +329,9 @@ export async function getTermsForLegislator(legislatorId: string): Promise<Term[
 
 export type LegislatorStateFact = {
   legislatorId: string;
+  legislatorName: string;
+  party: string | null;
+  chamber: Chamber;
   photoUrl: string;
   stateId: string;
   stateName: string;
@@ -342,17 +345,32 @@ export type LegislatorStateFact = {
 export async function getAllCurrentLegislatorsWithPhoto(): Promise<LegislatorStateFact[]> {
   const { data, error } = await supabase
     .from("terms")
-    .select("state_id, legislator:legislators(id, photo_url)")
+    .select("state_id, party, chamber, legislator:legislators(id, first_name, last_name, photo_url)")
     .eq("is_current", true);
   if (error) throw error;
   return (
-    data as unknown as { state_id: string; legislator: { id: string; photo_url: string | null } }[]
+    data as unknown as {
+      state_id: string;
+      party: string | null;
+      chamber: Chamber;
+      legislator: {
+        id: string;
+        first_name: string | null;
+        last_name: string | null;
+        photo_url: string | null;
+      };
+    }[]
   )
     .map((row): LegislatorStateFact | null => {
       const stateName = getStateName(row.state_id);
       if (!stateName || !row.legislator?.photo_url) return null;
       return {
         legislatorId: row.legislator.id,
+        legislatorName: [row.legislator.first_name, row.legislator.last_name]
+          .filter(Boolean)
+          .join(" "),
+        chamber: row.chamber,
+        party: row.party,
         photoUrl: row.legislator.photo_url,
         stateId: row.state_id,
         stateName,

@@ -14,6 +14,9 @@ function makeGovernorFacts(n: number): GovernorFact[] {
 function makeLegislatorFacts(n: number): LegislatorStateFact[] {
   return Array.from({ length: n }, (_, i) => ({
     legislatorId: `L${i}`,
+    legislatorName: `Legislator${i}`,
+    party: i % 2 === 0 ? "Democrat" : "Republican",
+    chamber: i % 2 === 0 ? "senate" : "house",
     photoUrl: `https://example.com/photo${i}.png`,
     stateId: `S${i}`,
     stateName: `State${i}`,
@@ -61,10 +64,26 @@ describe("buildLegislatorPhotoQuestions", () => {
     }
   });
 
-  it("uses the same generic prompt for every question", () => {
-    const questions = buildLegislatorPhotoQuestions(makeLegislatorFacts(10), 3);
+  it("phrases the prompt by chamber (senator/representative), not by name", () => {
+    const facts = makeLegislatorFacts(10);
+    const questions = buildLegislatorPhotoQuestions(facts, 5);
     for (const q of questions) {
-      expect(q.prompt).toBe("Which state does this legislator represent?");
+      expect(q.prompt).toMatch(/^Which state is this (senator|representative) from\?$/);
+      const correctOption = q.options[q.correctIndex];
+      const matchingFact = facts.find((f) => f.stateName === correctOption);
+      const expectedNoun = matchingFact?.chamber === "senate" ? "senator" : "representative";
+      expect(q.prompt).toBe(`Which state is this ${expectedNoun} from?`);
+    }
+  });
+
+  it("shows the legislator's name and party as the image caption", () => {
+    const facts = makeLegislatorFacts(10);
+    const questions = buildLegislatorPhotoQuestions(facts, 5);
+    for (const q of questions) {
+      const correctOption = q.options[q.correctIndex];
+      const matchingFact = facts.find((f) => f.stateName === correctOption);
+      expect(q.imageCaption).toBe(matchingFact?.legislatorName);
+      expect(q.imageCaptionParty).toBe(matchingFact?.party);
     }
   });
 });

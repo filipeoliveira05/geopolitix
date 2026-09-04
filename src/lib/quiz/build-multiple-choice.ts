@@ -14,6 +14,8 @@ export function buildMultipleChoiceQuestion<T>(
     getPrompt: (subject: T) => string;
     getOptionText: (item: T) => string;
     getImageUrl?: (subject: T) => string | null;
+    getImageCaption?: (subject: T) => string | null;
+    getImageCaptionParty?: (subject: T) => string | null;
     // Defaults to 4 (every Geography/Officeholders question uses this many). A question type
     // whose real answer space has fewer than 4 distinct values (e.g. political party —
     // realistically only 2-3 values nationwide) passes a smaller count instead of forcing a
@@ -40,6 +42,8 @@ export function buildMultipleChoiceQuestion<T>(
     format: "multiple-choice",
     prompt: opts.getPrompt(subject),
     imageUrl: opts.getImageUrl ? opts.getImageUrl(subject) : null,
+    imageCaption: opts.getImageCaption ? opts.getImageCaption(subject) : null,
+    imageCaptionParty: opts.getImageCaptionParty ? opts.getImageCaptionParty(subject) : null,
     options,
     correctIndex: options.indexOf(correctText),
   };
