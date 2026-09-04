@@ -177,3 +177,27 @@ export function buildOfficeholderNameQuestions(
     });
   });
 }
+
+/**
+ * "Which chamber of Congress does this legislator serve in?" — legislators only, not governors
+ * (a governor has no chamber to guess). Only 2 possible values nationwide, so optionCount is 2,
+ * same "fewer than the default 4 when the real answer space is smaller" reasoning the party
+ * question above already uses. Photo/name/party caption is safe to show up front — none of it
+ * hints at chamber the way it would spoil the party question.
+ */
+export function buildChamberQuestions(
+  facts: LegislatorStateFact[],
+  count: number,
+): MultipleChoiceQuestion[] {
+  const subjects = pickRandom(facts, count);
+  return subjects.map((subject) =>
+    buildMultipleChoiceQuestion(subject, facts, {
+      getPrompt: () => "Which chamber of Congress does this legislator serve in?",
+      getOptionText: (f) => (f.chamber === "senate" ? "U.S. Senate" : "U.S. House of Representatives"),
+      getImageUrl: (f) => f.photoUrl,
+      getImageCaption: (f) => f.legislatorName,
+      getImageCaptionParty: (f) => f.party,
+      optionCount: 2,
+    }),
+  );
+}

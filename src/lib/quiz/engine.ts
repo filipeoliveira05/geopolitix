@@ -26,6 +26,7 @@ import {
   buildOfficeholderPhotoQuestions,
   buildOfficeholderPartyQuestions,
   buildOfficeholderNameQuestions,
+  buildChamberQuestions,
 } from "./officeholders-questions";
 import {
   candidateFactsFromRaces,
@@ -186,12 +187,16 @@ export function buildCategorySession(category: QuizCategoryId, pool: unknown): Q
     }
     case "officeholders": {
       const { governors, legislatorsWithPhoto } = pool as OfficeholdersPool;
-      const [governorCount, photoCount, partyCount, nameCount] = randomSplit(SESSION_LENGTH, 4);
+      const [governorCount, photoCount, partyCount, nameCount, chamberCount] = randomSplit(
+        SESSION_LENGTH,
+        5,
+      );
       const questions: QuizQuestion[] = [
         ...buildGovernorQuestions(governors, governorCount),
         ...buildOfficeholderPhotoQuestions(legislatorsWithPhoto, governors, photoCount),
         ...buildOfficeholderPartyQuestions(legislatorsWithPhoto, governors, partyCount),
         ...buildOfficeholderNameQuestions(legislatorsWithPhoto, governors, nameCount),
+        ...buildChamberQuestions(legislatorsWithPhoto, chamberCount),
       ];
       return pickRandom(questions, questions.length);
     }
@@ -297,6 +302,10 @@ export function buildSpeedRoundPool(pool: unknown): MultipleChoiceQuestion[] {
       officeholders.legislatorsWithPhoto,
       officeholders.governors,
       Math.min(n, officeholders.legislatorsWithPhoto.length + officeholders.governors.length),
+    ),
+    ...buildChamberQuestions(
+      officeholders.legislatorsWithPhoto,
+      Math.min(n, officeholders.legislatorsWithPhoto.length),
     ),
     ...buildCandidatePartyQuestions(midterms.candidates, Math.min(n, midterms.candidates.length)),
     ...buildIncumbencyQuestions(midterms.candidates, Math.min(n, midterms.candidates.length)),

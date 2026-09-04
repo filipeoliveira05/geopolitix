@@ -4,6 +4,7 @@ import {
   buildOfficeholderPhotoQuestions,
   buildOfficeholderPartyQuestions,
   buildOfficeholderNameQuestions,
+  buildChamberQuestions,
 } from "./officeholders-questions";
 import type { GovernorFact } from "@/lib/governors-data";
 import type { LegislatorStateFact } from "@/lib/legislators-data";
@@ -223,6 +224,43 @@ describe("buildOfficeholderNameQuestions", () => {
     const questions = buildOfficeholderNameQuestions(legislators, [], 5);
     for (const q of questions) {
       expect(q.options).toHaveLength(4);
+    }
+  });
+});
+
+describe("buildChamberQuestions", () => {
+  it("builds the requested number of questions", () => {
+    const questions = buildChamberQuestions(makeLegislatorFacts(10), 5);
+    expect(questions).toHaveLength(5);
+  });
+
+  it("asks a fixed, name/state-agnostic prompt with only 2 options (Senate/House)", () => {
+    const facts = makeLegislatorFacts(10);
+    const questions = buildChamberQuestions(facts, 5);
+    for (const q of questions) {
+      expect(q.prompt).toBe("Which chamber of Congress does this legislator serve in?");
+      expect(q.options).toHaveLength(2);
+      expect(new Set(q.options)).toEqual(new Set(["U.S. Senate", "U.S. House of Representatives"]));
+    }
+  });
+
+  it("maps the subject's actual chamber to the correct option", () => {
+    const facts = makeLegislatorFacts(10);
+    const questions = buildChamberQuestions(facts, 10);
+    for (const q of questions) {
+      const matchingFact = facts.find((f) => f.legislatorName === q.imageCaption);
+      const expectedOption = matchingFact?.chamber === "senate" ? "U.S. Senate" : "U.S. House of Representatives";
+      expect(q.options[q.correctIndex]).toBe(expectedOption);
+    }
+  });
+
+  it("shows the legislator's photo, name, and party as the caption (none of it hints at chamber)", () => {
+    const facts = makeLegislatorFacts(10);
+    const questions = buildChamberQuestions(facts, 5);
+    for (const q of questions) {
+      expect(q.imageUrl).toMatch(/^https:\/\/example\.com\/photo\d+\.png$/);
+      const matchingFact = facts.find((f) => f.legislatorName === q.imageCaption);
+      expect(q.imageCaptionParty).toBe(matchingFact?.party);
     }
   });
 });
