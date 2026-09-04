@@ -28,6 +28,7 @@ function makeCandidate(overrides: Partial<Race["candidates"][number]>): Race["ca
     matchedLegislatorId: null,
     matchedGovernorId: null,
     candidateId: null,
+    photoUrl: null,
     ...overrides,
   };
 }
@@ -44,8 +45,16 @@ describe("candidateFactsFromRaces", () => {
         stateName: "Texas",
         office: "senate",
         districtNumber: null,
+        photoUrl: null,
       },
     ]);
+  });
+
+  it("carries the candidate's photo through as photoUrl", () => {
+    const races = [
+      makeRace({ candidates: [makeCandidate({ photoUrl: "https://example.com/jane.png" })] }),
+    ];
+    expect(candidateFactsFromRaces(races)[0].photoUrl).toBe("https://example.com/jane.png");
   });
 
   it("drops a placeholder 'TBD' candidate", () => {
@@ -79,6 +88,7 @@ const twoPartyFacts: CandidateFact[] = Array.from({ length: 10 }, (_, i) => ({
   stateName: "Texas",
   office: "senate",
   districtNumber: null,
+  photoUrl: `https://example.com/candidate${i}.png`,
 }));
 
 describe("buildCandidatePartyQuestions", () => {
@@ -100,6 +110,17 @@ describe("buildCandidatePartyQuestions", () => {
       const subjectName = q.prompt.match(/^What party is (.+) running as\?$/)?.[1];
       const subject = twoPartyFacts.find((f) => f.name === subjectName);
       expect(q.options[q.correctIndex]).toBe(subject?.party);
+    }
+  });
+
+  it("shows the subject's photo/name immediately (not gated behind answering), with no party badge", () => {
+    const questions = buildCandidatePartyQuestions(twoPartyFacts, 5);
+    for (const q of questions) {
+      const subjectName = q.prompt.match(/^What party is (.+) running as\?$/)?.[1];
+      const subject = twoPartyFacts.find((f) => f.name === subjectName);
+      expect(q.imageUrl).toBe(subject?.photoUrl);
+      expect(q.imageCaption).toBe(subjectName);
+      expect(q.imageCaptionParty).toBeUndefined();
     }
   });
 });
@@ -124,6 +145,7 @@ describe("buildIncumbencyQuestions", () => {
       stateName: "Texas",
       office: "senate",
       districtNumber: null,
+      photoUrl: null,
     };
     const houseAtLarge: CandidateFact = {
       name: "Chal",
@@ -132,6 +154,7 @@ describe("buildIncumbencyQuestions", () => {
       stateName: "Wyoming",
       office: "house",
       districtNumber: 0,
+      photoUrl: null,
     };
     const houseDistrict: CandidateFact = {
       name: "Rep",
@@ -140,6 +163,7 @@ describe("buildIncumbencyQuestions", () => {
       stateName: "Texas",
       office: "house",
       districtNumber: 3,
+      photoUrl: null,
     };
     const [senateQ] = buildIncumbencyQuestions([senate], 1);
     const [houseAtLargeQ] = buildIncumbencyQuestions([houseAtLarge], 1);
@@ -157,6 +181,7 @@ describe("buildIncumbencyQuestions", () => {
       stateName: "Texas",
       office: "senate",
       districtNumber: null,
+      photoUrl: null,
     };
     const challenger: CandidateFact = {
       name: "Chal",
@@ -165,10 +190,27 @@ describe("buildIncumbencyQuestions", () => {
       stateName: "Texas",
       office: "senate",
       districtNumber: null,
+      photoUrl: null,
     };
     const [incQ] = buildIncumbencyQuestions([incumbent], 1);
     const [chalQ] = buildIncumbencyQuestions([challenger], 1);
     expect(incQ.options[incQ.correctIndex]).toBe("Yes");
     expect(chalQ.options[chalQ.correctIndex]).toBe("No");
+  });
+
+  it("shows the subject's photo/name/party immediately (not gated behind answering)", () => {
+    const subject: CandidateFact = {
+      name: "Inc",
+      party: "Democrat",
+      isIncumbent: true,
+      stateName: "Texas",
+      office: "senate",
+      districtNumber: null,
+      photoUrl: "https://example.com/inc.png",
+    };
+    const [q] = buildIncumbencyQuestions([subject], 1);
+    expect(q.imageUrl).toBe("https://example.com/inc.png");
+    expect(q.imageCaption).toBe("Inc");
+    expect(q.imageCaptionParty).toBe("Democrat");
   });
 });

@@ -74,13 +74,13 @@ describe("buildMultipleChoiceQuestion", () => {
     expect(q.imageCaptionParty).toBe("Democrat");
   });
 
-  it("defaults imageCaption/imageCaptionParty to null when not provided", () => {
+  it("defaults imageCaption to null and imageCaptionParty to undefined when not provided", () => {
     const q = buildMultipleChoiceQuestion(pool[0], pool, {
       getPrompt: () => "prompt",
       getOptionText: (item) => item.label,
     });
     expect(q.imageCaption).toBeNull();
-    expect(q.imageCaptionParty).toBeNull();
+    expect(q.imageCaptionParty).toBeUndefined();
   });
 
   it("sets revealImageUrl/revealCaption from getRevealImageUrl/getRevealCaption when provided", () => {

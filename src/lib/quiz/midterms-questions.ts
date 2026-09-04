@@ -11,6 +11,7 @@ export type CandidateFact = {
   stateName: string;
   office: RaceOffice;
   districtNumber: number | null;
+  photoUrl: string | null;
 };
 
 function isRealCandidateName(name: string): boolean {
@@ -38,6 +39,7 @@ export function candidateFactsFromRaces(races: Race[]): CandidateFact[] {
         stateName,
         office: race.office,
         districtNumber: race.districtNumber,
+        photoUrl: candidate.photoUrl,
       });
     }
   }
@@ -71,6 +73,12 @@ export function buildCandidatePartyQuestions(
     buildMultipleChoiceQuestion(subject, facts, {
       getPrompt: (s) => `What party is ${s.name} running as?`,
       getOptionText: (f) => f.party,
+      // Shown immediately, not gated behind answering — unlike the governor question's reveal,
+      // the photo doesn't spoil anything here (the candidate's name is already in the prompt),
+      // so there's no reason to delay it. No party badge on the caption — that WOULD spoil this
+      // specific question, unlike the plain name/photo caption on the Legislator question.
+      getImageUrl: (s) => s.photoUrl,
+      getImageCaption: (s) => s.name,
       optionCount,
     }),
   );
@@ -88,7 +96,11 @@ export function buildIncumbencyQuestions(
   return subjects.map((s) => ({
     format: "multiple-choice",
     prompt: `Is ${s.name} the incumbent in the ${raceLabel(s.stateName, s.office, s.districtNumber)} race?`,
-    imageUrl: null,
+    imageUrl: s.photoUrl,
+    imageCaption: s.name,
+    // Unlike the party question, incumbency isn't derivable from a party badge — safe to show,
+    // same as the Legislator question's caption.
+    imageCaptionParty: s.party,
     options: ["Yes", "No"],
     correctIndex: s.isIncumbent ? 0 : 1,
   }));

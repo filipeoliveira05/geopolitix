@@ -10,6 +10,10 @@ export type MultipleChoiceQuestion = {
   // Shown under the image when present — e.g. a legislator's name/party. Unused by every other
   // image question type (flags, team logos), which have nothing worth captioning.
   imageCaption?: string | null;
+  // Renders a party badge next to imageCaption when present (string or null — null renders the
+  // "unknown party" badge). Left undefined (not just falsy) to mean "no party badge at all" —
+  // e.g. a midterms candidate caption, where showing a party badge next to the photo would give
+  // away the answer to "what party is this candidate running as?".
   imageCaptionParty?: string | null;
   // Shown only AFTER answering, below the options — e.g. the correct governor's own photo, so a
   // text-only question ("Who is the governor of X?") still teaches a face-to-name association.

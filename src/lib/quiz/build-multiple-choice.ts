@@ -45,7 +45,7 @@ export function buildMultipleChoiceQuestion<T>(
     prompt: opts.getPrompt(subject),
     imageUrl: opts.getImageUrl ? opts.getImageUrl(subject) : null,
     imageCaption: opts.getImageCaption ? opts.getImageCaption(subject) : null,
-    imageCaptionParty: opts.getImageCaptionParty ? opts.getImageCaptionParty(subject) : null,
+    imageCaptionParty: opts.getImageCaptionParty ? opts.getImageCaptionParty(subject) : undefined,
     revealImageUrl: opts.getRevealImageUrl ? opts.getRevealImageUrl(subject) : null,
     revealCaption: opts.getRevealCaption ? opts.getRevealCaption(subject) : null,
     options,

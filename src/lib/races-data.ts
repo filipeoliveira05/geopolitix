@@ -16,6 +16,10 @@ export type RaceCandidate = {
   matchedLegislatorId: string | null;
   matchedGovernorId: string | null;
   candidateId: string | null;
+  // Resolved from whichever of the three sources above the candidate is matched to (same
+  // legislator > governor > standalone-candidate priority as candidateHref() below) — null when
+  // unmatched with no photo, or matched to someone with no photo on file.
+  photoUrl: string | null;
 };
 
 export type Race = {
@@ -46,6 +50,9 @@ type RaceRow = {
     matched_legislator_id: string | null;
     matched_governor_id: string | null;
     candidate_id: string | null;
+    matched_legislator: { photo_url: string | null } | null;
+    matched_governor: { photo_url: string | null } | null;
+    candidate: { photo_url: string | null } | null;
   }[];
 };
 
@@ -65,11 +72,14 @@ function fromRow(row: RaceRow): Race {
       matchedLegislatorId: c.matched_legislator_id,
       matchedGovernorId: c.matched_governor_id,
       candidateId: c.candidate_id,
+      photoUrl:
+        c.matched_legislator?.photo_url ?? c.matched_governor?.photo_url ?? c.candidate?.photo_url ?? null,
     })),
   };
 }
 
-const RACE_WITH_CANDIDATES_SELECT = "*, race_candidates!race_candidates_race_id_fkey(*)";
+const RACE_WITH_CANDIDATES_SELECT =
+  "*, race_candidates!race_candidates_race_id_fkey(*, matched_legislator:legislators(photo_url), matched_governor:governors(photo_url), candidate:candidates(photo_url))";
 
 /**
  * True when at least one candidate is a placeholder rather than a real name — Wikipedia's own

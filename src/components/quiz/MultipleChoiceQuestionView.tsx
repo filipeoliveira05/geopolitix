@@ -27,7 +27,10 @@ export function MultipleChoiceQuestionView({
           </div>
           {question.imageCaption && (
             <p className="mt-2 text-center text-sm font-medium text-ink">
-              {question.imageCaption} <PartyBadge party={question.imageCaptionParty ?? null} />
+              {question.imageCaption}{" "}
+              {question.imageCaptionParty !== undefined && (
+                <PartyBadge party={question.imageCaptionParty} />
+              )}
             </p>
           )}
         </div>
