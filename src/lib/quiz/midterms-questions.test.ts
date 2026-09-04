@@ -104,10 +104,15 @@ describe("buildCandidatePartyQuestions", () => {
     }
   });
 
+  it("names the race (state/office) in the prompt, same as the incumbency question", () => {
+    const [q] = buildCandidatePartyQuestions(twoPartyFacts, 1);
+    expect(q.prompt).toMatch(/^What party is Candidate\d+ running as in the Texas Senate race\?$/);
+  });
+
   it("has the subject's real party as the correct answer", () => {
     const questions = buildCandidatePartyQuestions(twoPartyFacts, 5);
     for (const q of questions) {
-      const subjectName = q.prompt.match(/^What party is (.+) running as\?$/)?.[1];
+      const subjectName = q.prompt.match(/^What party is (.+) running as in the .+ race\?$/)?.[1];
       const subject = twoPartyFacts.find((f) => f.name === subjectName);
       expect(q.options[q.correctIndex]).toBe(subject?.party);
     }
@@ -116,7 +121,7 @@ describe("buildCandidatePartyQuestions", () => {
   it("shows the subject's photo/name immediately (not gated behind answering), with no party badge", () => {
     const questions = buildCandidatePartyQuestions(twoPartyFacts, 5);
     for (const q of questions) {
-      const subjectName = q.prompt.match(/^What party is (.+) running as\?$/)?.[1];
+      const subjectName = q.prompt.match(/^What party is (.+) running as in the .+ race\?$/)?.[1];
       const subject = twoPartyFacts.find((f) => f.name === subjectName);
       expect(q.imageUrl).toBe(subject?.photoUrl);
       expect(q.imageCaption).toBe(subjectName);

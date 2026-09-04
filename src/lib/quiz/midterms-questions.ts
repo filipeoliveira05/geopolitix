@@ -71,7 +71,8 @@ export function buildCandidatePartyQuestions(
   const subjects = pickRandom(facts, count);
   return subjects.map((subject) =>
     buildMultipleChoiceQuestion(subject, facts, {
-      getPrompt: (s) => `What party is ${s.name} running as?`,
+      getPrompt: (s) =>
+        `What party is ${s.name} running as in the ${raceLabel(s.stateName, s.office, s.districtNumber)} race?`,
       getOptionText: (f) => f.party,
       // Shown immediately, not gated behind answering — unlike the governor question's reveal,
       // the photo doesn't spoil anything here (the candidate's name is already in the prompt),
