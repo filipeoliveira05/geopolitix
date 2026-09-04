@@ -100,6 +100,11 @@ export function buildTeamByCityQuestions(
     return buildMultipleChoiceQuestion(subject, [subject, ...otherCitiesPool], {
       getPrompt: (t) => `Which of these teams is based in ${t.cityName}?`,
       getOptionText: (t) => t.name,
+      // Shown only after answering — the correct team's logo/name, same reveal timing the
+      // governor question uses, so the round still teaches a logo-to-name association even
+      // though the logo can't be shown up front here.
+      getRevealImageUrl: (t) => t.logoUrl,
+      getRevealCaption: (t) => t.name,
     });
   });
 }
@@ -118,6 +123,9 @@ export function buildTeamByStateQuestions(
     return buildMultipleChoiceQuestion(subject, [subject, ...otherStatesPool], {
       getPrompt: (t) => `Which of these teams is based in ${t.stateName}?`,
       getOptionText: (t) => t.name,
+      // Same reveal-timing reasoning as buildTeamByCityQuestions.
+      getRevealImageUrl: (t) => t.logoUrl,
+      getRevealCaption: (t) => t.name,
     });
   });
 }
