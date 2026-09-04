@@ -104,6 +104,24 @@ export function buildTeamByCityQuestions(
   });
 }
 
+export function buildTeamByStateQuestions(
+  teams: SportsTeam[],
+  count: number,
+): MultipleChoiceQuestion[] {
+  const facts = withStateNames(teams);
+  const subjects = pickRandom(facts, count);
+  return subjects.map((subject) => {
+    // Same dedup reasoning as buildTeamByCityQuestions, one level up: most states host several
+    // synced teams, so any other team from the same state has to be excluded from the distractor
+    // pool or it'd also be a genuinely correct answer.
+    const otherStatesPool = facts.filter((t) => t.stateId !== subject.stateId);
+    return buildMultipleChoiceQuestion(subject, [subject, ...otherStatesPool], {
+      getPrompt: (t) => `Which of these teams is based in ${t.stateName}?`,
+      getOptionText: (t) => t.name,
+    });
+  });
+}
+
 export function buildMatchingPairs(teams: SportsTeam[], count: number): MatchingPair[] {
   const withLogo = teams.filter((t) => t.logoUrl !== null);
   const subjects = pickRandom(withLogo, count);
