@@ -1325,7 +1325,8 @@ existing `*-data.ts` query helpers (`geography-data.ts`, `governors-data.ts`,
 
 **Architecture, established in Plan 1 and extended by every later plan without changing its
 shape:** a `QuizQuestion` discriminated union (`src/lib/quiz/types.ts`) — `MultipleChoiceQuestion`
-(prompt/optional image/options/correctIndex) and `MapClickQuestion` (prompt/target state, added
+(prompt/optional image/options/correctIndex, plus the optional caption/reveal/party-badge fields
+added in the 2026-09-04 pass below) and `MapClickQuestion` (prompt/target state, added
 Plan 3) — plus a parallel `AnsweredQuestion` union recording what was actually clicked. A
 category's full data pool is fetched once per page visit (`fetchCategoryPool()` in
 `src/lib/quiz/engine.ts`, cached by TanStack Query's own `["quiz-pool", categoryId]` key) and
@@ -1371,15 +1372,23 @@ entirely since `isIncumbent` is already boolean with no pool-based distractor to
   effect's body, not just setting it in the cleanup — verify live, don't assume a guard ref
   behaves the same across Strict Mode's synthetic double-invoke as it would in a single real
   mount.
-- **Officeholders** (`officeholders-questions.ts`): "who is the current governor of X" MC, and a
-  legislator-photo MC ("which state does this legislator represent?").
+- **Officeholders** (`officeholders-questions.ts`): "who is the current governor of X" MC (photo
+  reveal added 2026-09-04, see below), and a legislator-photo MC ("Which state is this
+  senator/representative from?" — reworded 2026-09-04, see below).
 - **2026 Midterms** (`midterms-questions.ts`): candidate-party MC (the 2-3-option case above) and
-  incumbency Yes/No. `candidateFactsFromRaces()` flattens every race's candidates into one flat
-  pool, skipping Wikipedia's own "TBD"/"(presumptive)" placeholder names (same check
-  `races-data.ts`'s `isPrimaryPending()` already uses at the race level) and any candidate with no
-  known party — both question types need a real name and a real party.
+  incumbency Yes/No, both naming the specific race as of 2026-09-04 (see below). Draws only from
+  Senate + Governor races (`getSenateAndGovernorRaces()`) — House's 435 races are deliberately
+  excluded from the quiz pool, an accepted scope gap (a much heavier fetch than the cheap
+  count-only query `getHouseRaceCountsByState()` uses elsewhere), not a bug; revisit only if asked.
+  `candidateFactsFromRaces()` flattens every race's candidates into one flat pool, skipping
+  Wikipedia's own "TBD"/"(presumptive)" placeholder names (same check `races-data.ts`'s
+  `isPrimaryPending()` already uses at the race level) and any candidate with no known party —
+  both question types need a real name and a real party.
 - **Sports** (`sports-questions.ts`, Plan 4): team-logo MC ("which team is this?") and
-  team-state MC, plus a second, entirely separate session type — **matching-pairs**
+  team-state MC (shows the team's logo immediately as of 2026-09-04, see below). Draws only from
+  `sports_teams` (pro leagues) — `college_football_programs`/`college_basketball_programs` aren't
+  used here, the same class of accepted scope gap as House races above, not a bug. Plus a second,
+  entirely separate session type — **matching-pairs**
   (`MatchingSession.tsx`, `categoryHasMatchingMode()`/`buildMatchingBoard()` in `engine.ts`):
   click a logo, click a name, get an immediate correct/flash-red-then-clear-selection result, no
   question/answer/score shape at all (deliberately not part of the `QuizQuestion` union — see
@@ -1470,3 +1479,100 @@ share the same generators/screens:
   Android Chrome only — iOS Safari doesn't expose the Vibration API to web pages at all, so it's a
   silent no-op there, not a gap to fix; confirmed live (Android Chrome device) as a real 120ms
   buzz on a wrong answer.
+
+**Per-category polish pass (2026-09-04)** — driven by the user manually reviewing Officeholders/
+Midterms/Sports one category at a time (rather than another blanket sweep like the v1 pass above),
+so each fix below is scoped to the one category it names, not shared automatically the way the v1
+pass's fixes were. Added three new optional `MultipleChoiceQuestion` fields (`types.ts`) and their
+`build-multiple-choice.ts`/`MultipleChoiceQuestionView.tsx` plumbing, all opt-in per question type
+via `buildMultipleChoiceQuestion()`'s new `getImageCaption`/`getImageCaptionParty`/
+`getRevealImageUrl`/`getRevealCaption`/`optionsAreParties` opts:
+- **`imageCaption`/`imageCaptionParty`** — text (and, optionally, a `PartyBadge`) shown under an
+  already-present pre-answer `imageUrl`. `imageCaptionParty` is `undefined` (not just falsy) to
+  mean "no party badge at all", distinct from `null` (renders the badge in its "unknown party"
+  state) — needed once a second caption consumer (Midterms' candidate photo, see below) had to
+  suppress the badge entirely rather than show an unknown-party placeholder next to it.
+- **`revealImageUrl`/`revealCaption`** — a photo+name shown only AFTER answering, below the
+  options, for a question whose prompt already *asks* for the subject's identity (the governor
+  question below) rather than showing it — as opposed to `imageUrl`/`imageCaption` above, which
+  show BEFORE answering for a question that already reveals the subject in its prompt text.
+- **`optionsAreParties`** — flags that every option string IS a party name, so
+  `MultipleChoiceQuestionView` renders each one with the app's existing `partyStyle()`-colored
+  "(D)"/"(R)"/"(I)" badge instead of plain text. Once answered, a highlighted (green/red) option's
+  badge inherits the button's own white text rather than `partyStyle()`'s color, to avoid a
+  same-hue clash (e.g. a red "(R)" badge on a red wrong-answer background) — confirmed live in both
+  themes.
+
+**Officeholders** (`officeholders-questions.ts`):
+- `buildLegislatorPhotoQuestions`'s prompt was a bare "Which state does this legislator
+  represent?" with only a photo and no name — genuinely too vague to learn a face-to-name
+  association from. Now shows the legislator's name + `PartyBadge` as an `imageCaption` under the
+  photo, and the prompt itself is chamber-aware: `` `Which state is this
+  ${chamber === "senate" ? "senator" : "representative"} from?` `` (`LegislatorStateFact` gained
+  `legislatorName`/`party`/`chamber`, sourced from an extended `getAllCurrentLegislatorsWithPhoto()`
+  query in `legislators-data.ts`). Went through two wording iterations, both from direct user
+  feedback: "Which state does this representative represent?" read as repetitive (the noun and verb
+  share a root), landing on "Which state is this representative from?" instead — picked over
+  "...serve?"/"...elected this representative?" alternatives.
+- `buildGovernorQuestions` was pure text — a governor question, right or wrong, taught nothing
+  about what that governor actually looks like. Now reveals the CORRECT governor's photo/name
+  (`revealImageUrl`/`revealCaption`) below the options once answered, regardless of which option
+  was chosen — deliberately not the option the player picked, since the value here is a face-to-
+  name association with the officeholder, not a labeled wrong answer (`GovernorFact` gained
+  `photoUrl`, sourced from an extended `getAllCurrentGovernors()` query in `governors-data.ts`).
+
+**2026 Midterms** (`midterms-questions.ts`):
+- `buildIncumbencyQuestions`'s prompt — "Is X the incumbent in this race?" — never actually named
+  the race, making it genuinely unanswerable rather than a real question (a real, not cosmetic,
+  correctness gap). Fixed with a new `raceLabel()` helper: `"{state} Senate"` /
+  `"{state} Governor"` / `"{state} House"` (at-large) / `"{state} House District {n}"` (numbered),
+  producing e.g. "Is X the incumbent in the Texas House District 3 race?". Applied to
+  `buildCandidatePartyQuestions`'s prompt too for consistency ("What party is X running as in the
+  {race} race?"), at the user's own follow-up request once the asymmetry was pointed out.
+  `CandidateFact` gained `stateName`/`office`/`districtNumber`, sourced from the `Race` the
+  candidate's row came from (`candidateFactsFromRaces()`).
+- Both question types now show the candidate's photo — via `imageUrl`/`imageCaption` (shown
+  immediately, not `revealImageUrl`), since the candidate's name is already right in the prompt for
+  both, so unlike the governor question above there's nothing left to spoil by showing it up front.
+  Required resolving a photo through whichever of `legislators`/`governors`/`candidates` a
+  `race_candidates` row is matched to (same priority order `candidateHref()` already uses) — added
+  as nested embeds (`matched_legislator:legislators(photo_url)`, etc.) to the shared
+  `RACE_WITH_CANDIDATES_SELECT` in `races-data.ts`, so every existing consumer of the races queries
+  gets `RaceCandidate.photoUrl` for free, not just the quiz. The party question's caption
+  deliberately omits `imageCaptionParty` (would spoil "what party is X running as?"); the
+  incumbency question's caption includes it (incumbency isn't derivable from party, so it's safe —
+  confirmed live: a wrong-picked option's badge and a correct one's both render correctly).
+- `buildCandidatePartyQuestions` sets `optionsAreParties: true` — the "Democrat"/"Republican"/
+  "Independent" options now show the colored `(D)`/`(R)`/`(I)` badge described above, at the user's
+  explicit request after seeing the plain-text version live.
+
+**Sports** (`sports-questions.ts`): `buildTeamStateQuestions` ("Which state is the {team} based
+in?") showed no image at all despite the team name already being in the prompt and `logoUrl`
+sitting right there on `SportsTeam` — added as `imageUrl` (shown immediately, no spoiler risk),
+with no `imageCaption` since the team name is already in the prompt text (unlike the Legislator
+question, whose prompt never names its subject) — a redundant caption was caught and removed after
+an initial version included one. Verified no real name-collision risk first (unlike a hypothetical
+"Giants" NFL/MLB ambiguity) — live data check confirmed every one of the 172 synced teams has a
+unique full "City Mascot" name, so no `raceLabel()`-style disambiguation was needed here.
+
+**Bug, caught and fixed while polishing Sports**: `QuizStartScreen`'s "Best: X/Y" line read
+`localStorage` via a lazy `useState` initializer, on the (incorrect) assumption in its own comment
+that this screen — unlike the results screens — never faces a real SSR pass. It actually IS the
+default phase of `/quiz/[category]`, so it genuinely is server-rendered, and the initializer
+produced a different value server-side (no `localStorage`, caught, returns `null`) than on client
+hydration (the real value) whenever a best score already existed — confirmed live via a real
+"Hydration failed" error, reproduced consistently with a fresh page load against a pre-populated
+`localStorage`. Fixed with `useSyncExternalStore` (React's correct primitive for reading an
+external store safely across SSR/hydration), which exposed a second bug along the way: calling
+`getBestScore()` directly as `getSnapshot` returns a freshly-`JSON.parse`d object every call, which
+React reads as "always changing" and threw into an infinite render loop ("Maximum update depth
+exceeded", also confirmed live) — fixed with a per-mount cached snapshot, correct here specifically
+because this screen is always a fresh mount when it appears (`QuizCategoryClient`'s phase switch
+renders a different component type for every other phase, so returning to "start" unmounts and
+remounts this component rather than just re-rendering it).
+
+**Investigated and deliberately NOT changed**: Mashups' speed round (400ms auto-advance) was
+suspected to cut off the governor question's `revealImageUrl` before it could load — checked live
+via screenshots at 100ms/350ms into the window, and the photo actually rendered well within it, so
+no fix was needed. Also checked the Matching-pairs component and odd-one-out generator for the same
+class of gaps found elsewhere in this pass — neither had one.
