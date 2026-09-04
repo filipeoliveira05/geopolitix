@@ -1390,10 +1390,21 @@ entirely since `isIncumbent` is already boolean with no pool-based distractor to
   Wikipedia's own "TBD"/"(presumptive)" placeholder names (same check `races-data.ts`'s
   `isPrimaryPending()` already uses at the race level) and any candidate with no known party —
   both question types need a real name and a real party.
-- **Sports** (`sports-questions.ts`, Plan 4): team-logo MC ("which team is this?") and
-  team-state MC (shows the team's logo immediately as of 2026-09-04, see below). Draws only from
-  `sports_teams` (pro leagues) — `college_football_programs`/`college_basketball_programs` aren't
-  used here, the same class of accepted scope gap as House races above, not a bug. Plus a second,
+- **Sports** (`sports-questions.ts`, Plan 4; grew from 2 to 9 question types in a 2026-09-04
+  same-day follow-up session, see the "Sports new-question-types batch" entry near the end of
+  this section for the full writeup): team-logo MC ("which team is this?" — now also mixes in
+  power-conference college programs, guessed by school name), team-state MC (shows the team's
+  logo immediately as of 2026-09-04, see below), team-league MC ("which league does the {team}
+  play in?"), team-city MC ("which city is the {team} based in?"), team-by-city/team-by-state MC
+  (reverse direction — "which of these teams is based in {city/state}?"), school-from-nickname MC
+  ("which school's team is called the {nickname}?"), college-conference MC ("which conference
+  does {school} play in?" — the last two restricted to power-conference programs only, see
+  below), and pro-team-count ("how many pro sports teams does {state} have?", bucketed 0/1/2/3+,
+  revealing every real team for that state after answering). Draws from `sports_teams` (pro
+  leagues) plus, for the college-specific question types only,
+  `college_football_programs`/`college_basketball_programs` restricted to the nationally
+  recognizable power conferences (Big Ten/SEC/ACC/Big 12, plus Big East for basketball) — see
+  below for why the full 503-program pool isn't used wholesale. Plus a second,
   entirely separate session type — **matching-pairs**
   (`MatchingSession.tsx`, `categoryHasMatchingMode()`/`buildMatchingBoard()` in `engine.ts`):
   click a logo, click a name, get an immediate correct/flash-red-then-clear-selection result, no
@@ -1409,10 +1420,11 @@ entirely since `isIncumbent` is already boolean with no pool-based distractor to
   which all assume a single designated subject plus random same-pool distractors), and a second
   session type — **speed round** (`SpeedRoundSession.tsx`, `categoryHasSpeedRoundMode()`/
   `buildSpeedRoundPool()` in `engine.ts`): a 60-second countdown pulling ~5 questions from every
-  one of the 19 existing multiple-choice generators across Geography/Officeholders/Midterms/Sports
-  (deliberately excluding map-click, unsuited to rapid-fire pace, and matching, not a
-  `QuizQuestion` at all) shuffled into one ~40-question pool, answered with immediate feedback and
-  a 400ms auto-advance — no manual "Next" click, the one session type where that's true. Its own
+  one of the 26 existing multiple-choice generators across Geography/Officeholders/Midterms/Sports
+  (up from 19 once Sports grew from 2 to 9 question types, see the "Sports new-question-types
+  batch" entry below; deliberately excluding map-click, unsuited to rapid-fire pace, and matching,
+  not a `QuizQuestion` at all) shuffled into one ~40-question pool, answered with immediate
+  feedback and a 400ms auto-advance — no manual "Next" click, the one session type where that's true. Its own
   results screen (`SpeedRoundResultsScreen.tsx`) and its own best-score key prefix
   (`getBestSpeedRound`/`updateBestSpeedRoundIfHigher`, `geopolitix:quiz-speed-best:*`) — a speed
   round's score (routinely 15-30+ across its larger pool) isn't comparable to the regular
@@ -1695,3 +1707,73 @@ question) rather than building everything in the list — deprioritized, not aba
   every other numeric MC question in the app), deduped by rendered text like every other generator
   — small states clustering around 1-2 seats means duplicate values are common but never double-
   counted as separate options.
+
+**Sports new-question-types batch (2026-09-04, separate same-day follow-up session)** — driven by
+the user's own hand-written list of 12 question-type ideas, ranked by ease before starting (pro
+pool alone first, college programs once the recognizability concern below was resolved), each
+shipped as its own commit with live Playwright verification. Took Sports from 2 question types to
+9; three items from the original list remain unbuilt (a pro/college/combined team-count state
+comparison, plus two new matching-pairs variants — match team to conference/league, match school
+nickname to school) — the user explicitly stopped here ("I think we are good with what we have"),
+deprioritized not abandoned, same pause pattern as Officeholders above.
+- **`buildLeagueQuestions`** — "Which league does the {team} play in?", distractors from the
+  other real leagues in the pool (7 nationwide). Team already named in the prompt, so the logo can
+  show immediately without spoiling the answer, same reasoning `buildTeamStateQuestions` already
+  established.
+- **`buildTeamCityQuestions`** — "Which city is the {team} based in?", a new question distinct
+  from the existing team-state question (same immediate-logo reasoning as above).
+- **`buildTeamByCityQuestions`/`buildTeamByStateQuestions`** — the reverse direction: "Which of
+  these teams is based in {city/state}?", team name as the answer. **Needed a real correctness
+  fix neither of the "forward" questions above needs**: several cities/states (New York, Los
+  Angeles, Chicago; most states) host more than one synced team, so a naively-built distractor
+  pool could include another team that's ALSO genuinely based in the asked-about place — both
+  generators exclude every other team sharing the subject's exact city/state from the distractor
+  pool before picking, confirmed live (a Manhattan question correctly offered only the Knicks
+  among Manhattan-based options, never the Rangers). Since the team name is the answer here, the
+  logo can't be shown up front without spoiling it — both reveal the correct team's logo + name
+  below the options after answering instead (added in a follow-up within the same session, at the
+  user's own request, mirroring the officeholders governor question's reveal timing).
+- **The college-programs question types needed a real design decision before any code**, not just
+  new generators: the user was upfront that the full pool (138 football + 365 basketball = 503
+  programs) worried them as overwhelming and full of unrecognizable schools before agreeing to add
+  college data to the Sports pool at all. Queried the actual synced `conference` values live
+  before proposing anything (rather than guessing) — confirmed football's real "Power 4" (Big
+  Ten/SEC/ACC/Big 12, 67/138 programs) and added Big East as a 5th power conference for basketball
+  specifically (it's basketball-only — Villanova/UConn/Georgetown play no FBS football at all).
+  Recommended restricting every new college question type's subject AND distractor pool to just
+  these power-conference programs (146/503 total) rather than the full pool, reasoning that a
+  mid-major/FCS-adjacent school is closer to unguessable trivia than a fair question, with no
+  logo-recognition fallback the way pro teams have. User approved outright with no pushback.
+  `restrictToPowerConferences`/`COLLEGE_FOOTBALL_POWER_CONFERENCES`/
+  `COLLEGE_BASKETBALL_POWER_CONFERENCES` (`sports-questions.ts`) implement this, reused by all
+  three college-aware generators below. Sports' pool shape changed from a bare `SportsTeam[]` to
+  `{teams, collegeFootball, collegeBasketball}` (`SportsPool` in `engine.ts`) to carry the new
+  fetches — Mashups' pool/speed-round follow the same shape change since they reuse the Sports
+  fetch, touching `fetchCategoryPool`/`getCategoryPoolSize`/`buildCategorySession`/
+  `buildMatchingBoard`/`buildSpeedRoundPool`; verified live afterward that matching mode and the
+  speed round both still work with zero regressions.
+  - **`buildSchoolFromNicknameQuestions`** — "Which school's team is called the {nickname}?". No
+    image up front (a program's logo usually names or strongly hints at the school itself, which
+    IS the answer) — reveals the correct school's logo + name below the options after answering
+    instead, same reveal timing as the team-by-city/team-by-state questions above.
+  - **`buildCollegeConferenceQuestions`** — "Which conference does {school} play in?", options
+    from the same restricted power-conference set. School already named in the prompt, so the
+    logo can show immediately.
+  - **`buildTeamLogoQuestions` was extended** (not a new generator) to mix power-conference
+    college programs in alongside pro teams, guessed by school name rather than nickname — needed
+    a small `LogoSubject` union (`{key, logoUrl, label}`) so one option pool can hold both
+    `SportsTeam` and `CollegeProgram` rows together. Verified live: UCLA/Texas A&M/Utah correctly
+    appear mixed in among pro-team logo options.
+- **`buildProTeamCountQuestions`** — "How many pro sports teams does {state} have?", bucketed
+  0/1/2/3+. Built last, at the user's own follow-up request (not from the original ease-ranked
+  list). Draws from ALL 51 states via `getAllStates()`, not just states with a synced team, so a
+  genuine 0-team state (e.g. North Dakota, Rhode Island) is a real, correctly-labeled answer
+  rather than an unreachable case. Needed a new `MultipleChoiceQuestion.revealTeams` field
+  (`types.ts`) distinct from the existing single-image `revealImageUrl`/`revealCaption` — this
+  question can reveal any number of teams (including zero) below the options after answering,
+  each with logo + league, per the user's own explicit spec (asked for "the logo, the league...
+  anything else? you tell me" — answered with just those two fields, no city, and the user didn't
+  push back). The empty-state copy is "No pro sports team in this state." — the user explicitly
+  corrected an initial "No sports teams synced for this state" version as reading too much like a
+  data-freshness note rather than a plain fact; amended into the same commit rather than left as a
+  separate fixup.

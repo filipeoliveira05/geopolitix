@@ -351,8 +351,11 @@ is-largest-city, and state/city population comparisons), **Officeholders** (6 qu
 of a 2026-09-04 follow-up — current governor, officeholder-photo-to-state (senators/reps/
 governors combined), officeholder party, combined photo+state name-guess, legislator chamber
 (Senate vs. House), and House seat count per state), **2026 Midterms** (candidate party,
-incumbency), **Sports** (team
-logo, team-to-state, plus a matching-pairs mode), **Mashups** (odd-one-out — "which of these
+incumbency), **Sports** (9 question types as of a 2026-09-04 follow-up — team logo (pro teams
+plus power-conference college programs), team-to-state, team-to-league, team-to-city,
+team-by-city/team-by-state (reverse direction), school-from-nickname and college-conference
+(power-conference programs only), and pro-team-count per state, plus a matching-pairs mode),
+**Mashups** (odd-one-out — "which of these
 teams is NOT based in the same state as the others?" — plus a 60-second speed round mixing every
 other category's multiple-choice question types together). Every question is multiple choice or
 map-click; a question type whose real answer space has fewer than 4 distinct values (e.g.
@@ -362,9 +365,10 @@ entities themselves as the options rather than going through the usual subject+d
 shape. Regular rounds are 10 questions with immediate per-question feedback; matching and
 speed-round are separate, parallel session types with their own results screen and their own
 `localStorage` best-score key (no accounts/auth — see §9's Open Decisions). Full architecture,
-all 5 categories, the Geography question-type expansion, and the real bugs caught building all of
-it (a Strict-Mode map cleanup bug, a speed-round timer/setState bug, a PostgREST ambiguous-FK bug
-on the cities/states embed) are documented in CLAUDE.md's Status section.
+all 5 categories, the Geography/Officeholders/Sports question-type expansions, and the real bugs
+caught building all of it (a Strict-Mode map cleanup bug, a speed-round timer/setState bug, a
+PostgREST ambiguous-FK bug on the cities/states embed) are documented in CLAUDE.md's Status
+section.
 
 ---
 
