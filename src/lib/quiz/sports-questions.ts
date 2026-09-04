@@ -68,6 +68,23 @@ export function buildLeagueQuestions(
   );
 }
 
+export function buildTeamCityQuestions(
+  teams: SportsTeam[],
+  count: number,
+): MultipleChoiceQuestion[] {
+  const subjects = pickRandom(teams, count);
+  return subjects.map((subject) =>
+    buildMultipleChoiceQuestion(subject, teams, {
+      getPrompt: (t) => `Which city is the ${t.name} based in?`,
+      getOptionText: (t) => t.cityName,
+      // Same reasoning as buildTeamStateQuestions: team is already named in the prompt, so
+      // showing the logo up front doesn't spoil the city answer, and no caption is needed since
+      // the name would just repeat the prompt text.
+      getImageUrl: (t) => t.logoUrl,
+    }),
+  );
+}
+
 export function buildMatchingPairs(teams: SportsTeam[], count: number): MatchingPair[] {
   const withLogo = teams.filter((t) => t.logoUrl !== null);
   const subjects = pickRandom(withLogo, count);
