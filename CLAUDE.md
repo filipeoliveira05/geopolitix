@@ -1356,7 +1356,11 @@ entirely since `isIncumbent` is already boolean with no pool-based distractor to
 
 **Five categories, each a mix of question types:**
 - **Geography** (`geography-questions.ts`): capital-name MC, state-flag-image MC, and
-  **map-click** ("Click on {state}.") — the one format that isn't multiple choice at all.
+  **map-click** ("Click on {state}.") — the one format that isn't multiple choice at all. Grew to
+  10 question types total in a 2026-09-04 same-day follow-up session (name↔abbreviation,
+  city→state, largest-city, is-capital, is-largest-city, and state/city population comparisons)
+  — see the "Geography new-question-types batch" entry near the end of this section for the full
+  writeup, including a real PostgREST ambiguous-FK bug it caught.
   `QuizMapClick.tsx` renders its own dedicated MapLibre instance (own worker-URL fix reusing
   `scripts/copy-maplibre-worker.mjs`'s existing copy, own Alaska/Hawaii inset remapping, same
   `UsMap.tsx` gotchas but a separate component, not a shared one, since gameplay interaction —
@@ -1576,3 +1580,67 @@ suspected to cut off the governor question's `revealImageUrl` before it could lo
 via screenshots at 100ms/350ms into the window, and the photo actually rendered well within it, so
 no fix was needed. Also checked the Matching-pairs component and odd-one-out generator for the same
 class of gaps found elsewhere in this pass — neither had one.
+
+**Geography new-question-types batch (2026-09-04, same-day follow-up)** — driven by the user's
+own hand-written list of question-type ideas, worked through one at a time in ease order (an
+initial ease analysis ranked "pure MC reuse, no new data" ideas first). Six new generators shipped
+in `geography-questions.ts`, taking Geography from 3 question types to 10 — exactly
+`SESSION_LENGTH`, so `randomSplit` now gives precisely 1 question per type per round (no more
+session-to-session mix variety in composition, only in which instance/order — a deliberate
+tradeoff the user chose over bumping `SESSION_LENGTH`, see `buildCategorySession`'s own comment).
+- **`buildAbbreviationQuestions`** — name↔abbreviation, direction randomized per question
+  ("What is the abbreviation for X?" / "Which state has the abbreviation Y?"). Needed zero new
+  data — `StateFact.stateId` already holds the USPS abbreviation.
+- **`buildCityStateQuestions`** — "Which state is this city in?", needing a new
+  `getAllCitiesWithState()` query/`CityFact` type in `geography-data.ts`. **Caught a real,
+  not-hypothetical PostgREST bug**: the `cities` → `states` embed needs explicit FK
+  disambiguation (`states!cities_state_id_fkey(name)`, not the bare table name) — same class of
+  gotcha `race_candidates` already has documented above, but a fresh instance here: `cities` and
+  `states` have TWO FKs between them (`cities.state_id → states.id`, and the reverse
+  `states.capital_city_id → cities.id`), so the bare embed is ambiguous. The real failure mode is
+  worse than a normal API error, though — PostgREST returns an HTTP 300, which `supabase-js`
+  doesn't surface as a thrown error at all, so the query promise just never resolves. Confirmed
+  live as a permanently-stuck "Loading…" screen with zero console error; only visible by watching
+  the actual network response.
+- **`buildLargestCityQuestions`** — "What is the largest city in X?" (distinct from the capital —
+  Austin vs. Houston is the canonical example). First version drew distractors from OTHER
+  states' largest cities (nationwide dedup pool, same pattern every other MC generator uses); the
+  user pushed back live ("I would rather have the other three options also cities from that
+  state... also add the state's flag") since a wrong-state city is too easy a tell — reworked to
+  draw all 4 options from real cities in the SAME state (`largestCityPerState()` groups by state,
+  keeps every other synced city as the distractor pool) plus the state's flag as `imageUrl`.
+- **`buildIsCapitalQuestions`** — "Is X the capital of Y?" Yes/No, needing a new
+  `CityFact.isCapital` field. For a random eligible state, 50/50 between the real capital (Yes)
+  and a random non-capital city (No) — a uniform random city pick would skew heavily toward "No"
+  (~10 non-capitals synced per 1 capital per state). Flag added the same way as above, at the same
+  user request (it applied to "every future Yes/No-style question," not just one).
+- **`buildIsLargestCityQuestions`** — originally shipped as "Is the capital ALSO the largest city
+  in Y?" (`buildCapitalIsLargestQuestions`, reusing `CityFact.isCapital`/`.population`, no new
+  data). **Reworded after live feedback**: naming the capital in the prompt without the prompt
+  ever saying it's the capital made the "also" read as unearned context. Redesigned as a plain
+  "Is X the largest city in Y?" — for a random eligible state, 50/50 between the real largest
+  city (Yes) and a random other synced city (No); works identically whether or not the picked
+  city happens to be the capital, so the phrasing never needs "also" or any capital framing.
+  `citiesByState`/flag-lookup logic was factored into shared `groupCitiesByState()`/
+  `flagUrlByState()` helpers once a third generator needed the identical grouping.
+- **`buildStatePopulationQuestions`/`buildCityPopulationQuestions`** — "Which state/city has a
+  higher population?", a genuinely different question SHAPE from every generator above: the two
+  options ARE the two entities being compared, not a correct answer plus unrelated distractors,
+  so both bypass `buildMultipleChoiceQuestion` entirely (same reasoning the Yes/No generators
+  already use). Needed a new `StateFact.population` field (states.population was already synced
+  but the bulk `getAllStateCapitalsAndFlags()` query didn't select it). City options are labeled
+  `"{cityName}, {stateId}"`, not the bare city name — multiple cities share a name across
+  different states in the synced pool (several "Portland"s, etc.), so a bare name risked either
+  ambiguous or literally-identical-text options for two different real cities. Both generators
+  explicitly exclude same-population pairs from ever being paired together (`population !==`
+  comparison when building the "others" candidate pool), so there's never an unanswerable tie.
+- **Post-answer population reveal** (added right after both shipped, at the user's follow-up
+  request) — `MultipleChoiceQuestion.optionPopulations` (index-aligned with `options`, rendered
+  in `MultipleChoiceQuestionView.tsx` next to each option but ONLY once answered, so it can't
+  spoil the guess) shows both real population figures once the two population-comparison
+  questions are answered. The user then asked for "the same thing" on the is-largest-city
+  question, which doesn't fit `optionPopulations` (its options are literally "Yes"/"No", not
+  entity labels) — added a new `revealText` field instead (shown post-answer as its own line, no
+  image required, distinct from `revealCaption` which the view only renders alongside
+  `revealImageUrl`), naming the real largest city and its population whenever the asked-about
+  city wasn't actually it.

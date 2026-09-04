@@ -345,19 +345,23 @@ Must clearly state this **is not a real-time results service**.
 
 ### `/quiz`, `/quiz/[category]` — Quiz Mode (Phase 3, shipped 2026-09-03)
 Reuses existing tables/query helpers, no new data source or sync script. Five categories, each
-its own `/quiz/[category]` page: **Geography** (capital, flag, and map-click questions —
-"Click on {state}."), **Officeholders** (current governor, legislator-photo-to-state),
-**2026 Midterms** (candidate party, incumbency), **Sports** (team logo, team-to-state, plus a
-matching-pairs mode), **Mashups** (odd-one-out — "which of these teams is NOT based in the same
-state as the others?" — plus a 60-second speed round mixing every other category's multiple-
-choice question types together). Every question is multiple choice or map-click; a question type
-whose real answer space has fewer than 4 distinct values (e.g. candidate party) asks with fewer
-options rather than forcing a separate true/false format. Regular rounds are 10 questions with
-immediate per-question feedback; matching and speed-round are separate, parallel session types
-with their own results screen and their own `localStorage` best-score key (no accounts/auth — see
-§9's Open Decisions). Full architecture, all 5 categories, and the real bugs caught building it
-(a Strict-Mode map cleanup bug, a speed-round timer/setState bug) are documented in CLAUDE.md's
-Status section.
+its own `/quiz/[category]` page: **Geography** (10 question types as of a 2026-09-04 follow-up —
+capital, flag, map-click, name↔abbreviation, city→state, largest-city, is-capital,
+is-largest-city, and state/city population comparisons), **Officeholders** (current governor,
+legislator-photo-to-state), **2026 Midterms** (candidate party, incumbency), **Sports** (team
+logo, team-to-state, plus a matching-pairs mode), **Mashups** (odd-one-out — "which of these
+teams is NOT based in the same state as the others?" — plus a 60-second speed round mixing every
+other category's multiple-choice question types together). Every question is multiple choice or
+map-click; a question type whose real answer space has fewer than 4 distinct values (e.g.
+candidate party) asks with fewer options rather than forcing a separate true/false format, and a
+two-way comparison question (e.g. "which state has a higher population?") asks with the two
+entities themselves as the options rather than going through the usual subject+distractor-pool
+shape. Regular rounds are 10 questions with immediate per-question feedback; matching and
+speed-round are separate, parallel session types with their own results screen and their own
+`localStorage` best-score key (no accounts/auth — see §9's Open Decisions). Full architecture,
+all 5 categories, the Geography question-type expansion, and the real bugs caught building all of
+it (a Strict-Mode map cleanup bug, a speed-round timer/setState bug, a PostgREST ambiguous-FK bug
+on the cities/states embed) are documented in CLAUDE.md's Status section.
 
 ---
 
