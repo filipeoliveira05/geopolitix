@@ -71,13 +71,25 @@ export function MultipleChoiceQuestionView({
                   </span>
                 )}
               </span>
-              {answered && question.optionPopulations?.[i] != null && (
-                <span className="font-mono text-xs opacity-80">
-                  {formatPopulation(question.optionPopulations[i] as number)}
+              {/* Population + icon grouped into one flex child (rather than each being its own
+                  sibling under justify-between) so they sit together as a single right-aligned
+                  unit — otherwise the population span floats with equal gaps on both sides,
+                  shifting position per row depending on option-text length and whether an icon is
+                  present, instead of lining up across every option. A fixed-width, right-aligned,
+                  tabular-nums column keeps the actual digits aligned too, not just the span. */}
+              {(question.optionPopulations || answered) && (
+                <span className="flex shrink-0 items-center gap-2">
+                  {question.optionPopulations && (
+                    <span className="w-16 text-right font-mono text-xs tabular-nums opacity-80">
+                      {answered && question.optionPopulations[i] != null
+                        ? formatPopulation(question.optionPopulations[i] as number)
+                        : ""}
+                    </span>
+                  )}
+                  {answered && isCorrect && <CheckIcon />}
+                  {answered && isChosen && !isCorrect && <XIcon />}
                 </span>
               )}
-              {answered && isCorrect && <CheckIcon />}
-              {answered && isChosen && !isCorrect && <XIcon />}
             </button>
           );
         })}
