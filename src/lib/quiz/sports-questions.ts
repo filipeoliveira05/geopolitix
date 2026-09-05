@@ -1,10 +1,10 @@
 // See docs/quiz-notes.md before adding a new question type or touching this file — full architecture and every category's question-type batch writeup lives there, not repeated here.
 
-import type { SportsTeam, CollegeProgram } from "@/lib/geography-data";
+import type { SportsTeam, CollegeProgram, StateFact } from "@/lib/geography-data";
 import { getAllStates, getStateName } from "@/lib/states";
 import { pickRandom } from "./random";
 import { buildMultipleChoiceQuestion } from "./build-multiple-choice";
-import type { MultipleChoiceQuestion, MatchingPair } from "./types";
+import type { MultipleChoiceQuestion, MatchingPair, SearchSelectQuestion } from "./types";
 
 // The full college pool (138 football + 365 basketball programs) is dominated by mid-major/
 // FCS-adjacent schools nobody outside their own state would recognize — asking a nickname or
@@ -272,4 +272,43 @@ export function buildMatchingPairs(teams: SportsTeam[], count: number): Matching
   const withLogo = teams.filter((t) => t.logoUrl !== null);
   const subjects = pickRandom(withLogo, count);
   return subjects.map((t) => ({ id: t.id, imageUrl: t.logoUrl as string, name: t.name }));
+}
+
+/**
+ * "Name every pro sports team based in {state}." — search-and-select format. States with zero
+ * synced pro teams are excluded — same "a question with nothing to find isn't a real question"
+ * reasoning as every other eligibility-filtered generator here (unlike buildProTeamCountQuestions
+ * above, which deliberately DOES include 0-team states as a valid multiple-choice bucket). targets
+ * sorted alphabetically by team name — no other natural ordering exists across a state's teams,
+ * which can span several different leagues.
+ */
+export function buildStateTeamRecallQuestions(
+  teams: SportsTeam[],
+  states: StateFact[],
+  count: number,
+): SearchSelectQuestion[] {
+  const flagByState = new Map(states.map((s) => [s.stateId, s.flagUrl]));
+  const stateNameById = new Map(states.map((s) => [s.stateId, s.stateName]));
+  const teamsByState = new Map<string, SportsTeam[]>();
+  for (const t of teams) {
+    const list = teamsByState.get(t.stateId);
+    if (list) list.push(t);
+    else teamsByState.set(t.stateId, [t]);
+  }
+  const eligible = Array.from(teamsByState.entries()).filter(
+    ([stateId, stateTeams]) => stateTeams.length > 0 && flagByState.has(stateId),
+  );
+  const subjects = pickRandom(eligible, count);
+  return subjects.map(([stateId, stateTeams]) => {
+    const stateName = stateNameById.get(stateId) as string;
+    const sorted = [...stateTeams].sort((a, b) => a.name.localeCompare(b.name));
+    return {
+      format: "search-select",
+      prompt: `Name every pro sports team based in ${stateName}.`,
+      imageUrl: flagByState.get(stateId) as string,
+      imageCaption: stateName,
+      entityType: "team",
+      targets: sorted.map((t) => ({ id: t.id, label: t.name })),
+    };
+  });
 }

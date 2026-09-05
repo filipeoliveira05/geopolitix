@@ -4,8 +4,9 @@ import {
   buildTeamStateQuestions,
   buildMatchingPairs,
   buildProTeamCountQuestions,
+  buildStateTeamRecallQuestions,
 } from "./sports-questions";
-import type { SportsTeam, CollegeProgram } from "@/lib/geography-data";
+import type { SportsTeam, CollegeProgram, StateFact } from "@/lib/geography-data";
 
 // Real state abbreviations, not synthetic ones — getStateName() is pure/local (no Supabase call)
 // and genuinely resolves these; a fake abbreviation would make buildTeamStateQuestions filter the
@@ -189,5 +190,48 @@ describe("buildMatchingPairs", () => {
     teams[0] = { ...teams[0], logoUrl: null };
     const pairs = buildMatchingPairs(teams, 4);
     expect(pairs.every((p) => p.id !== "T0")).toBe(true);
+  });
+});
+
+function makeStateFacts(abbrs: string[]): StateFact[] {
+  return abbrs.map((stateId, i) => ({
+    stateId,
+    stateName: `${stateId}Name`,
+    capitalName: `${stateId}Capital`,
+    flagUrl: `https://example.com/flag-${stateId}.png`,
+    population: 1000 + i,
+  }));
+}
+
+describe("buildStateTeamRecallQuestions", () => {
+  it("builds the requested number of questions", () => {
+    // makeTeams(20) cycles through 10 real state abbrs, so this gives 2 teams per state
+    const teams = makeTeams(20);
+    const questions = buildStateTeamRecallQuestions(teams, makeStateFacts(REAL_STATE_ABBRS), 5);
+    expect(questions).toHaveLength(5);
+  });
+
+  it("sorts a state's teams alphabetically by name", () => {
+    const teams = [
+      { ...makeTeams(1)[0], id: "T1", name: "Zebras", stateId: "AL" },
+      { ...makeTeams(1)[0], id: "T2", name: "Aardvarks", stateId: "AL" },
+    ];
+    const [q] = buildStateTeamRecallQuestions(teams, makeStateFacts(["AL"]), 1);
+    expect(q.targets.map((t) => t.label)).toEqual(["Aardvarks", "Zebras"]);
+  });
+
+  it("excludes a state with zero synced pro teams", () => {
+    const teams = [{ ...makeTeams(1)[0], id: "T1", stateId: "AL" }];
+    const [q] = buildStateTeamRecallQuestions(teams, makeStateFacts(["AL", "AK"]), 1);
+    expect(q.imageCaption).toBe("ALName");
+  });
+
+  it("uses the state's flag and sets format/entityType", () => {
+    const teams = [{ ...makeTeams(1)[0], id: "T1", stateId: "AL" }];
+    const [q] = buildStateTeamRecallQuestions(teams, makeStateFacts(["AL"]), 1);
+    expect(q.imageUrl).toBe("https://example.com/flag-AL.png");
+    expect(q.format).toBe("search-select");
+    expect(q.entityType).toBe("team");
+    expect(q.prompt).toBe("Name every pro sports team based in ALName.");
   });
 });
