@@ -32,3 +32,23 @@ describe("getQuizCategory", () => {
     expect(getQuizCategory("not-a-real-category")).toBeNull();
   });
 });
+
+describe("availableFormats", () => {
+  it("gives geography all three formats", () => {
+    expect(getQuizCategory("geography")?.availableFormats).toEqual([
+      "multiple-choice",
+      "map-click",
+      "search-select",
+    ]);
+  });
+
+  it("gives officeholders, midterms, and sports multiple-choice + search-select", () => {
+    for (const id of ["officeholders", "midterms", "sports"]) {
+      expect(getQuizCategory(id)?.availableFormats).toEqual(["multiple-choice", "search-select"]);
+    }
+  });
+
+  it("gives mashups only multiple-choice (no picker shown for a single-format category)", () => {
+    expect(getQuizCategory("mashups")?.availableFormats).toEqual(["multiple-choice"]);
+  });
+});
