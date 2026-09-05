@@ -2,16 +2,20 @@
 
 import { useEffect } from "react";
 import { useQuizSession } from "@/lib/quiz/useQuizSession";
-import type { QuizQuestion, AnsweredQuestion } from "@/lib/quiz/types";
+import type { QuizQuestion, AnsweredQuestion, SearchSelectEntry } from "@/lib/quiz/types";
+import { createEntitySearch } from "@/lib/quiz/search-select-index";
 import { MultipleChoiceQuestionView } from "./MultipleChoiceQuestionView";
 import { MapClickQuestionView } from "./MapClickQuestionView";
+import { SearchSelectQuestionView } from "./SearchSelectQuestionView";
 
 export function QuestionSession({
   questions,
   onComplete,
+  sharedSearch,
 }: {
   questions: QuizQuestion[];
   onComplete: (answers: AnsweredQuestion[]) => void;
+  sharedSearch: ((query: string) => SearchSelectEntry[]) | null;
 }) {
   const session = useQuizSession(questions);
 
@@ -22,24 +26,41 @@ export function QuestionSession({
 
   if (session.isComplete || !session.currentQuestion) return null;
 
-  const hasAnswered = session.chosenIndex !== null || session.mapClickAnswer !== null;
+  const hasAnswered =
+    session.chosenIndex !== null ||
+    session.mapClickAnswer !== null ||
+    session.searchSelectResult !== null;
+
+  const question = session.currentQuestion;
 
   return (
     <div className="mx-auto w-full max-w-lg">
       <p className="mb-2 text-sm text-muted">
         Question {session.index + 1} of {session.total} — Score: {session.score}
       </p>
-      {session.currentQuestion.format === "multiple-choice" ? (
+      {question.format === "multiple-choice" ? (
         <MultipleChoiceQuestionView
-          question={session.currentQuestion}
+          question={question}
           chosenIndex={session.chosenIndex}
           onAnswer={session.answerMultipleChoice}
         />
-      ) : (
+      ) : question.format === "map-click" ? (
         <MapClickQuestionView
-          question={session.currentQuestion}
+          question={question}
           clickedStateId={session.mapClickAnswer}
           onAnswer={session.answerMapClick}
+        />
+      ) : (
+        <SearchSelectQuestionView
+          key={session.index}
+          question={question}
+          result={session.searchSelectResult}
+          onAnswer={session.answerSearchSelect}
+          search={
+            question.entityType === "candidate"
+              ? createEntitySearch(question.searchPool ?? [])
+              : (sharedSearch ?? (() => []))
+          }
         />
       )}
       {hasAnswered && (
