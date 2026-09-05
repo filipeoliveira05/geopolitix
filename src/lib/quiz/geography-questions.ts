@@ -128,7 +128,12 @@ export function buildIsCapitalQuestions(
   });
 }
 
-type LargestCityFact = { cityName: string; stateName: string; flagUrl: string };
+type LargestCityFact = {
+  cityName: string;
+  stateName: string;
+  flagUrl: string;
+  population: number | null;
+};
 
 /**
  * Per state: the single max-population city (the correct answer) plus every OTHER synced city
@@ -138,19 +143,29 @@ type LargestCityFact = { cityName: string; stateName: string; flagUrl: string };
 function largestCityPerState(
   cities: CityFact[],
   states: StateFact[],
-): { fact: LargestCityFact; otherCityNames: string[] }[] {
+): { fact: LargestCityFact; otherCities: { cityName: string; population: number | null }[] }[] {
   const flagByState = flagUrlByState(states);
   const citiesByState = groupCitiesByState(cities);
 
-  const result: { fact: LargestCityFact; otherCityNames: string[] }[] = [];
+  const result: {
+    fact: LargestCityFact;
+    otherCities: { cityName: string; population: number | null }[];
+  }[] = [];
   for (const [stateId, cityList] of citiesByState) {
     const flagUrl = flagByState.get(stateId);
     const populated = cityList.filter((c) => c.population !== null);
     if (!flagUrl || populated.length === 0) continue;
     const largest = populated.reduce((a, b) => ((b.population as number) > (a.population as number) ? b : a));
     result.push({
-      fact: { cityName: largest.cityName, stateName: largest.stateName, flagUrl },
-      otherCityNames: cityList.filter((c) => c.cityId !== largest.cityId).map((c) => c.cityName),
+      fact: {
+        cityName: largest.cityName,
+        stateName: largest.stateName,
+        flagUrl,
+        population: largest.population,
+      },
+      otherCities: cityList
+        .filter((c) => c.cityId !== largest.cityId)
+        .map((c) => ({ cityName: c.cityName, population: c.population })),
     });
   }
   return result;
@@ -169,17 +184,20 @@ export function buildLargestCityQuestions(
   states: StateFact[],
   count: number,
 ): MultipleChoiceQuestion[] {
-  const grouped = largestCityPerState(cities, states).filter((g) => g.otherCityNames.length >= 3);
+  const grouped = largestCityPerState(cities, states).filter((g) => g.otherCities.length >= 3);
   const subjects = pickRandom(grouped, count);
-  return subjects.map(({ fact, otherCityNames }) => {
+  return subjects.map(({ fact, otherCities }) => {
     const pool: LargestCityFact[] = [
       fact,
-      ...otherCityNames.map((cityName) => ({ ...fact, cityName })),
+      ...otherCities.map((c) => ({ ...fact, cityName: c.cityName, population: c.population })),
     ];
     return buildMultipleChoiceQuestion(fact, pool, {
       getPrompt: (s) => `What is the largest city in ${s.stateName}?`,
       getOptionText: (f) => f.cityName,
       getImageUrl: (f) => f.flagUrl,
+      // Same post-answer population reveal as the two population-comparison question types
+      // (optionPopulations, rendered by MultipleChoiceQuestionView only once answered).
+      getOptionPopulation: (f) => f.population,
     });
   });
 }

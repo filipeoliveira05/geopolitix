@@ -11,6 +11,16 @@ const pool: Item[] = [
   { id: "e", label: "Epsilon" },
 ];
 
+type PopulatedItem = { id: string; label: string; population: number };
+
+const populatedPool: PopulatedItem[] = [
+  { id: "a", label: "Alpha", population: 500 },
+  { id: "b", label: "Beta", population: 300 },
+  { id: "c", label: "Gamma", population: 700 },
+  { id: "d", label: "Delta", population: 100 },
+  { id: "e", label: "Epsilon", population: 900 },
+];
+
 describe("buildMultipleChoiceQuestion", () => {
   it("has the correct answer among the 4 options", () => {
     const q = buildMultipleChoiceQuestion(pool[0], pool, {
@@ -160,6 +170,27 @@ describe("buildMultipleChoiceQuestion", () => {
     });
     expect(q.options).toHaveLength(2);
     expect(q.options[q.correctIndex]).toBe("Alpha");
+  });
+
+  it("leaves optionPopulations undefined when getOptionPopulation is not provided", () => {
+    const q = buildMultipleChoiceQuestion(pool[0], pool, {
+      getPrompt: () => "prompt",
+      getOptionText: (item) => item.label,
+    });
+    expect(q.optionPopulations).toBeUndefined();
+  });
+
+  it("sets optionPopulations index-aligned with options when getOptionPopulation is provided", () => {
+    const q = buildMultipleChoiceQuestion(populatedPool[0], populatedPool, {
+      getPrompt: () => "prompt",
+      getOptionText: (item) => item.label,
+      getOptionPopulation: (item) => item.population,
+    });
+    expect(q.optionPopulations).toHaveLength(q.options.length);
+    q.options.forEach((option, i) => {
+      const matching = populatedPool.find((item) => item.label === option);
+      expect(q.optionPopulations?.[i]).toBe(matching?.population);
+    });
   });
 
   it("still throws when the pool has fewer distinct texts than the requested optionCount", () => {

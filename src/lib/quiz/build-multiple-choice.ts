@@ -21,6 +21,12 @@ export function buildMultipleChoiceQuestion<T>(
     getImageCaptionParty?: (subject: T) => string | null;
     getRevealImageUrl?: (subject: T) => string | null;
     getRevealCaption?: (subject: T) => string | null;
+    // Shown next to each option after answering (MultipleChoiceQuestion.optionPopulations) — for
+    // a question type whose options are real-world entities with a population worth revealing
+    // (e.g. "what's the largest city in X?"), same reveal-timing convention the two population-
+    // comparison generators already established, just plumbed through this shared builder instead
+    // of bypassing it.
+    getOptionPopulation?: (item: T) => number | null;
     optionsAreParties?: boolean;
     // Defaults to 4 (every Geography/Officeholders question uses this many). A question type
     // whose real answer space has fewer than 4 distinct values (e.g. political party —
@@ -34,11 +40,16 @@ export function buildMultipleChoiceQuestion<T>(
 
   const seen = new Set<string>();
   const distractorCandidates: string[] = [];
+  // Tracks which pool item produced each option TEXT (first-seen wins, same as the dedup itself)
+  // so getOptionPopulation can be looked back up after the final shuffle/selection below, which
+  // otherwise only carries option strings, not the original items.
+  const itemByText = new Map<string, T>([[correctText, subject]]);
   for (const item of pool) {
     const text = opts.getOptionText(item);
     if (text === correctText || seen.has(text)) continue;
     seen.add(text);
     distractorCandidates.push(text);
+    itemByText.set(text, item);
   }
 
   const distractors = pickRandom(distractorCandidates, optionCount - 1);
@@ -54,6 +65,12 @@ export function buildMultipleChoiceQuestion<T>(
     revealImageUrl: opts.getRevealImageUrl ? opts.getRevealImageUrl(subject) : null,
     revealCaption: opts.getRevealCaption ? opts.getRevealCaption(subject) : null,
     optionsAreParties: opts.optionsAreParties ?? false,
+    optionPopulations: opts.getOptionPopulation
+      ? options.map((text) => {
+          const item = itemByText.get(text);
+          return item ? (opts.getOptionPopulation as (item: T) => number | null)(item) : null;
+        })
+      : undefined,
     options,
     correctIndex: options.indexOf(correctText),
   };

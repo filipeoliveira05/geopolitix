@@ -225,6 +225,18 @@ describe("buildLargestCityQuestions", () => {
     }
   });
 
+  it("reveals each option's real population, index-aligned with options (for post-answer display)", () => {
+    const cities = makeCitiesWithDecoys(10);
+    const questions = buildLargestCityQuestions(cities, makeFacts(10), 10);
+    for (const q of questions) {
+      expect(q.optionPopulations).toHaveLength(q.options.length);
+      q.options.forEach((option, i) => {
+        const matchingCity = cities.find((c) => c.cityName === option);
+        expect(q.optionPopulations?.[i]).toBe(matchingCity?.population);
+      });
+    }
+  });
+
   it("draws every option from the same state as the subject — no other state's city leaks in", () => {
     const questions = buildLargestCityQuestions(makeCitiesWithDecoys(10), makeFacts(10), 5);
     for (const q of questions) {
