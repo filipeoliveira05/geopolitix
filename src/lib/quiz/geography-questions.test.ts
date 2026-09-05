@@ -10,6 +10,7 @@ import {
   buildIsLargestCityQuestions,
   buildStatePopulationQuestions,
   buildCityPopulationQuestions,
+  buildCityRecallQuestions,
 } from "./geography-questions";
 import type { StateFact, CityFact } from "@/lib/geography-data";
 
@@ -583,5 +584,54 @@ describe("buildMapClickQuestions", () => {
     expect(q.prompt).toBe(`Click on ${q.targetStateName}.`);
     expect(q.targetStateId).toMatch(/^S\d+$/);
     expect(q.targetStateName).toMatch(/^State\d+$/);
+  });
+});
+
+function makeCitiesForState(stateId: string, stateName: string, populations: number[]): CityFact[] {
+  return populations.map((population, i) => ({
+    cityId: `${stateId}-city${i}`,
+    cityName: `City${i}-${stateId}`,
+    stateId,
+    stateName,
+    population,
+    isCapital: false,
+  }));
+}
+
+describe("buildCityRecallQuestions", () => {
+  it("builds the requested number of questions", () => {
+    const cities = [
+      ...makeCitiesForState("S0", "State0", [500, 300, 100]),
+      ...makeCitiesForState("S1", "State1", [900, 200]),
+    ];
+    const questions = buildCityRecallQuestions(cities, makeFacts(2), 2);
+    expect(questions).toHaveLength(2);
+  });
+
+  it("sorts targets by population descending", () => {
+    const cities = makeCitiesForState("S0", "State0", [100, 500, 300]);
+    const [q] = buildCityRecallQuestions(cities, makeFacts(1), 1);
+    expect(q.targets.map((t) => t.label)).toEqual(["City1-S0", "City2-S0", "City0-S0"]);
+  });
+
+  it("uses the state's flag as the image and names the state in the caption", () => {
+    const cities = makeCitiesForState("S0", "State0", [100]);
+    const [q] = buildCityRecallQuestions(cities, makeFacts(1), 1);
+    expect(q.imageUrl).toBe("https://example.com/flag0.png");
+    expect(q.imageCaption).toBe("State0");
+  });
+
+  it("sets format to search-select and entityType to city", () => {
+    const cities = makeCitiesForState("S0", "State0", [100]);
+    const [q] = buildCityRecallQuestions(cities, makeFacts(1), 1);
+    expect(q.format).toBe("search-select");
+    expect(q.entityType).toBe("city");
+  });
+
+  it("names every synced city's id/label pair in targets", () => {
+    const cities = makeCitiesForState("S0", "State0", [100, 200]);
+    const [q] = buildCityRecallQuestions(cities, makeFacts(1), 1);
+    expect(q.targets).toHaveLength(2);
+    expect(q.targets.map((t) => t.id).sort()).toEqual(["S0-city0", "S0-city1"]);
   });
 });

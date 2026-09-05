@@ -4,7 +4,7 @@ import type { StateFact, CityFact } from "@/lib/geography-data";
 import { formatPopulation } from "@/lib/format";
 import { pickRandom } from "./random";
 import { buildMultipleChoiceQuestion } from "./build-multiple-choice";
-import type { MultipleChoiceQuestion, MapClickQuestion } from "./types";
+import type { MultipleChoiceQuestion, MapClickQuestion, SearchSelectQuestion } from "./types";
 
 export function buildCapitalQuestions(facts: StateFact[], count: number): MultipleChoiceQuestion[] {
   const subjects = pickRandom(facts, count);
@@ -309,6 +309,38 @@ export function buildCityPopulationQuestions(
       optionPopulations: pair.map((p) => p.population),
       options: pair.map((p) => p.label),
       correctIndex,
+    };
+  });
+}
+
+/**
+ * "Name the top cities in {state}." — search-and-select format: the player searches for and
+ * selects as many of the state's synced cities as they can find. targets sorted by population
+ * descending (rank 1 = largest) so the finished board teaches the state's real city-size
+ * ordering, same philosophy as this file's other population-reveal features. Every state with at
+ * least one synced city is eligible — a single-city board is still a real question.
+ */
+export function buildCityRecallQuestions(
+  cities: CityFact[],
+  states: StateFact[],
+  count: number,
+): SearchSelectQuestion[] {
+  const flagByState = flagUrlByState(states);
+  const citiesByState = groupCitiesByState(cities);
+  const eligible = Array.from(citiesByState.entries()).filter(([stateId]) =>
+    flagByState.has(stateId),
+  );
+  const subjects = pickRandom(eligible, count);
+  return subjects.map(([stateId, stateCities]) => {
+    const sorted = [...stateCities].sort((a, b) => (b.population ?? 0) - (a.population ?? 0));
+    const stateName = stateCities[0].stateName;
+    return {
+      format: "search-select",
+      prompt: `Name the top cities in ${stateName}.`,
+      imageUrl: flagByState.get(stateId) as string,
+      imageCaption: stateName,
+      entityType: "city",
+      targets: sorted.map((c) => ({ id: c.cityId, label: c.cityName })),
     };
   });
 }
