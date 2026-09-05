@@ -265,6 +265,20 @@ describe("buildRaceCandidateRecallQuestions", () => {
     expect(q.targets.map((t) => t.label)).toEqual(["Amy", "Zed"]);
   });
 
+  it("carries each candidate's real party on their target, for the party badge shown once found", () => {
+    const races = [
+      makeRace({
+        candidates: [
+          makeCandidate({ id: "c1", name: "Amy", party: "Democrat" }),
+          makeCandidate({ id: "c2", name: "Zed", party: "Republican" }),
+        ],
+      }),
+    ];
+    const [q] = buildRaceCandidateRecallQuestions(races, makeStateFacts(["TX"]), 1);
+    expect(q.targets.find((t) => t.label === "Amy")?.party).toBe("Democrat");
+    expect(q.targets.find((t) => t.label === "Zed")?.party).toBe("Republican");
+  });
+
   it("excludes placeholder TBD/(presumptive) candidates from targets", () => {
     const races = [
       makeRace({
@@ -321,5 +335,24 @@ describe("buildRaceCandidateRecallQuestions", () => {
     const txQuestion = questions.find((q) => q.prompt.includes("TXName"));
     expect(txQuestion?.searchPool?.map((e) => e.label)).toContain("Subject");
     expect(txQuestion?.searchPool?.map((e) => e.label)).toContain("Other");
+  });
+
+  it("carries party on searchPool entries too, not just targets (shown in the search dropdown)", () => {
+    const races = [
+      makeRace({
+        id: "r1",
+        stateId: "TX",
+        candidates: [makeCandidate({ id: "c1", name: "Subject", party: "Democrat" })],
+      }),
+      makeRace({
+        id: "r2",
+        stateId: "CA",
+        candidates: [makeCandidate({ id: "c2", name: "Other", party: "Republican" })],
+      }),
+    ];
+    const questions = buildRaceCandidateRecallQuestions(races, makeStateFacts(["TX", "CA"]), 2);
+    const txQuestion = questions.find((q) => q.prompt.includes("TXName"));
+    expect(txQuestion?.searchPool?.find((e) => e.label === "Subject")?.party).toBe("Democrat");
+    expect(txQuestion?.searchPool?.find((e) => e.label === "Other")?.party).toBe("Republican");
   });
 });

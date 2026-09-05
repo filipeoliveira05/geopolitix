@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import type { SearchSelectQuestion, SearchSelectEntry } from "@/lib/quiz/types";
 import { vibrateWrongAnswer } from "@/lib/quiz/haptics";
+import { PartyBadge } from "@/components/PartyBadge";
 import { CheckIcon } from "./icons";
 
 const WRONG_FLASH_MS = 400;
@@ -94,6 +95,12 @@ export function SearchSelectQuestionView({
                     className="block w-full px-4 py-2 text-left text-sm text-ink hover:bg-paper"
                   >
                     {entry.label}
+                    {entry.party !== undefined && (
+                      <>
+                        {" "}
+                        <PartyBadge party={entry.party} />
+                      </>
+                    )}
                   </button>
                 </li>
               ))}
@@ -115,11 +122,27 @@ export function SearchSelectQuestionView({
               <span className="font-mono text-xs text-muted">{i + 1}.</span>
               {isFound ? (
                 <>
-                  <span>{target.label}</span>
+                  <span>
+                    {target.label}
+                    {target.party !== undefined && (
+                      <>
+                        {" "}
+                        <PartyBadge party={target.party} />
+                      </>
+                    )}
+                  </span>
                   <CheckIcon className="ml-auto h-4 w-4 text-emerald-600" />
                 </>
               ) : answered ? (
-                <span>{target.label}</span>
+                <span>
+                  {target.label}
+                  {target.party !== undefined && (
+                    <>
+                      {" "}
+                      <PartyBadge party={target.party} />
+                    </>
+                  )}
+                </span>
               ) : (
                 <span>__________</span>
               )}

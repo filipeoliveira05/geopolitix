@@ -3,7 +3,14 @@
 
 export type QuestionFormat = "multiple-choice" | "map-click" | "search-select";
 
-export type SearchSelectEntry = { id: string; label: string };
+export type SearchSelectEntry = {
+  id: string;
+  label: string;
+  // Only populated for entityType "candidate" — shown as a party badge next to a found target's
+  // name (SearchSelectQuestionView), same PartyBadge component every other party display in this
+  // app already uses. Undefined for city/senator/team entries, which have no party.
+  party?: string | null;
+};
 
 export type MultipleChoiceQuestion = {
   format: "multiple-choice";

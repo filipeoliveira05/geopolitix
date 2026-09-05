@@ -142,12 +142,12 @@ export function buildRaceCandidateRecallQuestions(
   return subjects.map(({ race, realCandidates }) => {
     const stateName = stateNameById.get(race.stateId) as string;
     const sorted = [...realCandidates].sort((a, b) => a.name.localeCompare(b.name));
-    const targets = sorted.map((c) => ({ id: c.id, label: c.name }));
+    const targets = sorted.map((c) => ({ id: c.id, label: c.name, party: c.party }));
     const nearby = withRealCandidates
       .filter(({ race: otherRace }) => otherRace.id !== race.id)
       .flatMap(({ realCandidates: others }) => others)
       .slice(0, CANDIDATE_SEARCH_POOL_SAMPLE_SIZE)
-      .map((c) => ({ id: c.id, label: c.name }));
+      .map((c) => ({ id: c.id, label: c.name, party: c.party }));
     const officeLabel: string = race.office === "senate" ? "Senate" : "Governor";
     return {
       format: "search-select",
