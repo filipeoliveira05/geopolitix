@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import Image from "next/image";
 import type { SearchSelectQuestion, SearchSelectEntry } from "@/lib/quiz/types";
 import { vibrateWrongAnswer } from "@/lib/quiz/haptics";
@@ -80,6 +80,7 @@ export function SearchSelectQuestionView({
   const [localFoundIds, setLocalFoundIds] = useState<string[]>([]);
   const [query, setQuery] = useState("");
   const [wrongFlash, setWrongFlash] = useState(false);
+  const [highlightedIndex, setHighlightedIndex] = useState(0);
   const wrongFlashTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(
@@ -94,6 +95,24 @@ export function SearchSelectQuestionView({
   const targetIds = new Set(question.targets.map((t) => t.id));
   const suggestions =
     !answered && query.trim() ? search(query).filter((e) => !foundIds.includes(e.id)) : [];
+
+  // Keyboard nav (arrow keys + Enter) is a desktop-only convenience — mobile players never see a
+  // hardware keyboard's arrow keys, but a desktop player typing "bost" then arrowing down to the
+  // right Boston team beats reaching for the mouse every time. Clamped rather than wrapped, same
+  // as every other in-app list nav.
+  function handleQueryKeyDown(e: KeyboardEvent<HTMLInputElement>) {
+    if (suggestions.length === 0) return;
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setHighlightedIndex((i) => Math.min(i + 1, suggestions.length - 1));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setHighlightedIndex((i) => Math.max(i - 1, 0));
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      selectEntry(suggestions[Math.min(highlightedIndex, suggestions.length - 1)]);
+    }
+  }
 
   function flashWrong() {
     vibrateWrongAnswer();
@@ -131,7 +150,11 @@ export function SearchSelectQuestionView({
           <input
             type="text"
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setHighlightedIndex(0);
+            }}
+            onKeyDown={handleQueryKeyDown}
             placeholder="Type to search…"
             className={`w-full rounded border px-4 py-2 text-sm text-ink outline-none placeholder:text-muted ${
               wrongFlash ? "border-red-600" : "border-rule"
@@ -139,11 +162,14 @@ export function SearchSelectQuestionView({
           />
           {suggestions.length > 0 && (
             <ul className="absolute z-10 mt-1 w-full rounded border border-rule bg-surface">
-              {suggestions.map((entry) => (
+              {suggestions.map((entry, i) => (
                 <li key={entry.id}>
                   <button
                     onClick={() => selectEntry(entry)}
-                    className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-ink hover:bg-paper"
+                    onMouseEnter={() => setHighlightedIndex(i)}
+                    className={`flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-ink hover:bg-paper ${
+                      i === highlightedIndex ? "bg-paper" : ""
+                    }`}
                   >
                     {entry.photoUrl !== undefined && (
                       <EntryAvatar
