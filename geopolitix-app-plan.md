@@ -343,31 +343,38 @@ and a Wikipedia-sourced bio for one `sports_teams`/`college_football_programs`/
 Scoreboard (confirmed vs. contested, by House/Senate/Governors), list/map of featured races.
 Must clearly state this **is not a real-time results service**.
 
-### `/quiz`, `/quiz/[category]` — Quiz Mode (Phase 3, shipped 2026-09-03)
+### `/quiz`, `/quiz/[category]` — Quiz Mode (Phase 3, shipped 2026-09-03, since grown well past v1)
 Reuses existing tables/query helpers, no new data source or sync script. Five categories, each
-its own `/quiz/[category]` page: **Geography** (10 question types as of a 2026-09-04 follow-up —
+its own `/quiz/[category]` page: **Geography** (13 question types as of a 2026-09-05 follow-up —
 capital, flag, map-click, name↔abbreviation, city→state, largest-city, is-capital,
-is-largest-city, and state/city population comparisons), **Officeholders** (6 question types as
-of a 2026-09-04 follow-up — current governor, officeholder-photo-to-state (senators/reps/
-governors combined), officeholder party, combined photo+state name-guess, legislator chamber
-(Senate vs. House), and House seat count per state), **2026 Midterms** (candidate party,
-incumbency), **Sports** (9 question types as of a 2026-09-04 follow-up — team logo (pro teams
-plus power-conference college programs), team-to-state, team-to-league, team-to-city,
-team-by-city/team-by-state (reverse direction), school-from-nickname and college-conference
-(power-conference programs only), and pro-team-count per state, plus a matching-pairs mode),
-**Mashups** (odd-one-out — "which of these
-teams is NOT based in the same state as the others?" — plus a 60-second speed round mixing every
-other category's multiple-choice question types together). Every question is multiple choice or
-map-click; a question type whose real answer space has fewer than 4 distinct values (e.g.
+is-largest-city, state/city population comparisons, a city-recall search-and-select, a
+state-silhouette guess, a "which state does NOT border X" guess, and a state-border-recall
+search-and-select), **Officeholders** (6 question types plus a senator-recall search-and-select —
+current governor, officeholder-photo-to-state (senators/reps/governors combined), officeholder
+party, combined photo+state name-guess, legislator chamber (Senate vs. House), and House seat
+count per state), **2026 Midterms** (candidate party, incumbency, plus a race-candidate-recall
+search-and-select), **Sports** (9 question types plus a state-team-recall search-and-select —
+team logo (pro teams plus power-conference college programs), team-to-state, team-to-league,
+team-to-city, team-by-city/team-by-state (reverse direction), school-from-nickname and
+college-conference (power-conference programs only), and pro-team-count per state, plus a
+matching-pairs mode), **Mashups** (odd-one-out — "which of these teams is NOT based in the same
+state as the others?" — plus a 60-second speed round mixing every other category's
+multiple-choice question types together). Three question formats: multiple choice, map-click, and
+search-and-select (a type-and-pick-from-live-search format scored by partial credit, added
+2026-09-05); a question type whose real answer space has fewer than 4 distinct values (e.g.
 candidate party) asks with fewer options rather than forcing a separate true/false format, and a
 two-way comparison question (e.g. "which state has a higher population?") asks with the two
 entities themselves as the options rather than going through the usual subject+distractor-pool
-shape. Regular rounds are 10 questions with immediate per-question feedback; matching and
-speed-round are separate, parallel session types with their own results screen and their own
-`localStorage` best-score key (no accounts/auth — see §9's Open Decisions). Full architecture,
-all 5 categories, the Geography/Officeholders/Sports question-type expansions, and the real bugs
-caught building all of it (a Strict-Mode map cleanup bug, a speed-round timer/setState bug, a
-PostgREST ambiguous-FK bug on the cities/states embed) are documented in `docs/quiz-notes.md`.
+shape. The two state-shape question types (silhouette guess, border guess) render an inline
+theme-aware SVG computed client-side from the same real `us-atlas` polygon geometry the
+interactive map itself uses, not a synced image. Regular rounds are 10 questions, scored 0-100
+points (10/question, partial credit for search-and-select) with immediate per-question feedback
+and a start-screen format picker; matching and speed-round are separate, parallel session types
+with their own results screen and their own `localStorage` best-score key (no accounts/auth — see
+§9's Open Decisions). Full architecture, every category's question-type batch writeup, and the
+real bugs caught building all of it (a Strict-Mode map cleanup bug, a speed-round timer/setState
+bug, a PostgREST ambiguous-FK bug on the cities/states embed, an antimeridian/Four-Corners
+geometry gotcha) are documented in `docs/quiz-notes.md`.
 
 ---
 

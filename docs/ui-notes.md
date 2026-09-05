@@ -53,7 +53,11 @@ touching the design system, map, tables, or the freshness/search/header componen
   bare `hover:underline` on in-content text links — transparent underline at rest, `--seal`-colored
   on hover/focus. `.animate-fade-in` gives each top-level page's outer container a brief mount
   fade (respects `prefers-reduced-motion`) — applied once per page, not per-element. Full design
-  rationale in `docs/superpowers/specs/2026-08-31-design-overhaul-design.md`.
+  rationale in `docs/superpowers/specs/2026-08-31-design-overhaul-design.md`. **`.animate-pop-in`**
+  (added 2026-09-05, `globals.css`) is a small-element-entrance equivalent — scale 0.9→1 + fade,
+  same `prefers-reduced-motion` guard — first used on the quiz's "Next" button and a per-question
+  reuse of `.animate-fade-in` (see `docs/quiz-notes.md`'s animated-progress-header entry), but
+  generic enough for any element that should visibly announce its own appearance elsewhere.
 - **Party colors, fixed across the app:** Democrat blue (`#2563eb`), Republican red
   (`#dc2626`), Independent/other grey (`#71717a`). Single source of truth:
   `src/lib/party-colors.ts` (`PARTY_COLORS`, `partyStyle()`), consumed by `PartyBadge.tsx` and

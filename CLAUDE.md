@@ -114,7 +114,10 @@ Build order: **Phase 1 politics → Phase 2 geography → Phase 3 quiz.** Don't 
   — deliberately reconsidered against alternatives and kept as-is, don't re-litigate),
   `BackToMapLink`. The `.link-accent` utility class replaces bare `hover:underline` on in-content
   text links. `.animate-fade-in` gives each top-level page's outer container a brief mount fade —
-  applied once per page, not per-element. **Full design rationale, plus two real rendering bugs
+  applied once per page, not per-element (also reused per-question in the quiz, see
+  `docs/quiz-notes.md`). `.animate-pop-in` (scale 0.9→1 + fade) is the equivalent for a small
+  element's entrance, e.g. a button that only appears after an action — both respect
+  `prefers-reduced-motion`. **Full design rationale, plus two real rendering bugs
   (a collapsing-space gotcha, an SSR/client locale hydration mismatch) in
   `docs/ui-notes.md`.**
 - **Party colors, fixed across the app:** Democrat blue (`#2563eb`), Republican red (`#dc2626`),
@@ -255,14 +258,19 @@ step genuinely errored. **Full workflow history/design reasoning in `docs/status
 - **`/quiz`, `/quiz/[category]`** — five categories (Geography, Officeholders, 2026 Midterms,
   Sports, Mashups), each a mix of multiple-choice/map-click/search-and-select question types plus,
   for Sports and Mashups, an extra matching-pairs/speed-round session type. Search-and-select
-  (added 2026-09-05) is a type-and-pick-from-live-search format — Geography (cities),
-  Officeholders (senators), Midterms (candidates), Sports (teams) each have one — scored by
-  partial credit; every session is now scored 0-100 points (10/question) rather than a plain
-  right-count, and a start-screen format picker lets the player choose which formats appear.
-  **Full architecture, every category's question-type batch writeup, and every real bug caught
-  building it (a Strict-Mode map cleanup bug, a speed-round timer/setState bug, a PostgREST
-  ambiguous-FK bug, a search-index answer-spoiler bug, a population-reveal line-wrap bug) are in
-  `docs/quiz-notes.md`** — read it before adding a new question type to any category.
+  (added 2026-09-05) is a type-and-pick-from-live-search format — Geography (cities, and now also
+  state borders), Officeholders (senators), Midterms (candidates), Sports (teams) — scored by
+  partial credit; every session is now scored 0-100 points (10/question, shown via an animated
+  segmented progress header, not a plain "Question X of 10 — Score: Y" caption) rather than a
+  plain right-count, and a start-screen format picker lets the player choose which formats appear.
+  Geography also has two shape-guessing multiple-choice types (state-silhouette, state-border)
+  rendered as an inline theme-aware SVG computed from the same real `us-atlas` polygon geometry the
+  interactive map itself uses — no new synced image or table. **Full architecture, every
+  category's question-type batch writeup, and every real bug caught building it (a Strict-Mode map
+  cleanup bug, a speed-round timer/setState bug, a PostgREST ambiguous-FK bug, a search-index
+  answer-spoiler bug, a population-reveal line-wrap bug, an antimeridian/Four-Corners geometry
+  gotcha) are in `docs/quiz-notes.md`** — read it before adding a new question type to any
+  category.
 
 **Synced data**, via `npm run sync:<name>`: `states`, `legislators`/`terms`, `governors`,
 `governor_terms`, `races_2026`/`race_candidates`, `candidates`, `districts` (+ Storage geometry

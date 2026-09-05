@@ -658,3 +658,132 @@ each report was a complete, standalone, already-verified fix, not mid-feature it
   "fixed-size slot either way" reasoning `QuizResultsScreen`'s own thumbnail-or-icon rows already
   use. Confirmed no conflicts before building: the sizing bump only applies when a target actually
   carries `photoUrl` (candidates only), so city/senator/team rows are untouched.
+
+**Team logos + league in the Sports state-team-recall board, and generic keyboard nav
+(2026-09-05, separate same-day session)** — two small, unrelated follow-ups to the search-select
+work above:
+- **`SearchSelectEntry.photoUrl`** was originally documented as candidate-only; generalized to
+  also carry a team's `logoUrl` (`buildTeamEntries` in `search-select-index.ts`,
+  `buildStateTeamRecallQuestions` in `sports-questions.ts`). The shared avatar helper in
+  `SearchSelectQuestionView.tsx` (renamed `CandidateAvatar` → `EntryAvatar`) renders a team logo as
+  a square `object-contain` box rather than the circular `object-cover` crop used for a candidate
+  photo — cropping a logo to a circle would cut off its edges, unlike a face photo. A new
+  `SearchSelectEntry.league` field shows a small muted "(League)" tag next to a team name in both
+  the dropdown and a found/revealed slot, same "(League)" convention `MultipleChoiceQuestionView`'s
+  own `revealTeams` rows already use.
+- **Arrow-key + Enter keyboard navigation** added to every search-select question's suggestion
+  dropdown (`SearchSelectQuestionView.tsx`) — a desktop-only convenience on top of the existing
+  mouse/tap interaction: type a query, arrow through the suggestion list (clamped, not wrapped,
+  synced with mouse hover), press Enter to select whichever is highlighted. Applies uniformly to
+  every category's search-select question, not just one.
+
+**Animated progress header (2026-09-05, separate same-day session)** — replaced the plain
+"Question X of 10 — Score: 0" caption (`QuestionSession.tsx`) with a new `QuizProgressHeader.tsx`:
+a row of `SESSION_LENGTH` segments (one per question) that fill solid `seal` as each question is
+answered — driven by `answers.length`, not the session's current index, since a question's points
+land the instant it's answered, before "Next" is clicked and the index advances. The still-
+unanswered current segment gets a pulsing outline (the same `animate-pulse` "in-progress"
+convention this app already uses elsewhere for a pending race/countdown), everything after it
+stays a plain empty slot. The score pill counts up from its old value over ~500ms via
+`requestAnimationFrame` rather than jumping straight to the new value. Two small extra liveliness
+touches landed in the same pass: the active question view is now wrapped in a container keyed on
+the session's question index (forces a remount + replays the existing `.animate-fade-in` keyframe
+on every new question, a genuinely new use of that class beyond its original "once per page load"
+role) and the "Next" button gets a new `.animate-pop-in` keyframe (`globals.css`, scale 0.9→1 +
+fade, respects `prefers-reduced-motion` same as `.animate-fade-in`) plus a hover/active scale via
+plain Tailwind utilities.
+
+**Two new state-geometry-derived Geography question types (2026-09-05, separate same-day
+session)** — both compute their visuals client-side from real polygon geometry already bundled via
+the `us-atlas` npm package (the same data the interactive map itself renders), not from any new
+synced image or Supabase table:
+- **`buildStateSilhouetteQuestions`** ("Which state is this?" MC) — a new
+  `src/lib/state-silhouette-geo.ts` converts a state's lon/lat polygon into an inline SVG path,
+  fit/centered to a square viewBox. Rendered as a real `<svg><path fill="currentColor">` (a new
+  `MultipleChoiceQuestion.silhouettePath` field, mutually exclusive with `imageUrl`) rather than a
+  data-URI raster image, specifically so its fill follows the `ink` theme token and looks correct
+  in dark mode too, unlike every other (always-raster) image question type here. Two real
+  projection nuances, both resolved before shipping: (1) latitude is Mercator-projected (`y =
+  ln(tan(π/4 + lat/2))`), not naive linear, so a state's shape visually matches what a player
+  already recognizes from the interactive map (also Mercator, via MapLibre) rather than being
+  subtly stretched at higher latitudes; (2) Alaska's Aleutian islands cross the antimeridian (raw
+  longitudes run from -179° to +179°, which naively spans nearly the whole globe) — reuses the
+  exact same `normalizeAntimeridian` fix `us-insets.ts` already established for the interactive
+  map's own Alaska inset (shift positive longitudes by -360 before measuring). D.C. is excluded
+  entirely (never a subject or a distractor option) — its real shape is a small, nearly featureless
+  quadrilateral, not much of a puzzle. **Caught one real regression bug before shipping**: the
+  generator's own doc comment initially assumed D.C. was naturally absent from `StateFact[]`
+  (`getAllStateCapitalsAndFlags` requires a resolvable capital city) — wrong. `geography.mjs`
+  actually synthesizes D.C. a fake "Washington" capital specifically so it passes that filter, so
+  D.C. WAS showing up as an option live in the browser until an explicit `stateId !== "DC"` filter
+  was added and covered by a regression test.
+- **`buildStateNonBorderQuestions`** ("Which of these states does NOT border X?" MC) and
+  **`buildStateBorderRecallQuestions`** ("Name all the states that border X." search-select) both
+  derive real state-to-state adjacency from `topojson-client`'s own `neighbors()` function (already
+  a dependency, no new package) run against the raw `us-atlas` topology
+  (`src/lib/state-borders.ts`'s `getStateNeighborAbbrs()`) — TopoJSON stores a shared border
+  between two adjacent states as one shared "arc" rather than duplicating it, so `neighbors()` can
+  tell two states are adjacent purely by checking for a common arc, no floating-point
+  coordinate-matching needed. This also means only a genuinely shared EDGE counts, never a single
+  shared corner point — confirmed live and covered by a regression test that Utah/Arizona/Colorado/
+  New Mexico's "Four Corners" (all four meeting at one point) correctly does NOT make Utah and New
+  Mexico neighbors. Both show the subject's silhouette (reusing `getStateSilhouettePath` above),
+  not its flag — borders read more naturally off a shape than a flag.
+  - **The non-border MC** bypasses `buildMultipleChoiceQuestion` entirely (same reasoning as
+    `buildIsCapitalQuestions`/`buildStatePopulationQuestions` above) — the "correct" option isn't
+    the subject's own attribute, it's a specifically chosen non-neighbor, and the 3 "wrong" options
+    are specifically chosen real neighbors. Only subjects with ≥3 real neighbors are eligible (need
+    3 real borders to use as traps). The single correct (non-bordering) option is deliberately a
+    "near miss" — a neighbor-of-a-neighbor, geographically close but not directly touching — rather
+    than fully random, which the user flagged as risking triviality (e.g. "which doesn't border
+    Montana: ND, SD, WY, Florida?" needs no border knowledge at all); falls back to fully random
+    only when no near-miss candidate exists. Confirmed live: a Kansas question correctly offered
+    Colorado/Nebraska/Oklahoma as real-border traps and Kentucky (a genuine near-miss via Missouri)
+    as the correct answer.
+  - **The border-recall search-select** needed a new `entityType: "state"` (`types.ts`) and a new
+    nationwide state-name search pool (`buildStateEntries`, `search-select-index.ts`) — which
+    exposed a real structural limitation: `engine.ts`'s `buildSharedSearchFn` returned exactly ONE
+    search function per category, but Geography now needs TWO simultaneously (its "city" and
+    "state" search-select types can both appear in the same 10-question session). Renamed to
+    `buildSharedSearchFns`, returning a map keyed by `entityType` instead — threaded through
+    `QuizCategoryClient.tsx`/`QuestionSession.tsx` (`sharedSearchFns` prop, looked up by
+    `question.entityType` instead of a single blanket function).
+  - **Target order is clockwise-from-north, not alphabetical** — the user caught live that
+    alphabetical order leaks a hint as slots fill in (finding the 2nd and 4th of 4 targets narrows
+    the remaining letter range for the 3rd). `getNeighborsClockwiseFromNorth()`
+    (`state-border-region-geo.ts`) computes each neighbor's projected bounding-box center relative
+    to the subject's, then sorts by compass bearing (`atan2(dx, dy)`, not the usual
+    `atan2(dy, dx)`, since 0° needs to mean due north here) — confirmed live against real geography
+    (Vermont: New Hampshire east, Massachusetts south, New York west, in that clockwise-from-north
+    order).
+  - **Post-answer regional map reveal** — the user's own idea, explicitly to avoid the complexity
+    of rendering a shape live while typing: after answering (or giving up), a new SVG shows the
+    subject (accent `seal` color) plus every real neighbor, each colored by whether it was actually
+    found (emerald) or missed (`muted`), each labeled with its own name. `getBorderRegionMap()`
+    (`state-border-region-geo.ts`) fits the subject + ALL its neighbors into ONE shared coordinate
+    space (not each shape fit to its own box the way the silhouette function works), so every shape
+    lands in its correct position relative to the others. Required refactoring
+    `state-silhouette-geo.ts` to expose its projection/fit-to-box math as reusable primitives
+    (`projectLonLat`/`getProjectedRings`/`fitPointsToViewBox`/`transformPoint`/`ringsToPathD`) —
+    verified byte-identical silhouette output before/after the refactor. A new
+    `SearchSelectQuestion.revealBorderMap` field carries the precomputed geometry (baked in at
+    question-build time, like `silhouettePath`); found/missed coloring is NOT baked in (that
+    depends on the player's own answer) — the view cross-references each neighbor's `id` against
+    the answered result's `foundIds` at render time instead. **Label placement needed a follow-up
+    fix**: the first version placed each label at its shape's bounding-box midpoint, which lands
+    right on or outside the shape's own border for an elongated/bendy state (Tennessee's long
+    east-west strip, Virginia's notched southeast corner) — the user caught this live and asked for
+    a "minor tweak." Replaced with the shape's true area-weighted centroid (standard shoelace-based
+    polygon centroid, of the single largest ring only so a small offshore island/inlet ring doesn't
+    drag the label away from the main landmass) — confirmed via rendered comparisons that Virginia/
+    Oklahoma/Tennessee's labels now sit cleanly inside the main body instead of pulled toward a
+    notch or panhandle. Verified legible even in the worst case (Missouri/Tennessee, 8 real
+    neighbors each, so 9 labeled shapes in one image).
+  - **D.C. excluded entirely from both types**, at the user's explicit follow-up request — an
+    earlier version of both generators deliberately included D.C. as a legitimate subject/neighbor
+    (unlike the silhouette question, reasoning that a real 2-state border is meaningful here even
+    though D.C.'s shape alone isn't). Reversed: both generators now filter D.C. out of the state
+    pool up front, which alone is enough to guarantee it can never become a subject, a trap, or a
+    correct answer (every candidate set is built by filtering/mapping over that pool) — confirmed
+    live that West Virginia's "which does NOT border" question (bordering both Maryland and
+    Virginia) shows no D.C. option, and covered by regression tests for both generators.
