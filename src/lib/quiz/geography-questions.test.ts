@@ -443,7 +443,7 @@ describe("buildIsLargestCityQuestions", () => {
     const questions = buildIsLargestCityQuestions(makeCities(10), makeFacts(10), 10);
     for (const q of questions) {
       if (q.correctIndex === 1) {
-        expect(q.revealText).toMatch(/^SmallCity\d+: 100\. Largest: BigCity\d+, 100 000\.$/);
+        expect(q.revealText).toMatch(/^SmallCity\d+: 100\.\nLargest: BigCity\d+, 100 000\.$/);
       } else {
         expect(q.revealText).toMatch(/^BigCity\d+: 100 000 — the largest in State\d+\.$/);
       }

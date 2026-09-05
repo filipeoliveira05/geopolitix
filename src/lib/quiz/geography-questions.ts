@@ -234,7 +234,7 @@ export function buildIsLargestCityQuestions(
     const isLargest = city.cityId === largest.cityId;
     const revealText = isLargest
       ? `${city.cityName}: ${formatPopulation(city.population as number)} — the largest in ${city.stateName}.`
-      : `${city.cityName}: ${formatPopulation(city.population as number)}. Largest: ${largest.cityName}, ${formatPopulation(largest.population as number)}.`;
+      : `${city.cityName}: ${formatPopulation(city.population as number)}.\nLargest: ${largest.cityName}, ${formatPopulation(largest.population as number)}.`;
     return {
       format: "multiple-choice",
       prompt: `Is ${city.cityName} the largest city in ${city.stateName}?`,

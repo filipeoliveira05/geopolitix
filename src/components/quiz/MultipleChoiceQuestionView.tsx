@@ -111,7 +111,9 @@ export function MultipleChoiceQuestionView({
         </div>
       )}
       {answered && question.revealText && (
-        <p className="mt-4 font-mono text-xs text-muted">{question.revealText}</p>
+        <p className="mt-4 whitespace-pre-line font-mono text-xs text-muted">
+          {question.revealText}
+        </p>
       )}
       {answered && question.revealTeams && (
         <div className="mt-4 flex flex-col gap-2">
