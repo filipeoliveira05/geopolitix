@@ -19,7 +19,7 @@ export function SpeedRoundResultsScreen({
   answers: AnsweredQuestion[];
   onPlayAgain: () => void;
 }) {
-  const score = answers.filter((a) => a.correct).length;
+  const score = answers.filter((a) => a.points === 10).length;
   const total = answers.length;
   // Lazy initializer, not an effect — same reasoning every other results screen in this app
   // already established: this component only ever mounts after a full client-side round, never

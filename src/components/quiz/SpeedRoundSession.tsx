@@ -65,7 +65,13 @@ export function SpeedRoundSession({
     if (!correct) vibrateWrongAnswer();
     const nextAnswers: AnsweredQuestion[] = [
       ...answers,
-      { format: "multiple-choice", question: currentQuestion, chosenIndex: optionIndex, correct },
+      {
+        format: "multiple-choice",
+        question: currentQuestion,
+        chosenIndex: optionIndex,
+        correct,
+        points: correct ? 10 : 0,
+      },
     ];
     setChosenIndex(optionIndex);
     setAnswers(nextAnswers);
@@ -87,7 +93,7 @@ export function SpeedRoundSession({
   return (
     <div className="mx-auto w-full max-w-lg">
       <p className="mb-2 text-sm text-muted">
-        {secondsLeft}s left — Score: {answers.filter((a) => a.correct).length}
+        {secondsLeft}s left — Score: {answers.filter((a) => a.points === 10).length}
       </p>
       <MultipleChoiceQuestionView
         question={currentQuestion}

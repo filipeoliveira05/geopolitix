@@ -1,6 +1,10 @@
 // Every quiz question format shares only `prompt` — the rest of each shape is format-specific.
 // More formats (matching, speed-round) are added by later plans, not this one.
 
+export type QuestionFormat = "multiple-choice" | "map-click" | "search-select";
+
+export type SearchSelectEntry = { id: string; label: string };
+
 export type MultipleChoiceQuestion = {
   format: "multiple-choice";
   prompt: string;
@@ -56,13 +60,29 @@ export type MapClickQuestion = {
   targetStateName: string;
 };
 
-export type QuizQuestion = MultipleChoiceQuestion | MapClickQuestion;
+export type SearchSelectQuestion = {
+  format: "search-select";
+  prompt: string;
+  imageUrl: string; // the subject state's flag, always shown for this format
+  imageCaption: string; // the subject state's name
+  entityType: "city" | "senator" | "candidate" | "team";
+  targets: SearchSelectEntry[]; // correct answers, already in slot/display order
+  // Only populated for entityType "candidate" — the searchable pool for the other three types is
+  // a single shared nationwide index built once per category-pool-fetch
+  // (search-select-index.ts), but a candidate's real-world relevance is scoped to one specific
+  // race, so its search pool is computed per-question by the generator itself (its own targets
+  // plus a handful of real candidates from nearby races) rather than drawn from a shared index.
+  searchPool?: SearchSelectEntry[];
+};
+
+export type QuizQuestion = MultipleChoiceQuestion | MapClickQuestion | SearchSelectQuestion;
 
 export type AnsweredMultipleChoice = {
   format: "multiple-choice";
   question: MultipleChoiceQuestion;
   chosenIndex: number;
   correct: boolean;
+  points: number;
 };
 
 export type AnsweredMapClick = {
@@ -70,9 +90,18 @@ export type AnsweredMapClick = {
   question: MapClickQuestion;
   clickedStateId: string;
   correct: boolean;
+  points: number;
 };
 
-export type AnsweredQuestion = AnsweredMultipleChoice | AnsweredMapClick;
+export type AnsweredSearchSelect = {
+  format: "search-select";
+  question: SearchSelectQuestion;
+  foundIds: string[];
+  gaveUp: boolean;
+  points: number; // 0-10, via searchSelectPoints()
+};
+
+export type AnsweredQuestion = AnsweredMultipleChoice | AnsweredMapClick | AnsweredSearchSelect;
 
 // A matching-pairs board isn't a "question" at all (no prompt/answer, just N pairs solved
 // together) — deliberately not part of the QuizQuestion union above.
