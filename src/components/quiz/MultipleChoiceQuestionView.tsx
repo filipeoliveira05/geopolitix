@@ -75,15 +75,18 @@ export function MultipleChoiceQuestionView({
                   sibling under justify-between) so they sit together as a single right-aligned
                   unit — otherwise the population span floats with equal gaps on both sides,
                   shifting position per row depending on option-text length and whether an icon is
-                  present, instead of lining up across every option. A fixed-width, right-aligned,
-                  tabular-nums column keeps the actual digits aligned too, not just the span. */}
+                  present, instead of lining up across every option. Every row's button is the
+                  same width, so right-aligning within the row already lines up the digits across
+                  options — no fixed width needed, and a fixed one is actively wrong: a state's
+                  population (e.g. "23 659 198") is wider than a typical city's, and formatPopulation
+                  uses plain spaces as thousand separators, which wrap onto a second line the
+                  moment the number doesn't fit a fixed-width column (confirmed live). whitespace-
+                  nowrap keeps it on one line regardless of digit count. */}
               {(question.optionPopulations || answered) && (
                 <span className="flex shrink-0 items-center gap-2">
-                  {question.optionPopulations && (
-                    <span className="w-16 text-right font-mono text-xs tabular-nums opacity-80">
-                      {answered && question.optionPopulations[i] != null
-                        ? formatPopulation(question.optionPopulations[i] as number)
-                        : ""}
+                  {question.optionPopulations && answered && question.optionPopulations[i] != null && (
+                    <span className="whitespace-nowrap text-right font-mono text-xs tabular-nums opacity-80">
+                      {formatPopulation(question.optionPopulations[i] as number)}
                     </span>
                   )}
                   {answered && isCorrect && <CheckIcon />}
