@@ -69,11 +69,8 @@ export function SearchSelectQuestionView({
 
   return (
     <div>
-      <div className="mb-4">
-        <div className="relative h-28 w-full">
-          <Image src={question.imageUrl} alt="" fill unoptimized className="object-contain" />
-        </div>
-        <p className="mt-2 text-center text-sm font-medium text-ink">{question.imageCaption}</p>
+      <div className="relative mb-4 h-28 w-full">
+        <Image src={question.imageUrl} alt="" fill unoptimized className="object-contain" />
       </div>
       <p className="mb-4 text-lg font-medium text-ink">{question.prompt}</p>
 

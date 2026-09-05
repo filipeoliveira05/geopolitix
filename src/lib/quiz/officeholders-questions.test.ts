@@ -369,14 +369,13 @@ describe("buildSenatorRecallQuestions", () => {
       ["S1", []],
     ]);
     const questions = buildSenatorRecallQuestions(senatorsByState, makeStateFacts(2), 1);
-    expect(questions[0].imageCaption).toBe("State0");
+    expect(questions[0].prompt).toBe("Name State0's current U.S. Senators.");
   });
 
   it("uses the state's flag/name and sets entityType to senator", () => {
     const senatorsByState = new Map([["S0", [makeSenator("L0", "Amy", "Adams", "S0")]]]);
     const [q] = buildSenatorRecallQuestions(senatorsByState, makeStateFacts(1), 1);
     expect(q.imageUrl).toBe("https://example.com/flag0.png");
-    expect(q.imageCaption).toBe("State0");
     expect(q.format).toBe("search-select");
     expect(q.entityType).toBe("senator");
     expect(q.prompt).toBe("Name State0's current U.S. Senators.");

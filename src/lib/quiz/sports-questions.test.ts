@@ -223,7 +223,7 @@ describe("buildStateTeamRecallQuestions", () => {
   it("excludes a state with zero synced pro teams", () => {
     const teams = [{ ...makeTeams(1)[0], id: "T1", stateId: "AL" }];
     const [q] = buildStateTeamRecallQuestions(teams, makeStateFacts(["AL", "AK"]), 1);
-    expect(q.imageCaption).toBe("ALName");
+    expect(q.prompt).toBe("Name every pro sports team based in ALName.");
   });
 
   it("uses the state's flag and sets format/entityType", () => {

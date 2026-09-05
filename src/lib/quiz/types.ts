@@ -63,8 +63,10 @@ export type MapClickQuestion = {
 export type SearchSelectQuestion = {
   format: "search-select";
   prompt: string;
-  imageUrl: string; // the subject state's flag, always shown for this format
-  imageCaption: string; // the subject state's name
+  imageUrl: string; // the subject state's flag, always shown for this format — no caption below
+  // it naming the state, since the prompt text already names it (e.g. "Name the top cities in
+  // Vermont.") — unlike MultipleChoiceQuestion's imageCaption, which exists for question types
+  // whose prompt never names the subject.
   entityType: "city" | "senator" | "candidate" | "team";
   targets: SearchSelectEntry[]; // correct answers, already in slot/display order
   // Only populated for entityType "candidate" — the searchable pool for the other three types is

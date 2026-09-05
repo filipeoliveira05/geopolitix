@@ -18,7 +18,7 @@ export function FormatPicker({
   onToggle: (format: QuestionFormat) => void;
 }) {
   return (
-    <div className="mt-4 flex flex-wrap justify-center gap-4">
+    <div className="mt-4 flex flex-col items-start gap-2">
       {availableFormats.map((format) => {
         const checked = enabledFormats.includes(format);
         const isLastEnabled = checked && enabledFormats.length === 1;

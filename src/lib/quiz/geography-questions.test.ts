@@ -614,11 +614,10 @@ describe("buildCityRecallQuestions", () => {
     expect(q.targets.map((t) => t.label)).toEqual(["City1-S0", "City2-S0", "City0-S0"]);
   });
 
-  it("uses the state's flag as the image and names the state in the caption", () => {
+  it("uses the state's flag as the image", () => {
     const cities = makeCitiesForState("S0", "State0", [100]);
     const [q] = buildCityRecallQuestions(cities, makeFacts(1), 1);
     expect(q.imageUrl).toBe("https://example.com/flag0.png");
-    expect(q.imageCaption).toBe("State0");
   });
 
   it("sets format to search-select and entityType to city", () => {

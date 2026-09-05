@@ -285,7 +285,7 @@ describe("buildRaceCandidateRecallQuestions", () => {
       makeRace({ id: "r2", stateId: "CA", candidates: [makeCandidate({ id: "c2", name: "Real" })] }),
     ];
     const [q] = buildRaceCandidateRecallQuestions(races, makeStateFacts(["TX", "CA"]), 1);
-    expect(q.imageCaption).toBe("CAName");
+    expect(q.prompt).toContain("CAName");
   });
 
   it("names the office (Senate/Governor) and state in the prompt", () => {
@@ -318,7 +318,7 @@ describe("buildRaceCandidateRecallQuestions", () => {
       makeRace({ id: "r2", stateId: "CA", candidates: [makeCandidate({ id: "c2", name: "Other" })] }),
     ];
     const questions = buildRaceCandidateRecallQuestions(races, makeStateFacts(["TX", "CA"]), 2);
-    const txQuestion = questions.find((q) => q.imageCaption === "TXName");
+    const txQuestion = questions.find((q) => q.prompt.includes("TXName"));
     expect(txQuestion?.searchPool?.map((e) => e.label)).toContain("Subject");
     expect(txQuestion?.searchPool?.map((e) => e.label)).toContain("Other");
   });

@@ -153,7 +153,6 @@ export function buildRaceCandidateRecallQuestions(
       format: "search-select",
       prompt: `Name every candidate running for ${officeLabel} in ${stateName}.`,
       imageUrl: flagByState.get(race.stateId) as string,
-      imageCaption: stateName,
       entityType: "candidate",
       targets,
       searchPool: [...targets, ...nearby],

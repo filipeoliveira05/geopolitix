@@ -253,7 +253,6 @@ export function buildSenatorRecallQuestions(
       format: "search-select",
       prompt: `Name ${stateName}'s current U.S. Senators.`,
       imageUrl: flagByState.get(stateId) as string,
-      imageCaption: stateName,
       entityType: "senator",
       targets: sorted.map((s) => ({ id: s.legislator.id, label: fullLegislatorName(s.legislator) })),
     };

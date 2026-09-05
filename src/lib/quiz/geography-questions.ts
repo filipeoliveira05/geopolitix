@@ -338,7 +338,6 @@ export function buildCityRecallQuestions(
       format: "search-select",
       prompt: `Name the top cities in ${stateName}.`,
       imageUrl: flagByState.get(stateId) as string,
-      imageCaption: stateName,
       entityType: "city",
       targets: sorted.map((c) => ({ id: c.cityId, label: c.cityName })),
     };
