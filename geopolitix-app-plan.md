@@ -94,14 +94,14 @@ No hardcoded data in the codebase.
 - `unitedstates/districts` (GitHub) — **stale**, last full-nationwide set is from 2016 (pre-2020-census redistricting; later folders are single-state off-cycle updates only). Don't use without re-verifying it's had a genuine full-nationwide update since.
 
 ### Geography (Phase 2, shipped 2026-08-31; fully rewritten onto World Population Review 2026-09-01)
-- **World Population Review only, no Wikidata, no API key** — state population/capital/flag and each state's top 10 most populous cities all come from `worldpopulationreview.com`'s state and per-state city-ranking pages (a clean embedded JSON blob, not table-cell scraping). Replaces an original Wikidata-SPARQL design (city discovery via settlement-class filtering) and a short-lived WPR-population-overlay-on-top-of-Wikidata intermediate step — both existed for about a day before being fully replaced at the user's request, once it became clear a single WPR-only source doesn't need the several bug fixes (name-collision heuristics, classification traps, a schema flag) the two-source design required just to compensate for Wikidata's staleness. Full writeup, including why WPR's own `rank` field needs no city-type filtering (unlike Wikidata's classes), is in `CLAUDE.md`'s Data conventions section — don't re-derive here.
+- **World Population Review only, no Wikidata, no API key** — state population/capital/flag and each state's top 10 most populous cities all come from `worldpopulationreview.com`'s state and per-state city-ranking pages (a clean embedded JSON blob, not table-cell scraping). Replaces an original Wikidata-SPARQL design (city discovery via settlement-class filtering) and a short-lived WPR-population-overlay-on-top-of-Wikidata intermediate step — both existed for about a day before being fully replaced at the user's request, once it became clear a single WPR-only source doesn't need the several bug fixes (name-collision heuristics, classification traps, a schema flag) the two-source design required just to compensate for Wikidata's staleness. Full writeup, including why WPR's own `rank` field needs no city-type filtering (unlike Wikidata's classes), is in `docs/data-sync-notes.md` — don't re-derive here.
 
 ### Sports (Phase 2, shipped 2026-08-31; extended to WNBA/NWSL and college football/basketball, then logos/bios/individual pages, all 2026-09-02)
-- **Not TheSportsDB** — its free key turned out to hard-cap every league's team list at 10 results (confirmed live), unusable for full rosters. Sourced instead by parsing Wikipedia's own "List of professional sports teams in the United States and Canada" article. Full parsing detail and a real row-format edge case (the NHL's Seattle Kraken/Vancouver Canucks rows) are in `CLAUDE.md`'s Data conventions section.
-- **WNBA and NWSL added on top of the original NFL/NBA/MLB/NHL/MLS five** — same page, same table shape, but each needed its own real fix once checked against live wikitext rather than assumed safe from the shape alone: the WNBA's table lists 4 not-yet-playing expansion franchises under a "Future teams" heading (needed an explicit stop-parsing guard), and NWSL has one team split across two rows via rowspan for a mid-season venue move (already handled correctly by the existing minimum-cell-count check). `sports_teams` also got its first real stale-row cleanup in the same pass — full detail in `CLAUDE.md`'s Data conventions section.
-- **College football (NCAA Division I FBS) is a separate table (`college_football_programs`), not a `sports_teams` league value** — a college program carries a conference (no pro-team equivalent) and is amateur/institutional, not "major-league" the way `sports_teams` itself is framed. Sourced from Wikipedia's "List of NCAA Division I FBS football programs" (138 schools, one wikitable). Full writeup — including the fixed-position-from-the-front parsing strategy (the inverse of the pro-league parser's from-the-back approach) and a real `{{okina}}` template bug caught live on Hawaii's row — is in `CLAUDE.md`'s Data conventions section.
-- **College basketball (NCAA Division I men's) needed a two-page join, unlike football** — its source page has no city/state column at all, so `college-basketball.mjs` joins it against a second page ("List of NCAA Division I institutions") keyed by wikilink target, with MediaWiki's own redirect-resolution API as a fallback for the schools whose target doesn't match directly across the two independently-maintained pages. Verified live: 365/365 programs resolved. Shares `college_football_programs`' exact row shape (own table, `college_basketball_programs`) — full writeup, including two real bugs caught while building it (a missed second "reclassifying members" table on the institutions page, and a `{{sort|}}` template mishandled while sourcing the short common name used for display), is in `CLAUDE.md`'s Data conventions section.
-- **Logos and bios, plus individual `/team/[id]`/`/college-football/[id]`/`/college-basketball/[id]` pages, added 2026-09-02** — `logo_url`/`bio_summary` on all three tables above, backfilled from the same Wikipedia REST endpoint `legislators.mjs`/`governor-history.mjs` already use for people, plus a new infobox-wikitext-parsing fallback for when that endpoint's own thumbnail heuristic misses a real logo (confirmed live for several wordmark-shaped college logos). Needed several real reliability fixes along the way — a malformed school name from an under-stripped nested template, a stale-row-cleanup bug (deleting by name instead of by id), a fallback error-swallowing bug, and two rounds of retry-budget tuning against real sustained Wikipedia rate-limiting. Full writeup, including every bug and its fix, is in `CLAUDE.md`'s Data conventions section — don't re-derive here. A handful of programs confirmed to have no logo anywhere Wikipedia exposes one got a manual, one-off fix instead of a scripted one (also documented there).
+- **Not TheSportsDB** — its free key turned out to hard-cap every league's team list at 10 results (confirmed live), unusable for full rosters. Sourced instead by parsing Wikipedia's own "List of professional sports teams in the United States and Canada" article. Full parsing detail and a real row-format edge case (the NHL's Seattle Kraken/Vancouver Canucks rows) are in `docs/data-sync-notes.md`.
+- **WNBA and NWSL added on top of the original NFL/NBA/MLB/NHL/MLS five** — same page, same table shape, but each needed its own real fix once checked against live wikitext rather than assumed safe from the shape alone: the WNBA's table lists 4 not-yet-playing expansion franchises under a "Future teams" heading (needed an explicit stop-parsing guard), and NWSL has one team split across two rows via rowspan for a mid-season venue move (already handled correctly by the existing minimum-cell-count check). `sports_teams` also got its first real stale-row cleanup in the same pass — full detail in `docs/data-sync-notes.md`.
+- **College football (NCAA Division I FBS) is a separate table (`college_football_programs`), not a `sports_teams` league value** — a college program carries a conference (no pro-team equivalent) and is amateur/institutional, not "major-league" the way `sports_teams` itself is framed. Sourced from Wikipedia's "List of NCAA Division I FBS football programs" (138 schools, one wikitable). Full writeup — including the fixed-position-from-the-front parsing strategy (the inverse of the pro-league parser's from-the-back approach) and a real `{{okina}}` template bug caught live on Hawaii's row — is in `docs/data-sync-notes.md`.
+- **College basketball (NCAA Division I men's) needed a two-page join, unlike football** — its source page has no city/state column at all, so `college-basketball.mjs` joins it against a second page ("List of NCAA Division I institutions") keyed by wikilink target, with MediaWiki's own redirect-resolution API as a fallback for the schools whose target doesn't match directly across the two independently-maintained pages. Verified live: 365/365 programs resolved. Shares `college_football_programs`' exact row shape (own table, `college_basketball_programs`) — full writeup, including two real bugs caught while building it (a missed second "reclassifying members" table on the institutions page, and a `{{sort|}}` template mishandled while sourcing the short common name used for display), is in `docs/data-sync-notes.md`.
+- **Logos and bios, plus individual `/team/[id]`/`/college-football/[id]`/`/college-basketball/[id]` pages, added 2026-09-02** — `logo_url`/`bio_summary` on all three tables above, backfilled from the same Wikipedia REST endpoint `legislators.mjs`/`governor-history.mjs` already use for people, plus a new infobox-wikitext-parsing fallback for when that endpoint's own thumbnail heuristic misses a real logo (confirmed live for several wordmark-shaped college logos). Needed several real reliability fixes along the way — a malformed school name from an under-stripped nested template, a stale-row-cleanup bug (deleting by name instead of by id), a fallback error-swallowing bug, and two rounds of retry-budget tuning against real sustained Wikipedia rate-limiting. Full writeup, including every bug and its fix, is in `docs/data-sync-notes.md` — don't re-derive here. A handful of programs confirmed to have no logo anywhere Wikipedia exposes one got a manual, one-off fix instead of a scripted one (also documented there).
 
 ### `unitedstates` GitHub org — other repos worth knowing about
 The org (`github.com/unitedstates`) has ~40 repos total; most haven't been touched since
@@ -146,7 +146,7 @@ General reports, SCOTUS volumes, etc.) has no connection to this app's scope.
   (§4's `candidates` entry below); every legislator bio today is ID-sourced, not yet
   human-verified, see CLAUDE.md's verification-badge note) · `last_synced_at` (added 2026-09-03 —
   powers `/legislator/[id]`'s own per-row freshness note; stamped by every write path
-  (upsert + bio-backfill update), see CLAUDE.md's Data-freshness indicators entry).
+  (upsert + bio-backfill update), see `docs/ui-notes.md`'s Data-freshness indicators entry).
 
 ### `terms`
 A legislator's term — full historical record without duplicating `legislators`.
@@ -234,7 +234,7 @@ whichever of `candidates`/`legislators`/`governors` actually owns this person's 
 page, recomputed fresh every sync directly on the disposable row (`matchOfficeholder()` in
 `races-2026.mjs` — exact full-name match only against current officeholders, no fuzzy
 fallback, after two looser heuristics each produced a real wrong-person match in production;
-full failure history in CLAUDE.md's candidate-profiles note).
+full failure history in `docs/data-sync-notes.md`'s candidates entry).
 
 ### `candidates`
 A 2026 race candidate with no existing `legislators`/`governors` profile (a challenger, not a
@@ -290,7 +290,7 @@ involved).
   **100% coverage confirmed live, 138/138** — one genuine no-Wikipedia-logo gap, Georgia Southern,
   closed by hand) · `last_synced_at` (added 2026-09-03, same shape/reasoning as `sports_teams`'
   own). Added 2026-09-02, deliberately separate from `sports_teams` rather than a shared table — see the Sports
-  section above and `CLAUDE.md`'s Data conventions for why.
+  section above and `docs/data-sync-notes.md` for why.
 
 ### `college_basketball_programs`
 - Identical shape to `college_football_programs` — `id` (PK) · `school` (unique) · `nickname` ·
@@ -367,8 +367,7 @@ speed-round are separate, parallel session types with their own results screen a
 `localStorage` best-score key (no accounts/auth — see §9's Open Decisions). Full architecture,
 all 5 categories, the Geography/Officeholders/Sports question-type expansions, and the real bugs
 caught building all of it (a Strict-Mode map cleanup bug, a speed-round timer/setState bug, a
-PostgREST ambiguous-FK bug on the cities/states embed) are documented in CLAUDE.md's Status
-section.
+PostgREST ambiguous-FK bug on the cities/states embed) are documented in `docs/quiz-notes.md`.
 
 ---
 
@@ -388,7 +387,7 @@ entirely; corrected below). As of 2026-08-29, `legislators`/`governor_terms` als
 **current/recent-scoped weekly pass** vs. a **full-historical manual pass** — rewriting a
 150-year-old term or backfilling a bio for someone who left office decades ago on the same
 weekly cadence as this year's officeholders was pure waste, not safety (full rationale in
-CLAUDE.md's data-conventions section):
+`docs/data-sync-notes.md`):
 
 | Job | Source | Actual frequency | Populates |
 |---|---|---|---|
@@ -414,7 +413,7 @@ Each job writes a `sync_logs` row for diagnostics — and, as of 2026-08-29, for
 "data synced X ago" freshness indicators too (`SyncFreshnessNote`/`SyncFreshnessRow`,
 `src/lib/sync-freshness.ts`), not just an aspirational future use. As of 2026-09-03 this is a
 per-row column (`last_synced_at`, on every table with its own detail page) on individual pages,
-not just a per-job figure — see CLAUDE.md's Data-freshness indicators entry for the current design
+not just a per-job figure — see `docs/ui-notes.md`'s Data-freshness indicators entry for the current design
 (per-row vs. per-job, the tiered pulsing-dot convention, and the `job` slug each script stamps).
 
 ---
@@ -443,7 +442,7 @@ Getting from "JSON stand-in" to the real infrastructure. Current progress is tra
     (`district-geometry/topology.json`), not a Postgres column at all, while `districts` itself
     is a normal metadata-only table (id/state_id/district_number). `terms`/`races_2026` never
     got a working FK onto it (`district_id` sat null and unused, dropped 2026-08-31 — see
-    CLAUDE.md's `districts` entry); House data joins on `state_id`+`district_number` instead.
+    `docs/data-sync-notes.md`'s `districts` entry); House data joins on `state_id`+`district_number` instead.
     Cron automation is also done —
     a weekly GitHub Actions workflow (§2), not Vercel Cron/Supabase `pg_cron` as this plan
     originally sketched (§2 explains why). Manual `npm run sync:*` still works too.
