@@ -6,10 +6,12 @@ import {
   buildOfficeholderNameQuestions,
   buildChamberQuestions,
   buildHouseSeatCountQuestions,
+  buildSenatorRecallQuestions,
 } from "./officeholders-questions";
 import type { GovernorFact } from "@/lib/governors-data";
-import type { LegislatorStateFact } from "@/lib/legislators-data";
+import type { LegislatorStateFact, TermWithLegislator } from "@/lib/legislators-data";
 import type { HouseSeatCountFact } from "@/lib/districts-data";
+import type { StateFact } from "@/lib/geography-data";
 
 function makeHouseSeatCountFacts(n: number): HouseSeatCountFact[] {
   return Array.from({ length: n }, (_, i) => ({
@@ -294,5 +296,89 @@ describe("buildHouseSeatCountQuestions", () => {
   it("has no image (a seat count has nothing to show a photo of)", () => {
     const [q] = buildHouseSeatCountQuestions(makeHouseSeatCountFacts(10), 1);
     expect(q.imageUrl).toBeNull();
+  });
+});
+
+function makeStateFacts(n: number): StateFact[] {
+  return Array.from({ length: n }, (_, i) => ({
+    stateId: `S${i}`,
+    stateName: `State${i}`,
+    capitalName: `Capital${i}`,
+    flagUrl: `https://example.com/flag${i}.png`,
+    population: 1000 + i,
+  }));
+}
+
+function makeSenator(id: string, firstName: string, lastName: string, stateId: string): TermWithLegislator {
+  return {
+    legislator: {
+      id,
+      bioguideId: id,
+      govtrackId: null,
+      firstName,
+      lastName,
+      photoUrl: null,
+      birthday: null,
+      bioSummary: null,
+      wikipediaTitle: null,
+      wikipediaVerified: false,
+      wikipediaCheckedNo: false,
+      lastSyncedAt: null,
+    },
+    term: {
+      id: `${id}-term`,
+      legislatorId: id,
+      chamber: "senate",
+      stateId,
+      district: null,
+      party: "Democrat",
+      startDate: "2023-01-03",
+      endDate: null,
+      isCurrent: true,
+    },
+  };
+}
+
+describe("buildSenatorRecallQuestions", () => {
+  it("builds the requested number of questions", () => {
+    const senatorsByState = new Map([
+      ["S0", [makeSenator("L0", "Amy", "Adams", "S0"), makeSenator("L1", "Bob", "Baker", "S0")]],
+      ["S1", [makeSenator("L2", "Cara", "Cole", "S1"), makeSenator("L3", "Dan", "Diaz", "S1")]],
+    ]);
+    const questions = buildSenatorRecallQuestions(senatorsByState, makeStateFacts(2), 2);
+    expect(questions).toHaveLength(2);
+  });
+
+  it("sorts the two senators alphabetically by full name", () => {
+    const senatorsByState = new Map([
+      ["S0", [makeSenator("L1", "Zeb", "Zorn", "S0"), makeSenator("L0", "Amy", "Adams", "S0")]],
+    ]);
+    const [q] = buildSenatorRecallQuestions(senatorsByState, makeStateFacts(1), 1);
+    expect(q.targets.map((t) => t.label)).toEqual(["Amy Adams", "Zeb Zorn"]);
+  });
+
+  it("handles a 1-senator state (vacancy) without breaking", () => {
+    const senatorsByState = new Map([["S0", [makeSenator("L0", "Amy", "Adams", "S0")]]]);
+    const [q] = buildSenatorRecallQuestions(senatorsByState, makeStateFacts(1), 1);
+    expect(q.targets).toEqual([{ id: "L0", label: "Amy Adams" }]);
+  });
+
+  it("excludes a state with zero current senators", () => {
+    const senatorsByState = new Map([
+      ["S0", [makeSenator("L0", "Amy", "Adams", "S0")]],
+      ["S1", []],
+    ]);
+    const questions = buildSenatorRecallQuestions(senatorsByState, makeStateFacts(2), 1);
+    expect(questions[0].imageCaption).toBe("State0");
+  });
+
+  it("uses the state's flag/name and sets entityType to senator", () => {
+    const senatorsByState = new Map([["S0", [makeSenator("L0", "Amy", "Adams", "S0")]]]);
+    const [q] = buildSenatorRecallQuestions(senatorsByState, makeStateFacts(1), 1);
+    expect(q.imageUrl).toBe("https://example.com/flag0.png");
+    expect(q.imageCaption).toBe("State0");
+    expect(q.format).toBe("search-select");
+    expect(q.entityType).toBe("senator");
+    expect(q.prompt).toBe("Name State0's current U.S. Senators.");
   });
 });

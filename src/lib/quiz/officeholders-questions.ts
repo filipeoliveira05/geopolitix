@@ -1,11 +1,12 @@
 // See docs/quiz-notes.md before adding a new question type or touching this file — full architecture and every category's question-type batch writeup lives there, not repeated here.
 
 import type { GovernorFact } from "@/lib/governors-data";
-import type { LegislatorStateFact } from "@/lib/legislators-data";
+import type { LegislatorStateFact, TermWithLegislator } from "@/lib/legislators-data";
 import type { HouseSeatCountFact } from "@/lib/districts-data";
+import type { StateFact } from "@/lib/geography-data";
 import { pickRandom } from "./random";
 import { buildMultipleChoiceQuestion } from "./build-multiple-choice";
-import type { MultipleChoiceQuestion } from "./types";
+import type { MultipleChoiceQuestion, SearchSelectQuestion } from "./types";
 
 export function buildGovernorQuestions(
   facts: GovernorFact[],
@@ -222,4 +223,42 @@ export function buildHouseSeatCountQuestions(
       getOptionText: (f) => String(f.seatCount),
     }),
   );
+}
+
+function fullLegislatorName(legislator: { firstName: string | null; lastName: string | null }): string {
+  return [legislator.firstName, legislator.lastName].filter(Boolean).join(" ");
+}
+
+/**
+ * "Name {state}'s current U.S. Senators." — search-and-select format. Reuses
+ * getSenatorsByStateMap(null) (legislators-data.ts), already built for senate-split-geo.ts's own
+ * per-state grouping — no new query. targets.length is naturally 1-2 (2 ordinarily, 1 during a
+ * rare vacancy); sorted alphabetically by full name since there's no other natural ordering for
+ * two senators from the same state.
+ */
+export function buildSenatorRecallQuestions(
+  senatorsByState: Map<string, TermWithLegislator[]>,
+  states: StateFact[],
+  count: number,
+): SearchSelectQuestion[] {
+  const flagByState = new Map(states.map((s) => [s.stateId, s.flagUrl]));
+  const stateNameById = new Map(states.map((s) => [s.stateId, s.stateName]));
+  const eligible = Array.from(senatorsByState.entries()).filter(
+    ([stateId, senators]) => senators.length > 0 && flagByState.has(stateId),
+  );
+  const subjects = pickRandom(eligible, count);
+  return subjects.map(([stateId, senators]) => {
+    const stateName = stateNameById.get(stateId) as string;
+    const sorted = [...senators].sort((a, b) =>
+      fullLegislatorName(a.legislator).localeCompare(fullLegislatorName(b.legislator)),
+    );
+    return {
+      format: "search-select",
+      prompt: `Name ${stateName}'s current U.S. Senators.`,
+      imageUrl: flagByState.get(stateId) as string,
+      imageCaption: stateName,
+      entityType: "senator",
+      targets: sorted.map((s) => ({ id: s.legislator.id, label: fullLegislatorName(s.legislator) })),
+    };
+  });
 }
