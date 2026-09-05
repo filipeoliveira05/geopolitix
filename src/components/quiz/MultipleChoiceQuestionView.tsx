@@ -20,24 +20,27 @@ export function MultipleChoiceQuestionView({
 }) {
   const answered = chosenIndex !== null;
 
+  const imageBlock = question.imageUrl && (
+    <div className="mb-4">
+      <div className="relative h-28 w-full">
+        <Image src={question.imageUrl} alt="" fill unoptimized className="object-contain" />
+      </div>
+      {question.imageCaption && (
+        <p className="mt-2 text-center text-sm font-medium text-ink">
+          {question.imageCaption}{" "}
+          {question.imageCaptionParty !== undefined && (
+            <PartyBadge party={question.imageCaptionParty} />
+          )}
+        </p>
+      )}
+    </div>
+  );
+
   return (
     <div>
-      {question.imageUrl && (
-        <div className="mb-4">
-          <div className="relative h-28 w-full">
-            <Image src={question.imageUrl} alt="" fill unoptimized className="object-contain" />
-          </div>
-          {question.imageCaption && (
-            <p className="mt-2 text-center text-sm font-medium text-ink">
-              {question.imageCaption}{" "}
-              {question.imageCaptionParty !== undefined && (
-                <PartyBadge party={question.imageCaptionParty} />
-              )}
-            </p>
-          )}
-        </div>
-      )}
+      {!question.imageBelowPrompt && imageBlock}
       <p className="mb-4 text-lg font-medium text-ink">{question.prompt}</p>
+      {question.imageBelowPrompt && imageBlock}
       <div className="flex flex-col gap-2">
         {question.options.map((option, i) => {
           const isCorrect = i === question.correctIndex;

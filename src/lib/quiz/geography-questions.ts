@@ -12,6 +12,11 @@ export function buildCapitalQuestions(facts: StateFact[], count: number): Multip
     buildMultipleChoiceQuestion(subject, facts, {
       getPrompt: (s) => `What is the capital of ${s.stateName}?`,
       getOptionText: (f) => f.capitalName,
+      // The state is already named in the prompt, so the flag is a supplementary illustration,
+      // not the clue itself (unlike buildFlagQuestions, where showing the flag first IS the
+      // question) — shown below the prompt rather than above it.
+      getImageUrl: (s) => s.flagUrl,
+      imageBelowPrompt: true,
     }),
   );
 }

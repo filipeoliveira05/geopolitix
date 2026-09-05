@@ -14,6 +14,9 @@ export function buildMultipleChoiceQuestion<T>(
     getPrompt: (subject: T) => string;
     getOptionText: (item: T) => string;
     getImageUrl?: (subject: T) => string | null;
+    // See MultipleChoiceQuestion.imageBelowPrompt — renders the image after the prompt instead of
+    // before it, for a question type whose prompt already names the subject in text.
+    imageBelowPrompt?: boolean;
     getImageCaption?: (subject: T) => string | null;
     getImageCaptionParty?: (subject: T) => string | null;
     getRevealImageUrl?: (subject: T) => string | null;
@@ -45,6 +48,7 @@ export function buildMultipleChoiceQuestion<T>(
     format: "multiple-choice",
     prompt: opts.getPrompt(subject),
     imageUrl: opts.getImageUrl ? opts.getImageUrl(subject) : null,
+    imageBelowPrompt: opts.imageBelowPrompt,
     imageCaption: opts.getImageCaption ? opts.getImageCaption(subject) : null,
     imageCaptionParty: opts.getImageCaptionParty ? opts.getImageCaptionParty(subject) : undefined,
     revealImageUrl: opts.getRevealImageUrl ? opts.getRevealImageUrl(subject) : null,

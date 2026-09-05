@@ -11,6 +11,12 @@ export type MultipleChoiceQuestion = {
   // Shown above the prompt when present — e.g. a state's flag, a legislator's photo. null for a
   // pure-text question (e.g. "What is the capital of Texas?").
   imageUrl: string | null;
+  // When true, the image renders AFTER the prompt (question text first, then image, then
+  // options) instead of the default before-prompt placement — for a question type whose prompt
+  // already names the subject in text (e.g. "What is the capital of Virginia?") and the image is
+  // a supplementary illustration, not the clue itself (unlike e.g. the flag-guess question, where
+  // showing the flag first IS the question).
+  imageBelowPrompt?: boolean;
   // Shown under the image when present — e.g. a legislator's name/party. Unused by every other
   // image question type (flags, team logos), which have nothing worth captioning.
   imageCaption?: string | null;

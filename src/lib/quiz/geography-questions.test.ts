@@ -61,9 +61,13 @@ describe("buildCapitalQuestions", () => {
     }
   });
 
-  it("has no image (capital questions are text-only)", () => {
-    const [q] = buildCapitalQuestions(makeFacts(10), 1);
-    expect(q.imageUrl).toBeNull();
+  it("shows the subject state's flag below the prompt, not above it", () => {
+    const facts = makeFacts(10);
+    const questions = buildCapitalQuestions(facts, 5);
+    for (const q of questions) {
+      expect(q.imageUrl).toMatch(/^https:\/\/example\.com\/flag\d+\.png$/);
+      expect(q.imageBelowPrompt).toBe(true);
+    }
   });
 });
 
