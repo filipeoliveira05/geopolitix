@@ -279,6 +279,22 @@ describe("buildRaceCandidateRecallQuestions", () => {
     expect(q.targets.find((t) => t.label === "Zed")?.party).toBe("Republican");
   });
 
+  it("carries each candidate's photoUrl (including null for a real candidate with none)", () => {
+    const races = [
+      makeRace({
+        candidates: [
+          makeCandidate({ id: "c1", name: "HasPhoto", photoUrl: "https://example.com/p.png" }),
+          makeCandidate({ id: "c2", name: "NoPhoto", photoUrl: null }),
+        ],
+      }),
+    ];
+    const [q] = buildRaceCandidateRecallQuestions(races, makeStateFacts(["TX"]), 1);
+    expect(q.targets.find((t) => t.label === "HasPhoto")?.photoUrl).toBe(
+      "https://example.com/p.png",
+    );
+    expect(q.targets.find((t) => t.label === "NoPhoto")?.photoUrl).toBeNull();
+  });
+
   it("excludes placeholder TBD/(presumptive) candidates from targets", () => {
     const races = [
       makeRace({

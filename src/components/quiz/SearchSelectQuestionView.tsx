@@ -9,6 +9,42 @@ import { CheckIcon } from "./icons";
 
 const WRONG_FLASH_MS = 400;
 
+// Small in the search dropdown (a row of suggestions, not the main focus), bigger on a found/
+// revealed slot (the actual answer being shown off). Falls back to a plain silhouette icon for a
+// real candidate with no synced photo — same "fixed-size slot either way" reasoning
+// QuizResultsScreen's own thumbnail-or-icon rows already use, so rows don't jump in size
+// depending on which candidates happen to have a photo on file.
+function CandidateAvatar({
+  photoUrl,
+  size,
+}: {
+  photoUrl: string | null;
+  size: "sm" | "lg";
+}) {
+  const dimensionClassName = size === "sm" ? "h-8 w-8" : "h-12 w-12";
+  if (photoUrl) {
+    return (
+      <div className={`relative ${dimensionClassName} shrink-0 overflow-hidden rounded-full`}>
+        <Image src={photoUrl} alt="" fill unoptimized className="object-cover" />
+      </div>
+    );
+  }
+  return (
+    <span
+      className={`flex ${dimensionClassName} shrink-0 items-center justify-center rounded-full bg-paper text-muted`}
+    >
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        viewBox="0 0 24 24"
+        fill="currentColor"
+        className={size === "sm" ? "h-4 w-4" : "h-6 w-6"}
+      >
+        <path d="M12 12a5 5 0 1 0 0-10 5 5 0 0 0 0 10Zm0 2c-4.4 0-8 2.2-8 5v1a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-1c0-2.8-3.6-5-8-5Z" />
+      </svg>
+    </span>
+  );
+}
+
 export function SearchSelectQuestionView({
   question,
   result,
@@ -92,15 +128,20 @@ export function SearchSelectQuestionView({
                 <li key={entry.id}>
                   <button
                     onClick={() => selectEntry(entry)}
-                    className="block w-full px-4 py-2 text-left text-sm text-ink hover:bg-paper"
+                    className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-ink hover:bg-paper"
                   >
-                    {entry.label}
-                    {entry.party !== undefined && (
-                      <>
-                        {" "}
-                        <PartyBadge party={entry.party} />
-                      </>
+                    {entry.photoUrl !== undefined && (
+                      <CandidateAvatar photoUrl={entry.photoUrl} size="sm" />
                     )}
+                    <span>
+                      {entry.label}
+                      {entry.party !== undefined && (
+                        <>
+                          {" "}
+                          <PartyBadge party={entry.party} />
+                        </>
+                      )}
+                    </span>
                   </button>
                 </li>
               ))}
@@ -112,15 +153,20 @@ export function SearchSelectQuestionView({
       <ul className="flex flex-col gap-1">
         {question.targets.map((target, i) => {
           const isFound = foundIds.includes(target.id);
+          const isRevealed = isFound || answered;
+          const hasPhoto = target.photoUrl !== undefined;
           return (
             <li
               key={target.id}
-              className={`flex items-center gap-2 rounded border px-3 py-1.5 text-sm ${
+              className={`flex items-center gap-3 rounded border text-sm ${
+                hasPhoto && isRevealed ? "px-3 py-2" : "px-3 py-1.5"
+              } ${
                 isFound ? "border-emerald-600 bg-emerald-600/10 text-ink" : "border-rule text-muted"
               }`}
             >
               <span className="font-mono text-xs text-muted">{i + 1}.</span>
-              {isFound ? (
+              {isRevealed && hasPhoto && <CandidateAvatar photoUrl={target.photoUrl as string | null} size="lg" />}
+              {isRevealed ? (
                 <>
                   <span>
                     {target.label}
@@ -131,18 +177,8 @@ export function SearchSelectQuestionView({
                       </>
                     )}
                   </span>
-                  <CheckIcon className="ml-auto h-4 w-4 text-emerald-600" />
+                  {isFound && <CheckIcon className="ml-auto h-4 w-4 text-emerald-600" />}
                 </>
-              ) : answered ? (
-                <span>
-                  {target.label}
-                  {target.party !== undefined && (
-                    <>
-                      {" "}
-                      <PartyBadge party={target.party} />
-                    </>
-                  )}
-                </span>
               ) : (
                 <span>__________</span>
               )}
