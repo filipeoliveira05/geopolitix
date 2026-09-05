@@ -1,10 +1,11 @@
 // See docs/quiz-notes.md before adding a new question type or touching this file — full architecture and every category's question-type batch writeup lives there, not repeated here.
 
 import type { Race, RaceOffice } from "@/lib/races-data";
+import type { StateFact } from "@/lib/geography-data";
 import { getStateName } from "@/lib/states";
 import { pickRandom } from "./random";
 import { buildMultipleChoiceQuestion } from "./build-multiple-choice";
-import type { MultipleChoiceQuestion } from "./types";
+import type { MultipleChoiceQuestion, SearchSelectQuestion } from "./types";
 
 export type CandidateFact = {
   name: string;
@@ -108,4 +109,54 @@ export function buildIncumbencyQuestions(
     options: ["Yes", "No"],
     correctIndex: s.isIncumbent ? 0 : 1,
   }));
+}
+
+const CANDIDATE_SEARCH_POOL_SAMPLE_SIZE = 20;
+
+/**
+ * "Name every candidate running for {office} in {state}." — search-and-select format, one
+ * specific Senate or Governor race per question (races is already Senate/Governor-only via
+ * getSenateAndGovernorRaces — House stays excluded, same existing scope decision every other
+ * Midterms question type follows). Eligible races need at least one real (non-placeholder)
+ * candidate, same isRealCandidateName check candidateFactsFromRaces already applies per-candidate.
+ * targets sorted alphabetically — no other natural ordering exists for a list of candidates.
+ * searchPool carries the question's own targets plus a sample of real candidates from OTHER races
+ * in the pool, since a candidate's relevance is scoped to one race — a nationwide candidate index
+ * would be both expensive and mostly irrelevant as wrong-guess material.
+ */
+export function buildRaceCandidateRecallQuestions(
+  races: Race[],
+  states: StateFact[],
+  count: number,
+): SearchSelectQuestion[] {
+  const flagByState = new Map(states.map((s) => [s.stateId, s.flagUrl]));
+  const stateNameById = new Map(states.map((s) => [s.stateId, s.stateName]));
+  const withRealCandidates = races.map((race) => ({
+    race,
+    realCandidates: race.candidates.filter((c) => isRealCandidateName(c.name)),
+  }));
+  const eligible = withRealCandidates.filter(
+    ({ race, realCandidates }) => realCandidates.length > 0 && flagByState.has(race.stateId),
+  );
+  const subjects = pickRandom(eligible, count);
+  return subjects.map(({ race, realCandidates }) => {
+    const stateName = stateNameById.get(race.stateId) as string;
+    const sorted = [...realCandidates].sort((a, b) => a.name.localeCompare(b.name));
+    const targets = sorted.map((c) => ({ id: c.id, label: c.name }));
+    const nearby = withRealCandidates
+      .filter(({ race: otherRace }) => otherRace.id !== race.id)
+      .flatMap(({ realCandidates: others }) => others)
+      .slice(0, CANDIDATE_SEARCH_POOL_SAMPLE_SIZE)
+      .map((c) => ({ id: c.id, label: c.name }));
+    const officeLabel: string = race.office === "senate" ? "Senate" : "Governor";
+    return {
+      format: "search-select",
+      prompt: `Name every candidate running for ${officeLabel} in ${stateName}.`,
+      imageUrl: flagByState.get(race.stateId) as string,
+      imageCaption: stateName,
+      entityType: "candidate",
+      targets,
+      searchPool: [...targets, ...nearby],
+    };
+  });
 }

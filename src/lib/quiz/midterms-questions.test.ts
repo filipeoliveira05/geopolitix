@@ -3,9 +3,11 @@ import {
   candidateFactsFromRaces,
   buildCandidatePartyQuestions,
   buildIncumbencyQuestions,
+  buildRaceCandidateRecallQuestions,
   type CandidateFact,
 } from "./midterms-questions";
 import type { Race } from "@/lib/races-data";
+import type { StateFact } from "@/lib/geography-data";
 
 function makeRace(overrides: Partial<Race> & { candidates: Race["candidates"] }): Race {
   return {
@@ -222,5 +224,102 @@ describe("buildIncumbencyQuestions", () => {
     expect(q.imageUrl).toBe("https://example.com/inc.png");
     expect(q.imageCaption).toBe("Inc");
     expect(q.imageCaptionParty).toBe("Democrat");
+  });
+});
+
+function makeStateFacts(stateIds: string[]): StateFact[] {
+  return stateIds.map((stateId, i) => ({
+    stateId,
+    stateName: `${stateId}Name`,
+    capitalName: `${stateId}Capital`,
+    flagUrl: `https://example.com/flag-${stateId}.png`,
+    population: 1000 + i,
+  }));
+}
+
+describe("buildRaceCandidateRecallQuestions", () => {
+  it("builds the requested number of questions", () => {
+    const races = [
+      makeRace({ id: "r1", candidates: [makeCandidate({ id: "c1", name: "A" })] }),
+      makeRace({
+        id: "r2",
+        stateId: "CA",
+        office: "governor",
+        candidates: [makeCandidate({ id: "c2", name: "B" })],
+      }),
+    ];
+    const questions = buildRaceCandidateRecallQuestions(races, makeStateFacts(["TX", "CA"]), 2);
+    expect(questions).toHaveLength(2);
+  });
+
+  it("sorts targets alphabetically by candidate name", () => {
+    const races = [
+      makeRace({
+        candidates: [
+          makeCandidate({ id: "c1", name: "Zed" }),
+          makeCandidate({ id: "c2", name: "Amy" }),
+        ],
+      }),
+    ];
+    const [q] = buildRaceCandidateRecallQuestions(races, makeStateFacts(["TX"]), 1);
+    expect(q.targets.map((t) => t.label)).toEqual(["Amy", "Zed"]);
+  });
+
+  it("excludes placeholder TBD/(presumptive) candidates from targets", () => {
+    const races = [
+      makeRace({
+        candidates: [
+          makeCandidate({ id: "c1", name: "Real Name" }),
+          makeCandidate({ id: "c2", name: "TBD" }),
+          makeCandidate({ id: "c3", name: "Fake Name (presumptive)" }),
+        ],
+      }),
+    ];
+    const [q] = buildRaceCandidateRecallQuestions(races, makeStateFacts(["TX"]), 1);
+    expect(q.targets.map((t) => t.label)).toEqual(["Real Name"]);
+  });
+
+  it("excludes a race with zero real candidates entirely", () => {
+    const races = [
+      makeRace({ id: "r1", stateId: "TX", candidates: [makeCandidate({ name: "TBD" })] }),
+      makeRace({ id: "r2", stateId: "CA", candidates: [makeCandidate({ id: "c2", name: "Real" })] }),
+    ];
+    const [q] = buildRaceCandidateRecallQuestions(races, makeStateFacts(["TX", "CA"]), 1);
+    expect(q.imageCaption).toBe("CAName");
+  });
+
+  it("names the office (Senate/Governor) and state in the prompt", () => {
+    const senateRace = makeRace({ stateId: "TX", office: "senate", candidates: [makeCandidate({})] });
+    const governorRace = makeRace({
+      stateId: "TX",
+      office: "governor",
+      candidates: [makeCandidate({})],
+    });
+    const [senateQ] = buildRaceCandidateRecallQuestions([senateRace], makeStateFacts(["TX"]), 1);
+    const [governorQ] = buildRaceCandidateRecallQuestions([governorRace], makeStateFacts(["TX"]), 1);
+    expect(senateQ.prompt).toBe("Name every candidate running for Senate in TXName.");
+    expect(governorQ.prompt).toBe("Name every candidate running for Governor in TXName.");
+  });
+
+  it("uses the state's flag and sets format/entityType", () => {
+    const [q] = buildRaceCandidateRecallQuestions(
+      [makeRace({ stateId: "TX", candidates: [makeCandidate({})] })],
+      makeStateFacts(["TX"]),
+      1,
+    );
+    expect(q.imageUrl).toBe("https://example.com/flag-TX.png");
+    expect(q.format).toBe("search-select");
+    expect(q.entityType).toBe("candidate");
+  });
+
+  it("attaches a searchPool including the targets plus real candidates from other races", () => {
+    const races = [
+      makeRace({ id: "r1", stateId: "TX", candidates: [makeCandidate({ id: "c1", name: "Subject" })] }),
+      makeRace({ id: "r2", stateId: "CA", candidates: [makeCandidate({ id: "c2", name: "Other" })] }),
+    ];
+    const questions = buildRaceCandidateRecallQuestions(races, makeStateFacts(["TX", "CA"]), 2);
+    const txQuestion = questions.find((q) => q.imageCaption === "TXName");
+    expect(txQuestion?.searchPool?.map((e) => e.label)).toContain("Subject");
+    expect(txQuestion?.searchPool?.map((e) => e.label)).toContain("Other");
   });
 });
