@@ -32,9 +32,9 @@ export function QuizResultsScreen({
   answers: AnsweredQuestion[];
   onPlayAgain: () => void;
 }) {
-  const score = answers.filter((a) => a.correct).length;
-  const total = answers.length;
-  const missed = answers.filter((a) => !a.correct);
+  const score = answers.reduce((sum, a) => sum + a.points, 0);
+  const total = answers.length * 10;
+  const missed = answers.filter((a) => a.points < 10);
   // A lazy initializer, not an effect — this component only ever mounts after a full client-side
   // quiz session (never during the app's initial SSR/hydration pass), so reading/writing
   // localStorage here carries no hydration-mismatch risk, and avoids the extra render an
@@ -74,7 +74,10 @@ export function QuizResultsScreen({
           <SectionHeading>Missed questions</SectionHeading>
           <ul className="mt-3 flex flex-col gap-3">
             {missed.map((a, i) => {
-              const imageUrl = a.format === "multiple-choice" ? a.question.imageUrl : null;
+              const imageUrl =
+                a.format === "multiple-choice" || a.format === "search-select"
+                  ? a.question.imageUrl
+                  : null;
               return (
                 <li key={i} className="flex items-start gap-3 text-sm">
                   {/* Centered against the h-9 thumbnail/icon slot next to it, not the row's
@@ -104,7 +107,7 @@ export function QuizResultsScreen({
                         <CheckIcon className="h-3.5 w-3.5" />
                         {a.question.options[a.question.correctIndex]}
                       </p>
-                    ) : (
+                    ) : a.format === "map-click" ? (
                       // The prompt already names the target state ("Click on Rhode Island.") —
                       // repeating it here would be pure redundancy, unlike a multiple-choice
                       // question whose prompt never reveals the answer. What actually got
@@ -112,6 +115,30 @@ export function QuizResultsScreen({
                       <p className="text-muted">
                         You clicked {getStateName(a.clickedStateId) ?? a.clickedStateId}.
                       </p>
+                    ) : (
+                      <>
+                        <p className="text-muted">
+                          Found {a.foundIds.length}/{a.question.targets.length}
+                          {a.foundIds.length > 0 && (
+                            <>
+                              :{" "}
+                              {a.question.targets
+                                .filter((t) => a.foundIds.includes(t.id))
+                                .map((t) => t.label)
+                                .join(", ")}
+                            </>
+                          )}
+                        </p>
+                        {a.foundIds.length < a.question.targets.length && (
+                          <p className="text-red-600 dark:text-red-400">
+                            Missed:{" "}
+                            {a.question.targets
+                              .filter((t) => !a.foundIds.includes(t.id))
+                              .map((t) => t.label)
+                              .join(", ")}
+                          </p>
+                        )}
+                      </>
                     )}
                   </div>
                 </li>
