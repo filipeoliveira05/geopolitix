@@ -9,14 +9,14 @@ import type { CityFact, SportsTeam } from "@/lib/geography-data";
 import type { TermWithLegislator } from "@/lib/legislators-data";
 
 describe("buildCityEntries", () => {
-  it("labels each city as 'CityName, StateId'", () => {
+  it("labels each city by its plain name, with no state suffix (would spoil the answer)", () => {
     const cities: CityFact[] = [
       { cityId: "c1", cityName: "Portland", stateId: "OR", stateName: "Oregon", population: 1, isCapital: false },
       { cityId: "c2", cityName: "Portland", stateId: "ME", stateName: "Maine", population: 1, isCapital: false },
     ];
     expect(buildCityEntries(cities)).toEqual([
-      { id: "c1", label: "Portland, OR" },
-      { id: "c2", label: "Portland, ME" },
+      { id: "c1", label: "Portland" },
+      { id: "c2", label: "Portland" },
     ]);
   });
 });

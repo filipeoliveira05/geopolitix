@@ -5,11 +5,18 @@ import type { SearchSelectEntry } from "./types";
 
 const FUSE_OPTIONS = { keys: ["label"], threshold: 0.35, ignoreLocation: true };
 
-/** Labeled "CityName, StateId" — several city names repeat across different states in the synced
- * pool (multiple "Portland"s), same disambiguation convention buildCityPopulationQuestions
- * already uses. */
+/**
+ * Labeled by plain city name only — deliberately NOT suffixed with the state (unlike
+ * buildCityPopulationQuestions' "CityName, StateId" convention elsewhere in this app), since this
+ * index powers the "name cities in {state}" search-select question: showing the state right in
+ * the autocomplete suggestion would hand the player the answer before they even click it. Several
+ * city names do repeat across different states in the synced pool (multiple "Portland"s) — two
+ * suggestions can render identically here, which is an acceptable ambiguity (matching still works
+ * correctly via each entry's own `id`), not a bug, since telling them apart by name alone is
+ * exactly the kind of thing a real player wouldn't be told either.
+ */
 export function buildCityEntries(cities: CityFact[]): SearchSelectEntry[] {
-  return cities.map((c) => ({ id: c.cityId, label: `${c.cityName}, ${c.stateId}` }));
+  return cities.map((c) => ({ id: c.cityId, label: c.cityName }));
 }
 
 export function fullLegislatorName(legislator: { firstName: string | null; lastName: string | null }): string {
