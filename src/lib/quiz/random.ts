@@ -19,30 +19,21 @@ export function pickRandom<T>(items: T[], count: number): T[] {
 }
 
 /**
- * Splits `total` into `parts` positive integers that sum to `total`, at random — used to size a
- * session's mix of question types on the fly instead of a hardcoded even/thirds split, so a
- * category with 2 or 3 question generators (and, as more get added, more) doesn't always show
- * them in the same fixed block sizes. Picks `parts - 1` distinct random cut points along
- * `[1, total - 1]` and takes the gaps between them, so every part is at least 1 and the exact
- * split varies session to session.
+ * Splits `total` into `parts` non-negative integers that sum to `total`, at random — used to size
+ * a session's mix of question types. Each of the `total` slots independently rolls a uniform
+ * random part index, so the resulting counts follow a true multinomial distribution: any part can
+ * land on 0 (that question type just doesn't show up this session) or, at the other extreme, all
+ * of `total` (deliberate — the user explicitly rejected a guaranteed-at-least-1-per-type split,
+ * since with `parts` close to or equal to `total` that degenerates into an always-exactly-1-each
+ * pattern with zero real variety, e.g. Geography's 10 generators against a 10-question session).
  */
-export function randomSplit(total: number, parts: number): number[] {
+export function randomWeightedSplit(total: number, parts: number): number[] {
   if (parts < 1) {
-    throw new Error(`randomSplit: parts must be at least 1, got ${parts}`);
+    throw new Error(`randomWeightedSplit: parts must be at least 1, got ${parts}`);
   }
-  if (total < parts) {
-    throw new Error(`randomSplit: total (${total}) must be at least parts (${parts})`);
-  }
-  if (parts === 1) return [total];
-
-  const cuts = new Set<number>();
-  while (cuts.size < parts - 1) {
-    cuts.add(1 + Math.floor(Math.random() * (total - 1)));
-  }
-  const boundaries = [0, ...[...cuts].sort((a, b) => a - b), total];
-  const counts: number[] = [];
-  for (let i = 0; i < parts; i++) {
-    counts.push(boundaries[i + 1] - boundaries[i]);
+  const counts = new Array(parts).fill(0) as number[];
+  for (let i = 0; i < total; i++) {
+    counts[Math.floor(Math.random() * parts)]++;
   }
   return counts;
 }

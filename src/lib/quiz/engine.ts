@@ -57,7 +57,7 @@ import {
   COLLEGE_BASKETBALL_POWER_CONFERENCES,
 } from "./sports-questions";
 import { countOddOneOutEligibleStates, buildOddOneOutQuestions } from "./mashups-questions";
-import { pickRandom, randomSplit } from "./random";
+import { pickRandom, randomWeightedSplit } from "./random";
 import type { QuizCategoryId } from "./category-config";
 import type { QuizQuestion, MultipleChoiceQuestion, MatchingPair } from "./types";
 
@@ -194,13 +194,14 @@ export function getCategoryPoolSize(category: QuizCategoryId, pool: unknown): nu
  * what `fetchCategoryPool` returned for this same category — each switch branch casts it back to
  * the concrete shape its generators expect.
  *
- * Each question type's count is randomized per session via `randomSplit` (not a fixed
- * even/thirds division), and the combined result is shuffled (`pickRandom(qs, qs.length)`, the
- * same full-shuffle idiom `buildSpeedRoundPool` already used below) — otherwise every session
- * showed its question types in the same fixed blocks in the same order (e.g. Geography always
- * ran all its capital questions, then all its flag questions, then all its map-click questions),
- * which reads as an obviously hardcoded pattern to a repeat player and won't scale as more
- * question types get added per category.
+ * Each question type's count is randomized per session via `randomWeightedSplit` — a true
+ * multinomial roll per session slot, so a type can land on 0 (skipped entirely this session) up
+ * to the full session length, not a fixed even/thirds division and not a guaranteed-at-least-1
+ * split either (the user explicitly rejected that: with a category's generator count close to or
+ * equal to SESSION_LENGTH, a guaranteed-minimum split degenerates into an always-exactly-1-each
+ * pattern with zero real variety). The combined result is shuffled (`pickRandom(qs, qs.length)`,
+ * the same full-shuffle idiom `buildSpeedRoundPool` already used below) so type order is random
+ * too.
  */
 export function buildCategorySession(category: QuizCategoryId, pool: unknown): QuizQuestion[] {
   switch (category) {
@@ -217,7 +218,7 @@ export function buildCategorySession(category: QuizCategoryId, pool: unknown): Q
         isLargestCityCount,
         statePopulationCount,
         cityPopulationCount,
-      ] = randomSplit(SESSION_LENGTH, 10);
+      ] = randomWeightedSplit(SESSION_LENGTH, 10);
       const questions: QuizQuestion[] = [
         ...buildCapitalQuestions(facts, capitalCount),
         ...buildFlagQuestions(facts, flagCount),
@@ -235,7 +236,7 @@ export function buildCategorySession(category: QuizCategoryId, pool: unknown): Q
     case "officeholders": {
       const { governors, legislatorsWithPhoto, houseSeatCounts } = pool as OfficeholdersPool;
       const [governorCount, photoCount, partyCount, nameCount, chamberCount, seatCountCount] =
-        randomSplit(SESSION_LENGTH, 6);
+        randomWeightedSplit(SESSION_LENGTH, 6);
       const questions: QuizQuestion[] = [
         ...buildGovernorQuestions(governors, governorCount),
         ...buildOfficeholderPhotoQuestions(legislatorsWithPhoto, governors, photoCount),
@@ -248,7 +249,7 @@ export function buildCategorySession(category: QuizCategoryId, pool: unknown): Q
     }
     case "midterms": {
       const { candidates } = pool as MidtermsPool;
-      const [partyCount, incumbencyCount] = randomSplit(SESSION_LENGTH, 2);
+      const [partyCount, incumbencyCount] = randomWeightedSplit(SESSION_LENGTH, 2);
       const questions: QuizQuestion[] = [
         ...buildCandidatePartyQuestions(candidates, partyCount),
         ...buildIncumbencyQuestions(candidates, incumbencyCount),
@@ -267,7 +268,7 @@ export function buildCategorySession(category: QuizCategoryId, pool: unknown): Q
         nicknameCount,
         collegeConferenceCount,
         proTeamCountCount,
-      ] = randomSplit(SESSION_LENGTH, 9);
+      ] = randomWeightedSplit(SESSION_LENGTH, 9);
       const questions: QuizQuestion[] = [
         ...buildTeamLogoQuestions(teams, collegeFootball, collegeBasketball, logoCount),
         ...buildTeamStateQuestions(teams, teamStateCount),

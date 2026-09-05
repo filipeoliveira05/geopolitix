@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { pickRandom, randomSplit } from "./random";
+import { pickRandom, randomWeightedSplit } from "./random";
 
 describe("pickRandom", () => {
   it("returns the requested count of items", () => {
@@ -38,48 +38,46 @@ describe("pickRandom", () => {
   });
 });
 
-describe("randomSplit", () => {
+describe("randomWeightedSplit", () => {
   it("returns parts that sum to total", () => {
     for (let i = 0; i < 50; i++) {
-      const counts = randomSplit(10, 3);
+      const counts = randomWeightedSplit(10, 3);
       expect(counts.reduce((a, b) => a + b, 0)).toBe(10);
     }
   });
 
   it("returns the requested number of parts", () => {
-    expect(randomSplit(10, 3)).toHaveLength(3);
+    expect(randomWeightedSplit(10, 3)).toHaveLength(3);
   });
 
-  it("gives every part at least 1", () => {
-    for (let i = 0; i < 50; i++) {
-      const counts = randomSplit(10, 3);
-      for (const count of counts) {
-        expect(count).toBeGreaterThanOrEqual(1);
-      }
+  it("can give a part zero (no guaranteed minimum)", () => {
+    // Deterministically forces every slot onto part 0 by making Math.random always return 0.
+    const original = Math.random;
+    Math.random = () => 0;
+    try {
+      expect(randomWeightedSplit(10, 3)).toEqual([10, 0, 0]);
+    } finally {
+      Math.random = original;
     }
   });
 
-  it("varies the split across calls (not a fixed even/thirds division)", () => {
+  it("varies the split across calls (not a fixed even division)", () => {
     const splits = new Set<string>();
     for (let i = 0; i < 30; i++) {
-      splits.add(randomSplit(10, 3).join(","));
+      splits.add(randomWeightedSplit(10, 3).join(","));
     }
     expect(splits.size).toBeGreaterThan(1);
   });
 
   it("returns [total] for a single part", () => {
-    expect(randomSplit(7, 1)).toEqual([7]);
+    expect(randomWeightedSplit(7, 1)).toEqual([7]);
   });
 
-  it("returns all 1s when total equals parts", () => {
-    expect(randomSplit(3, 3)).toEqual([1, 1, 1]);
-  });
-
-  it("throws when total is less than parts", () => {
-    expect(() => randomSplit(2, 3)).toThrow();
+  it("returns all zeros when total is 0", () => {
+    expect(randomWeightedSplit(0, 3)).toEqual([0, 0, 0]);
   });
 
   it("throws when parts is less than 1", () => {
-    expect(() => randomSplit(5, 0)).toThrow();
+    expect(() => randomWeightedSplit(5, 0)).toThrow();
   });
 });

@@ -154,9 +154,12 @@ share the same generators/screens:
   `SESSION_LENGTH` into fixed even/thirds counts per generator and concatenated the blocks in a
   fixed order (Geography always ran exactly 3 capital, then 3 flag, then 4 map-click questions,
   every session) — an obviously hardcoded pattern to a repeat player. `randomSplit()` (`random.ts`)
-  now randomizes each generator's count per session (a random composition of `SESSION_LENGTH`,
-  every part ≥1), and the combined array is shuffled (`pickRandom(qs, qs.length)`, the same
-  full-shuffle idiom `buildSpeedRoundPool()` already used below it) before being returned.
+  originally randomized each generator's count per session with every part guaranteed ≥1 (a random
+  composition of `SESSION_LENGTH`), and the combined array is shuffled (`pickRandom(qs, qs.length)`,
+  the same full-shuffle idiom `buildSpeedRoundPool()` already used below it) before being returned.
+  **Superseded 2026-09-05** — see the "Weighted, zero-allowed question-type split" entry near the
+  end of this section: the guaranteed-≥1 behavior was replaced with a true multinomial roll
+  (`randomWeightedSplit()`) that can skip a type entirely, at the user's explicit request.
 - **Multiple-choice feedback strengthened** — `MultipleChoiceQuestionView`'s right/wrong
   highlighting was a 10%-opacity tint over a colored border, hard to see especially in dark mode;
   now a solid emerald/red fill with a check/x icon (`src/components/quiz/icons.tsx`, shared with
@@ -290,9 +293,10 @@ class of gaps found elsewhere in this pass — neither had one.
 own hand-written list of question-type ideas, worked through one at a time in ease order (an
 initial ease analysis ranked "pure MC reuse, no new data" ideas first). Six new generators shipped
 in `geography-questions.ts`, taking Geography from 3 question types to 10 — exactly
-`SESSION_LENGTH`, so `randomSplit` now gives precisely 1 question per type per round (no more
-session-to-session mix variety in composition, only in which instance/order — a deliberate
-tradeoff the user chose over bumping `SESSION_LENGTH`, see `buildCategorySession`'s own comment).
+`SESSION_LENGTH`, which at the time made `randomSplit` degenerate to precisely 1 question per type
+per round (no session-to-session mix variety in composition, only in which instance/order — an
+accepted tradeoff at the time over bumping `SESSION_LENGTH`). **This 1-per-type behavior no longer
+holds** — see the "Weighted, zero-allowed question-type split" entry near the end of this section.
 - **`buildAbbreviationQuestions`** — name↔abbreviation, direction randomized per question
   ("What is the abbreviation for X?" / "Which state has the abbreviation Y?"). Needed zero new
   data — `StateFact.stateId` already holds the USPS abbreviation.
@@ -468,3 +472,32 @@ deprioritized not abandoned, same pause pattern as Officeholders above.
   corrected an initial "No sports teams synced for this state" version as reading too much like a
   data-freshness note rather than a plain fact; amended into the same commit rather than left as a
   separate fixup.
+
+**Weighted, zero-allowed question-type split (2026-09-05)** — the user asked for verification that
+Geography's 11-item question-type list matched what was actually shipped (it did, modulo one
+nuance: the "speed round mixing categories" item was already covered by Mashups' existing
+cross-category speed round, just not attributed there). Walking through `buildCategorySession()`
+to answer a follow-up question about how question selection works surfaced the real behavior:
+`randomSplit()` guarantees every generator's count ≥1, which for Geography (10 generators against
+`SESSION_LENGTH` = 10) meant every session ran EXACTLY one of each type, every time — no
+composition variety at all, just order/instance variety, a fact `randomSplit`'s own doc comment
+had been carrying since the Geography batch above but the user hadn't been told outright. The user
+explicitly rejected this once they understood it: they want every type to be able to appear at any
+frequency INCLUDING zero, true randomness deciding, "this goes for every mode." `randomSplit`
+(cut-points-between-boundaries, every part ≥1) was replaced outright with `randomWeightedSplit`
+(`random.ts`) — each of the `SESSION_LENGTH` session slots independently rolls a uniform random
+generator index, a true multinomial distribution where any generator can land on 0 or, at the
+other extreme, all of `SESSION_LENGTH`. Applied to all four `buildCategorySession` branches that
+have more than one generator (Geography, Officeholders, Midterms, Sports) — Mashups' regular round
+was untouched since `buildOddOneOutQuestions` is its only generator (no split to make), and the
+separate matching/speed-round session types were untouched since they never used `randomSplit`
+(speed round pulls a fixed ~5 per generator via `SPEED_ROUND_PER_GENERATOR`, matching has no
+question-type mix at all). All existing generators already handled a `count` of 0 safely (they all
+follow the `pickRandom(pool, count).map(...)` shape, which returns `[]` at `count = 0` with no
+special-casing needed), so no generator-level changes were required. `random.test.ts`'s
+"gives every part at least 1" test was replaced with a "can give a part zero" test (deterministic,
+via a temporarily stubbed `Math.random` always returning 0) proving the new no-guaranteed-minimum
+behavior. **Verified live**, not just via unit tests: an 8-session, 80-question real-browser
+Playwright playthrough of `/quiz/geography` confirmed genuinely uneven distributions (one session
+skipped 3 of the 10 types entirely while showing `flag` four times; distinct-types-per-session
+ranged from 5 to 10 across the 8 runs) with zero console/page errors.
