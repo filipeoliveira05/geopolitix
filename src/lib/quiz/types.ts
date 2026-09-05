@@ -30,6 +30,13 @@ export type MultipleChoiceQuestion = {
   // Shown above the prompt when present — e.g. a state's flag, a legislator's photo. null for a
   // pure-text question (e.g. "What is the capital of Texas?").
   imageUrl: string | null;
+  // An SVG path `d` string (already fit/centered to a square viewBox by state-silhouette-geo.ts)
+  // rendered as an inline vector shape instead of a raster image — its fill can then follow the
+  // ink/paper theme tokens rather than being a static-colored image, unlike every other image
+  // question type here (flags, photos, logos), which are always real raster images. Mutually
+  // exclusive with imageUrl — a question sets exactly one of the two, never both. Only populated
+  // for the silhouette-guess question type.
+  silhouettePath?: string;
   // When true, the image renders AFTER the prompt (question text first, then image, then
   // options) instead of the default before-prompt placement — for a question type whose prompt
   // already names the subject in text (e.g. "What is the capital of Virginia?") and the image is

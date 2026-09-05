@@ -20,10 +20,16 @@ export function MultipleChoiceQuestionView({
 }) {
   const answered = chosenIndex !== null;
 
-  const imageBlock = question.imageUrl && (
+  const imageBlock = (question.imageUrl || question.silhouettePath) && (
     <div className="mb-4">
       <div className="relative h-28 w-full">
-        <Image src={question.imageUrl} alt="" fill unoptimized className="object-contain" />
+        {question.silhouettePath ? (
+          <svg viewBox="0 0 100 100" className="h-full w-full text-ink" aria-hidden="true">
+            <path d={question.silhouettePath} fill="currentColor" fillRule="evenodd" />
+          </svg>
+        ) : (
+          <Image src={question.imageUrl as string} alt="" fill unoptimized className="object-contain" />
+        )}
       </div>
       {question.imageCaption && (
         <p className="mt-2 text-center text-sm font-medium text-ink">

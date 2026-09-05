@@ -14,6 +14,9 @@ export function buildMultipleChoiceQuestion<T>(
     getPrompt: (subject: T) => string;
     getOptionText: (item: T) => string;
     getImageUrl?: (subject: T) => string | null;
+    // See MultipleChoiceQuestion.silhouettePath — mutually exclusive with getImageUrl, never both
+    // on the same question type.
+    getSilhouettePath?: (subject: T) => string | null;
     // See MultipleChoiceQuestion.imageBelowPrompt — renders the image after the prompt instead of
     // before it, for a question type whose prompt already names the subject in text.
     imageBelowPrompt?: boolean;
@@ -59,6 +62,7 @@ export function buildMultipleChoiceQuestion<T>(
     format: "multiple-choice",
     prompt: opts.getPrompt(subject),
     imageUrl: opts.getImageUrl ? opts.getImageUrl(subject) : null,
+    silhouettePath: opts.getSilhouettePath ? (opts.getSilhouettePath(subject) ?? undefined) : undefined,
     imageBelowPrompt: opts.imageBelowPrompt,
     imageCaption: opts.getImageCaption ? opts.getImageCaption(subject) : null,
     imageCaptionParty: opts.getImageCaptionParty ? opts.getImageCaptionParty(subject) : undefined,

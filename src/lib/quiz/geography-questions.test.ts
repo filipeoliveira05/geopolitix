@@ -11,6 +11,7 @@ import {
   buildStatePopulationQuestions,
   buildCityPopulationQuestions,
   buildCityRecallQuestions,
+  buildStateSilhouetteQuestions,
 } from "./geography-questions";
 import type { StateFact, CityFact } from "@/lib/geography-data";
 
@@ -648,5 +649,72 @@ describe("buildCityRecallQuestions", () => {
     const [q] = buildCityRecallQuestions(cities, makeFacts(1), 1);
     expect(q.targets).toHaveLength(2);
     expect(q.targets.map((t) => t.id).sort()).toEqual(["S0-city0", "S0-city1"]);
+  });
+});
+
+// Real state abbreviations, not synthetic ones — getStateSilhouettePath() resolves geometry from
+// the real us-atlas data by abbreviation, so a fake "S0"-style id (fine for every other generator
+// above, which never touches geometry) would resolve to no shape at all here.
+const REAL_STATE_ABBRS = ["AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA"];
+
+function makeRealFacts(n: number): StateFact[] {
+  return Array.from({ length: n }, (_, i) => ({
+    stateId: REAL_STATE_ABBRS[i % REAL_STATE_ABBRS.length],
+    stateName: `State${i}`,
+    capitalName: `Capital${i}`,
+    flagUrl: `https://example.com/flag${i}.png`,
+    population: 1000 + i,
+  }));
+}
+
+describe("buildStateSilhouetteQuestions", () => {
+  it("builds the requested number of questions", () => {
+    const questions = buildStateSilhouetteQuestions(makeRealFacts(10), 5);
+    expect(questions).toHaveLength(5);
+  });
+
+  it("uses the same generic prompt for every question", () => {
+    const questions = buildStateSilhouetteQuestions(makeRealFacts(10), 3);
+    for (const q of questions) {
+      expect(q.prompt).toBe("Which state is this?");
+    }
+  });
+
+  it("sets silhouettePath to a real SVG path string and leaves imageUrl null", () => {
+    const questions = buildStateSilhouetteQuestions(makeRealFacts(10), 5);
+    for (const q of questions) {
+      expect(q.silhouettePath).toMatch(/^M[\d.,\sMLZ-]+Z$/);
+      expect(q.imageUrl).toBeNull();
+    }
+  });
+
+  it("has the subject state's name among the 4 options", () => {
+    const facts = makeRealFacts(10);
+    const questions = buildStateSilhouetteQuestions(facts, 5);
+    for (const q of questions) {
+      expect(q.options).toHaveLength(4);
+      expect(q.options[q.correctIndex]).toMatch(/^State\d+$/);
+    }
+  });
+
+  // D.C. is present in the real StateFact pool (geography.mjs synthesizes it a "Washington"
+  // capital so it passes getAllStateCapitalsAndFlags' filter) unlike this generator's own
+  // original assumption that it'd be naturally absent — confirmed live in the browser before
+  // this test was added, so it's a real regression case, not a hypothetical.
+  it("never picks D.C. as the subject or as a distractor option", () => {
+    const facts: StateFact[] = [
+      ...makeRealFacts(10),
+      {
+        stateId: "DC",
+        stateName: "District of Columbia",
+        capitalName: "Washington",
+        flagUrl: "https://example.com/flag-dc.png",
+        population: 700000,
+      },
+    ];
+    const questions = buildStateSilhouetteQuestions(facts, 10);
+    for (const q of questions) {
+      expect(q.options).not.toContain("District of Columbia");
+    }
   });
 });

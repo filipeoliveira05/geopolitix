@@ -2,6 +2,7 @@
 
 import type { StateFact, CityFact } from "@/lib/geography-data";
 import { formatPopulation } from "@/lib/format";
+import { getStateSilhouettePath } from "@/lib/state-silhouette-geo";
 import { pickRandom } from "./random";
 import { buildMultipleChoiceQuestion } from "./build-multiple-choice";
 import type { MultipleChoiceQuestion, MapClickQuestion, SearchSelectQuestion } from "./types";
@@ -28,6 +29,31 @@ export function buildFlagQuestions(facts: StateFact[], count: number): MultipleC
       getPrompt: () => "Which state does this flag belong to?",
       getOptionText: (f) => f.stateName,
       getImageUrl: (f) => f.flagUrl,
+    }),
+  );
+}
+
+/**
+ * "Which state does this silhouette belong to?" MC — the shape itself is computed client-side
+ * from the same real state boundary geometry the interactive map renders (state-silhouette-geo.ts),
+ * not a synced image, so any state with a resolvable name gets one for free. D.C. is explicitly
+ * excluded, unlike every other Geography question type here — it's synthesized as a pseudo-state
+ * elsewhere in this codebase (geography.mjs gives it a synthetic "Washington" capital so it passes
+ * getAllStateCapitalsAndFlags' filter, unlike this generator's own initial assumption that it'd
+ * be naturally absent), but its real shape is a small, nearly featureless quadrilateral — not much
+ * of a silhouette to guess from, and not worth it as a same-tiny-shape distractor either.
+ */
+export function buildStateSilhouetteQuestions(
+  facts: StateFact[],
+  count: number,
+): MultipleChoiceQuestion[] {
+  const eligible = facts.filter((f) => f.stateId !== "DC");
+  const subjects = pickRandom(eligible, count);
+  return subjects.map((subject) =>
+    buildMultipleChoiceQuestion(subject, eligible, {
+      getPrompt: () => "Which state is this?",
+      getOptionText: (f) => f.stateName,
+      getSilhouettePath: (f) => getStateSilhouettePath(f.stateId),
     }),
   );
 }

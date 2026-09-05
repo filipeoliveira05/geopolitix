@@ -32,6 +32,7 @@ import {
   buildStatePopulationQuestions,
   buildCityPopulationQuestions,
   buildCityRecallQuestions,
+  buildStateSilhouetteQuestions,
 } from "./geography-questions";
 import {
   buildGovernorQuestions,
@@ -282,6 +283,7 @@ export function buildCategorySession(
         ["multiple-choice", (n) => buildStatePopulationQuestions(facts, n)],
         ["multiple-choice", (n) => buildCityPopulationQuestions(cities, n)],
         ["search-select", (n) => buildCityRecallQuestions(cities, facts, n)],
+        ["multiple-choice", (n) => buildStateSilhouetteQuestions(facts, n)],
       ];
       const active = generators.filter(([format]) => enabledFormats.includes(format));
       const counts = randomWeightedSplit(SESSION_LENGTH, active.length);
