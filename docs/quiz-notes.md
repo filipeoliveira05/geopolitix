@@ -501,3 +501,92 @@ behavior. **Verified live**, not just via unit tests: an 8-session, 80-question 
 Playwright playthrough of `/quiz/geography` confirmed genuinely uneven distributions (one session
 skipped 3 of the 10 types entirely while showing `flag` four times; distinct-types-per-session
 ranged from 5 to 10 across the 8 runs) with zero console/page errors.
+
+**Search-and-select question format + points scoring + format picker (2026-09-05, separate
+same-day project)** — a genuinely new question MECHANISM, not another generator added to an
+existing format: the player types into a live-search input (same interaction pattern as the
+global `SearchOverlay`) and selects real entities to fill a board of blank slots, with partial
+credit for however many they find. Landed alongside two changes the user asked to fold into the
+same project since both are directly coupled to the new format's existence — see
+`docs/superpowers/specs/2026-09-05-quiz-search-select-format-design.md` for the full brainstormed
+design and `docs/superpowers/plans/2026-09-05-quiz-search-select-format.md` for the implementation
+plan.
+
+- **New `SearchSelectQuestion` format** (`types.ts`) joins `MultipleChoiceQuestion`/
+  `MapClickQuestion` in the `QuizQuestion` union. Four new generators, one per applicable
+  category: `buildCityRecallQuestions` (Geography, `geography-questions.ts` — targets sorted by
+  population descending, so the finished board teaches the state's real city-size ranking, same
+  philosophy as this category's existing population-reveal features), `buildSenatorRecallQuestions`
+  (Officeholders, `officeholders-questions.ts` — reuses `getSenatorsByStateMap(null)`, already
+  built for `senate-split-geo.ts`'s own grouping, no new query), `buildRaceCandidateRecallQuestions`
+  (Midterms, `midterms-questions.ts` — one specific Senate/Governor race per question, House stays
+  excluded per the existing scope decision), `buildStateTeamRecallQuestions` (Sports,
+  `sports-questions.ts` — 0-team states excluded, same "a question with nothing to find isn't a
+  real question" reasoning as every other eligibility-filtered generator here). Mashups was left
+  untouched (odd-one-out only) — no search-select item was requested there. Every new generator
+  resolves the subject state's flag/name from a `states: StateFact[]` array passed in alongside its
+  own data (Officeholders/Midterms/Sports pools each needed this field added — Geography already
+  had it), not from the global `getStateName()` lookup — caught live via a real test failure
+  during implementation: the first draft of the Midterms and Sports generators used `getStateName()`
+  (real-world names) instead of the passed-in `states` array, which is fine in production (real
+  data) but broke against test fixtures using synthetic state names, a genuine inconsistency with
+  every other generator in this codebase that resolves names from its own passed-in pool.
+- **Scoring reworked from a binary X/10 count to a 0-100 point system** — every `AnsweredQuestion`
+  variant gained a `points` field (`searchSelectPoints()` in the new `search-select-points.ts`:
+  finding everything is always exactly 10, a partial find splits 10 points evenly across however
+  many targets that instance actually has, capped so a partial result can never round up to a
+  false 10). `useQuizSession.score` and `QuizResultsScreen`'s score/missed-filter both moved from
+  counting `correct`/`!correct` to summing/thresholding on `points`. Two files outside the original
+  plan also needed the same `points` field added, caught live via `tsc`: `SpeedRoundSession.tsx`
+  and `SpeedRoundResultsScreen.tsx` build their own `AnsweredMultipleChoice` objects independently
+  of `useQuizSession` (Speed Round predates it as a separate mechanism), so the type union change
+  broke them too — fixed with the same `points = correct ? 10 : 0` pattern, no scoring-model change
+  to Speed Round itself (it stays a raw correct-count, unrelated to the 0-100 rework which only
+  applies to the regular 10-question round). `best-score.ts` needed zero type changes (`BestScore`
+  was already generic on both numbers) — existing localStorage bests just get trivially beaten once
+  by the new 0-100 scale, an accepted one-time side effect given best-scores are explicitly
+  decorative/local-only.
+- **Format picker on the start screen** — each `QuizCategoryMeta` gained a static
+  `availableFormats: QuestionFormat[]` list; `QuizStartScreen` renders one checkbox per available
+  format (omitted entirely for a category with only one, i.e. Mashups), persisted per-category in
+  localStorage (`format-picker-storage.ts`, same decorative try-catch pattern as `best-score.ts`,
+  also with no test file for the same reason). Required a genuine refactor of
+  `buildCategorySession` (`engine.ts`) — every category branch with more than one generator now
+  builds a `[format, generatorFn][]` table, filtered down to the player's enabled formats BEFORE
+  `randomWeightedSplit` rolls how many questions each active generator contributes, rather than
+  the prior flat list of individually-named calls (which had no seam to filter by format at all).
+  `QuizStartScreen`'s format-selection state reuses the exact same per-mount ref-cache +
+  `useSyncExternalStore` idiom this screen already established for its "Best: X/Y" line (extended
+  to also WRITE, not just read) — a first draft used a plain `useState` + `useEffect` to load the
+  saved selection after mount, which `react-hooks/set-state-in-effect` correctly flagged as the
+  same setState-in-effect anti-pattern this screen's own existing comments already document
+  rejecting once before.
+- **Live search** (`search-select-index.ts`) uses Fuse.js (already a dependency via the global
+  `SearchOverlay`) over three shared, once-per-pool-fetch indices (city/senator/team, built
+  nationally so a wrong-but-real guess is genuinely possible — deliberately NOT pre-filtered to
+  just the correct answers). Candidates are the one exception: each search-select candidate
+  question carries its own `searchPool` field (its own targets plus a sample of real candidates
+  from other races in the pool) rather than drawing from a shared index, since a candidate's
+  relevance is scoped to one specific race, not the nation.
+- **Wrong-guess handling**: flashes the input red (400ms, haptic buzz via the existing
+  `vibrateWrongAnswer()`) and clears, with nothing recorded — no mistake counter, no point penalty,
+  a deliberate simplicity choice the user made explicitly during design.
+- **Question completion**: auto-advances to a "Next" button once every target is found; a
+  "Give Up" button is available from the start of the question, revealing every remaining slot
+  (muted, undistinguished from a found slot's styling except for the missing check icon) and also
+  surfacing "Next" — already-found slots keep their earned credit either way.
+- **A real test-infrastructure gap, caught and fixed**: this project's first-ever direct unit test
+  of `engine.ts` (`engine.test.ts`, testing the new format-filtering behavior) failed to even
+  import — `engine.ts` transitively imports `geography-data.ts` → `supabase.ts`, and that module
+  throws at IMPORT time (not call time) if `NEXT_PUBLIC_SUPABASE_URL`/`NEXT_PUBLIC_SUPABASE_ANON_KEY`
+  aren't set, since Vitest doesn't auto-load `.env.local` the way Next.js's own tooling does. Fixed
+  with dummy values in `vitest.config.mts`'s `test.env` — safe because no quiz test, this one
+  included, ever makes a real Supabase call (`buildCategorySession` is pure over an in-memory pool
+  object).
+- **Verified live**, not just via unit tests: a real-browser Playwright run confirmed the format
+  picker renders correctly per category (3 checkboxes for Geography, 2 for Officeholders/Midterms/
+  Sports, none for Mashups), a session built with only Search & Select enabled produces 10
+  search-select boards in a row, a wrong-but-real guess flashes the input red, a correct guess
+  fills a numbered slot and updates the "Found X / Y" count, format selections persist across a
+  page reload, and the results screen shows a 0-100 point score with "Found X/Y: ..." / "Missed:
+  ..." rows for any question that wasn't fully completed — zero console/page errors throughout.
