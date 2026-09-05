@@ -76,7 +76,26 @@ describe("buildTeamEntries", () => {
         lastSyncedAt: null,
       },
     ];
-    expect(buildTeamEntries(teams)).toEqual([{ id: "t1", label: "Cowboys" }]);
+    expect(buildTeamEntries(teams)).toEqual([
+      { id: "t1", label: "Cowboys", photoUrl: null, league: "NFL" },
+    ]);
+  });
+
+  it("carries the team's synced logo as photoUrl", () => {
+    const teams: SportsTeam[] = [
+      {
+        id: "t1",
+        name: "Cowboys",
+        league: "NFL",
+        cityName: "Arlington",
+        stateId: "TX",
+        wikipediaTitle: null,
+        logoUrl: "https://example.com/cowboys.png",
+        bioSummary: null,
+        lastSyncedAt: null,
+      },
+    ];
+    expect(buildTeamEntries(teams)[0].photoUrl).toBe("https://example.com/cowboys.png");
   });
 });
 

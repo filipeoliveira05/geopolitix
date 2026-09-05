@@ -307,7 +307,7 @@ export function buildStateTeamRecallQuestions(
       prompt: `Name every pro sports team based in ${stateName}.`,
       imageUrl: flagByState.get(stateId) as string,
       entityType: "team",
-      targets: sorted.map((t) => ({ id: t.id, label: t.name })),
+      targets: sorted.map((t) => ({ id: t.id, label: t.name, photoUrl: t.logoUrl, league: t.league })),
     };
   });
 }

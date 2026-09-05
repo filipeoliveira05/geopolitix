@@ -10,13 +10,18 @@ export type SearchSelectEntry = {
   // name (SearchSelectQuestionView), same PartyBadge component every other party display in this
   // app already uses. Undefined for city/senator/team entries, which have no party.
   party?: string | null;
-  // Only populated for entityType "candidate" — the candidate's own resolved photo (same
-  // legislator > governor > standalone-candidate priority every other candidate photo in this app
-  // already uses), shown as a small avatar in the search dropdown and a larger one on a found/
-  // revealed slot. Genuinely null for a real candidate with no synced photo (falls back to a
-  // placeholder icon in the view) — undefined for every other entityType, which has no concept of
-  // a photo at all.
+  // Populated for entityType "candidate" (the candidate's own resolved photo — same legislator >
+  // governor > standalone-candidate priority every other candidate photo in this app already
+  // uses) and entityType "team" (the team's synced logo). Shown as a small avatar in the search
+  // dropdown and a larger one on a found/revealed slot. Genuinely null for a real candidate/team
+  // with no synced photo/logo (falls back to a placeholder icon in the view) — undefined for
+  // entityType "city"/"senator", which have no concept of a photo at all.
   photoUrl?: string | null;
+  // Only populated for entityType "team" — the team's league (e.g. "NFL"), shown as small muted
+  // text next to the team name in the search dropdown and on a found/revealed slot, same
+  // "(League)" convention MultipleChoiceQuestionView's own revealTeams rows already use. Undefined
+  // for every other entityType, which has no concept of a league.
+  league?: string;
 };
 
 export type MultipleChoiceQuestion = {

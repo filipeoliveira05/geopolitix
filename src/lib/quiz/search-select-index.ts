@@ -36,7 +36,7 @@ export function buildSenatorEntries(
 }
 
 export function buildTeamEntries(teams: SportsTeam[]): SearchSelectEntry[] {
-  return teams.map((t) => ({ id: t.id, label: t.name }));
+  return teams.map((t) => ({ id: t.id, label: t.name, photoUrl: t.logoUrl, league: t.league }));
 }
 
 /**

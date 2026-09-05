@@ -234,4 +234,18 @@ describe("buildStateTeamRecallQuestions", () => {
     expect(q.entityType).toBe("team");
     expect(q.prompt).toBe("Name every pro sports team based in ALName.");
   });
+
+  it("carries each target's synced logo as photoUrl", () => {
+    const teams = [
+      { ...makeTeams(1)[0], id: "T1", stateId: "AL", logoUrl: "https://example.com/logo.png" },
+    ];
+    const [q] = buildStateTeamRecallQuestions(teams, makeStateFacts(["AL"]), 1);
+    expect(q.targets[0].photoUrl).toBe("https://example.com/logo.png");
+  });
+
+  it("carries each target's league", () => {
+    const teams = [{ ...makeTeams(1)[0], id: "T1", stateId: "AL", league: "NFL" }];
+    const [q] = buildStateTeamRecallQuestions(teams, makeStateFacts(["AL"]), 1);
+    expect(q.targets[0].league).toBe("NFL");
+  });
 });

@@ -13,22 +13,37 @@ const WRONG_FLASH_MS = 400;
 // revealed slot (the actual answer being shown off). Falls back to a plain silhouette icon for a
 // real candidate with no synced photo — same "fixed-size slot either way" reasoning
 // QuizResultsScreen's own thumbnail-or-icon rows already use, so rows don't jump in size
-// depending on which candidates happen to have a photo on file.
-function CandidateAvatar({
+// depending on which candidates happen to have a photo on file. A team logo isn't a face, so it
+// gets a square `object-contain` box (same convention as MultipleChoiceQuestionView's revealTeams
+// rows) instead of the circular `object-cover` crop used for a candidate photo — cropping a logo
+// to a circle would cut off its edges.
+function EntryAvatar({
   photoUrl,
+  entityType,
   size,
 }: {
   photoUrl: string | null;
+  entityType: SearchSelectQuestion["entityType"];
   size: "sm" | "lg";
 }) {
   const dimensionClassName = size === "sm" ? "h-8 w-8" : "h-12 w-12";
+  const isLogo = entityType === "team";
   if (photoUrl) {
     return (
-      <div className={`relative ${dimensionClassName} shrink-0 overflow-hidden rounded-full`}>
-        <Image src={photoUrl} alt="" fill unoptimized className="object-cover" />
+      <div
+        className={`relative ${dimensionClassName} shrink-0 ${isLogo ? "" : "overflow-hidden rounded-full"}`}
+      >
+        <Image
+          src={photoUrl}
+          alt=""
+          fill
+          unoptimized
+          className={isLogo ? "object-contain" : "object-cover"}
+        />
       </div>
     );
   }
+  if (isLogo) return <div className={`${dimensionClassName} shrink-0`} />;
   return (
     <span
       className={`flex ${dimensionClassName} shrink-0 items-center justify-center rounded-full bg-paper text-muted`}
@@ -131,7 +146,11 @@ export function SearchSelectQuestionView({
                     className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-ink hover:bg-paper"
                   >
                     {entry.photoUrl !== undefined && (
-                      <CandidateAvatar photoUrl={entry.photoUrl} size="sm" />
+                      <EntryAvatar
+                        photoUrl={entry.photoUrl}
+                        entityType={question.entityType}
+                        size="sm"
+                      />
                     )}
                     <span>
                       {entry.label}
@@ -140,6 +159,9 @@ export function SearchSelectQuestionView({
                           {" "}
                           <PartyBadge party={entry.party} />
                         </>
+                      )}
+                      {entry.league !== undefined && (
+                        <span className="text-muted"> ({entry.league})</span>
                       )}
                     </span>
                   </button>
@@ -165,7 +187,13 @@ export function SearchSelectQuestionView({
               }`}
             >
               <span className="font-mono text-xs text-muted">{i + 1}.</span>
-              {isRevealed && hasPhoto && <CandidateAvatar photoUrl={target.photoUrl as string | null} size="lg" />}
+              {isRevealed && hasPhoto && (
+                <EntryAvatar
+                  photoUrl={target.photoUrl as string | null}
+                  entityType={question.entityType}
+                  size="lg"
+                />
+              )}
               {isRevealed ? (
                 <>
                   <span>
@@ -175,6 +203,9 @@ export function SearchSelectQuestionView({
                         {" "}
                         <PartyBadge party={target.party} />
                       </>
+                    )}
+                    {target.league !== undefined && (
+                      <span className="text-muted"> ({target.league})</span>
                     )}
                   </span>
                   {isFound && <CheckIcon className="ml-auto h-4 w-4 text-emerald-600" />}
