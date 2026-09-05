@@ -33,6 +33,8 @@ import {
   buildCityPopulationQuestions,
   buildCityRecallQuestions,
   buildStateSilhouetteQuestions,
+  buildStateNonBorderQuestions,
+  buildStateBorderRecallQuestions,
 } from "./geography-questions";
 import {
   buildGovernorQuestions,
@@ -72,6 +74,7 @@ import {
   buildCityEntries,
   buildSenatorEntries,
   buildTeamEntries,
+  buildStateEntries,
   createEntitySearch,
 } from "./search-select-index";
 import type { QuizCategoryId } from "./category-config";
@@ -81,6 +84,7 @@ import type {
   MatchingPair,
   QuestionFormat,
   SearchSelectEntry,
+  SearchSelectQuestion,
 } from "./types";
 
 export const SESSION_LENGTH = 10;
@@ -284,6 +288,8 @@ export function buildCategorySession(
         ["multiple-choice", (n) => buildCityPopulationQuestions(cities, n)],
         ["search-select", (n) => buildCityRecallQuestions(cities, facts, n)],
         ["multiple-choice", (n) => buildStateSilhouetteQuestions(facts, n)],
+        ["multiple-choice", (n) => buildStateNonBorderQuestions(facts, n)],
+        ["search-select", (n) => buildStateBorderRecallQuestions(facts, n)],
       ];
       const active = generators.filter(([format]) => enabledFormats.includes(format));
       const counts = randomWeightedSplit(SESSION_LENGTH, active.length);
@@ -351,25 +357,34 @@ export function buildCategorySession(
 }
 
 /**
- * The shared search function for a category's search-select questions with entityType "city",
- * "senator", or "team" — built once per pool (one Fuse instance internally, reused across every
- * keystroke by the caller). Returns null for a category with no shared-index entityType: Midterms
- * uses each question's own `searchPool` field instead (a candidate's relevance is scoped to one
- * race, not a nationwide index), and Mashups has no search-select questions at all.
+ * The shared search functions for a category's search-select questions, keyed by entityType —
+ * built once per pool (one Fuse instance internally per entry, reused across every keystroke by
+ * the caller). Geography needs two simultaneously (its "city" and "state" question types can both
+ * appear in the same session), unlike Officeholders/Sports, which each have only one. A category
+ * with no shared-index entityType at all returns an empty map: Midterms uses each question's own
+ * `searchPool` field instead (a candidate's relevance is scoped to one race, not a nationwide
+ * index), and Mashups has no search-select questions at all.
  */
-export function buildSharedSearchFn(
+export function buildSharedSearchFns(
   category: QuizCategoryId,
   pool: unknown,
-): ((query: string) => SearchSelectEntry[]) | null {
+): Partial<Record<SearchSelectQuestion["entityType"], (query: string) => SearchSelectEntry[]>> {
   switch (category) {
-    case "geography":
-      return createEntitySearch(buildCityEntries((pool as GeographyPool).cities));
+    case "geography": {
+      const { cities, states } = pool as GeographyPool;
+      return {
+        city: createEntitySearch(buildCityEntries(cities)),
+        state: createEntitySearch(buildStateEntries(states)),
+      };
+    }
     case "officeholders":
-      return createEntitySearch(buildSenatorEntries((pool as OfficeholdersPool).senatorsByState));
+      return {
+        senator: createEntitySearch(buildSenatorEntries((pool as OfficeholdersPool).senatorsByState)),
+      };
     case "sports":
-      return createEntitySearch(buildTeamEntries((pool as SportsPool).teams));
+      return { team: createEntitySearch(buildTeamEntries((pool as SportsPool).teams)) };
     default:
-      return null;
+      return {};
   }
 }
 

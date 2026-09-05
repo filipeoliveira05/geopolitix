@@ -2,7 +2,12 @@
 
 import { useEffect } from "react";
 import { useQuizSession } from "@/lib/quiz/useQuizSession";
-import type { QuizQuestion, AnsweredQuestion, SearchSelectEntry } from "@/lib/quiz/types";
+import type {
+  QuizQuestion,
+  AnsweredQuestion,
+  SearchSelectEntry,
+  SearchSelectQuestion,
+} from "@/lib/quiz/types";
 import { createEntitySearch } from "@/lib/quiz/search-select-index";
 import { MultipleChoiceQuestionView } from "./MultipleChoiceQuestionView";
 import { MapClickQuestionView } from "./MapClickQuestionView";
@@ -12,11 +17,13 @@ import { QuizProgressHeader } from "./QuizProgressHeader";
 export function QuestionSession({
   questions,
   onComplete,
-  sharedSearch,
+  sharedSearchFns,
 }: {
   questions: QuizQuestion[];
   onComplete: (answers: AnsweredQuestion[]) => void;
-  sharedSearch: ((query: string) => SearchSelectEntry[]) | null;
+  sharedSearchFns: Partial<
+    Record<SearchSelectQuestion["entityType"], (query: string) => SearchSelectEntry[]>
+  >;
 }) {
   const session = useQuizSession(questions);
 
@@ -63,7 +70,7 @@ export function QuestionSession({
             search={
               question.entityType === "candidate"
                 ? createEntitySearch(question.searchPool ?? [])
-                : (sharedSearch ?? (() => []))
+                : (sharedSearchFns[question.entityType] ?? (() => []))
             }
           />
         )}

@@ -3,6 +3,11 @@
 import type { StateFact, CityFact } from "@/lib/geography-data";
 import { formatPopulation } from "@/lib/format";
 import { getStateSilhouettePath } from "@/lib/state-silhouette-geo";
+import { getStateNeighborAbbrs } from "@/lib/state-borders";
+import {
+  getBorderRegionMap,
+  getNeighborsClockwiseFromNorth,
+} from "@/lib/state-border-region-geo";
 import { pickRandom } from "./random";
 import { buildMultipleChoiceQuestion } from "./build-multiple-choice";
 import type { MultipleChoiceQuestion, MapClickQuestion, SearchSelectQuestion } from "./types";
@@ -56,6 +61,146 @@ export function buildStateSilhouetteQuestions(
       getSilhouettePath: (f) => getStateSilhouettePath(f.stateId),
     }),
   );
+}
+
+/**
+ * "Which of these states does NOT border X?" MC — shows the subject's silhouette (borders read
+ * more naturally off a shape than a flag). Bypasses buildMultipleChoiceQuestion entirely (same
+ * reasoning as buildIsCapitalQuestions/buildStatePopulationQuestions): the "correct" option here
+ * isn't the subject's own attribute, it's a specifically chosen NON-neighbor, and the 3 "wrong"
+ * options are specifically chosen REAL neighbors, not a generic distractor pool. Only states with
+ * at least 3 real neighbors are eligible subjects (need 3 real borders to use as traps) — this
+ * naturally excludes Alaska, Hawaii, Maine, Florida, Washington, South Carolina, and Rhode Island.
+ * D.C. is excluded explicitly and completely (never a subject, and never an option for another
+ * state's question either) — same blanket treatment as buildStateSilhouetteQuestions, reversed
+ * from an earlier version of this generator that let D.C. through as a legitimate option since it
+ * only has 2 real neighbors; the user asked for it gone from both border question types entirely.
+ *
+ * The single correct (non-bordering) option is deliberately a "near miss" — a neighbor-of-a-
+ * neighbor, i.e. geographically close but not directly touching — rather than a fully random
+ * state, which risks being trivially easy (e.g. "which doesn't border Montana: North Dakota,
+ * South Dakota, Wyoming, Florida?" needs no border knowledge at all to answer). Falls back to a
+ * fully random non-neighbor only on the rare subject with no second-degree candidates at all.
+ */
+export function buildStateNonBorderQuestions(
+  allFacts: StateFact[],
+  count: number,
+): MultipleChoiceQuestion[] {
+  // D.C. is excluded entirely from this question type — never a subject, never an option (trap
+  // or correct answer) for another state's question either. Filtering it out of the row pool up
+  // front is enough on its own: every candidate set below (eligible subjects, traps, near-miss/
+  // fallback correct-answer pools) is built by filtering/mapping over `facts`, and a state that's
+  // never a row in `facts` can never end up chosen from any of them.
+  const facts = allFacts.filter((f) => f.stateId !== "DC");
+  const nameByAbbr = new Map(facts.map((f) => [f.stateId, f.stateName]));
+  const realNeighborAbbrs = (abbr: string) =>
+    getStateNeighborAbbrs(abbr).filter((a) => a !== "DC");
+  const eligible = facts.filter((f) => realNeighborAbbrs(f.stateId).length >= 3);
+  const subjects = pickRandom(eligible, count);
+
+  return subjects.map((subject) => {
+    const neighborAbbrs = realNeighborAbbrs(subject.stateId);
+    const neighborSet = new Set(neighborAbbrs);
+
+    const secondDegree = new Set<string>();
+    for (const n of neighborAbbrs) {
+      for (const nn of realNeighborAbbrs(n)) {
+        if (nn !== subject.stateId && !neighborSet.has(nn) && nameByAbbr.has(nn)) {
+          secondDegree.add(nn);
+        }
+      }
+    }
+
+    const nearMissPool = facts.filter((f) => secondDegree.has(f.stateId));
+    const fallbackPool = facts.filter(
+      (f) => f.stateId !== subject.stateId && !neighborSet.has(f.stateId),
+    );
+    const correct = pickRandom(nearMissPool.length > 0 ? nearMissPool : fallbackPool, 1)[0];
+    const traps = pickRandom(
+      facts.filter((f) => neighborSet.has(f.stateId)),
+      3,
+    );
+    const options = pickRandom([correct, ...traps], 4);
+
+    return {
+      format: "multiple-choice",
+      prompt: `Which of these states does NOT border ${subject.stateName}?`,
+      imageUrl: null,
+      silhouettePath: getStateSilhouettePath(subject.stateId) ?? undefined,
+      imageCaption: null,
+      imageCaptionParty: undefined,
+      revealImageUrl: null,
+      revealCaption: null,
+      optionsAreParties: false,
+      options: options.map((f) => f.stateName),
+      correctIndex: options.findIndex((f) => f.stateId === correct.stateId),
+    };
+  });
+}
+
+/**
+ * "Name all the states that border X." — search-and-select over a nationwide state-name index
+ * (entityType "state", a new shared search pool alongside the existing city/senator/team ones —
+ * see search-select-index.ts's buildStateEntries). Shows the subject's silhouette, not its flag,
+ * same reasoning as buildStateNonBorderQuestions above. Only Alaska/Hawaii are excluded for
+ * having 0 real neighbors (an empty, nothing-to-search-for board) — every other state, including
+ * 1-neighbor Maine, is a genuine question. D.C. is excluded entirely and explicitly, both as a
+ * subject and as a target/map entry for Maryland or Virginia's own questions — same blanket
+ * treatment as buildStateNonBorderQuestions above, reversed from an earlier version that
+ * included it as a legitimate 2-state border; the user asked for it gone from both border
+ * question types.
+ *
+ * Targets are ordered clockwise-from-north (state-border-region-geo.ts), not alphabetically —
+ * alphabetical order leaks a hint as slots fill in (e.g. finding the 2nd and 4th of 4 targets
+ * narrows the remaining letter range for the 3rd). revealBorderMap precomputes the post-answer
+ * regional-map reveal (subject + every real neighbor fit into one shared coordinate space) —
+ * found/missed coloring isn't baked in here, the view derives that from the answered result.
+ */
+export function buildStateBorderRecallQuestions(
+  allFacts: StateFact[],
+  count: number,
+): SearchSelectQuestion[] {
+  const facts = allFacts.filter((f) => f.stateId !== "DC");
+  const nameByAbbr = new Map(facts.map((f) => [f.stateId, f.stateName]));
+  const eligible = facts.filter(
+    (f) => getStateNeighborAbbrs(f.stateId).filter((a) => a !== "DC").length >= 1,
+  );
+  const subjects = pickRandom(eligible, count);
+
+  return subjects.map((subject) => {
+    const targets = getNeighborsClockwiseFromNorth(subject.stateId)
+      .map((abbr) => ({ id: abbr, label: nameByAbbr.get(abbr) }))
+      .filter((t): t is { id: string; label: string } => t.label !== undefined);
+
+    const regionMap = getBorderRegionMap(subject.stateId);
+
+    return {
+      format: "search-select",
+      prompt: `Name all the states that border ${subject.stateName}.`,
+      silhouettePath: getStateSilhouettePath(subject.stateId) ?? undefined,
+      entityType: "state",
+      targets,
+      revealBorderMap: regionMap
+        ? {
+            subject: {
+              label: regionMap.subject.name,
+              path: regionMap.subject.path,
+              labelX: regionMap.subject.labelX,
+              labelY: regionMap.subject.labelY,
+            },
+            neighbors: regionMap.neighbors
+              .filter((n) => n.abbr !== "DC")
+              .map((n) => ({
+                id: n.abbr,
+                label: n.name,
+                path: n.path,
+                labelX: n.labelX,
+                labelY: n.labelY,
+              })),
+          }
+        : undefined,
+    };
+  });
 }
 
 /**

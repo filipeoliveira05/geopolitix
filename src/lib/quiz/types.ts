@@ -95,11 +95,18 @@ export type MapClickQuestion = {
 export type SearchSelectQuestion = {
   format: "search-select";
   prompt: string;
-  imageUrl: string; // the subject state's flag, always shown for this format — no caption below
-  // it naming the state, since the prompt text already names it (e.g. "Name the top cities in
+  // The subject state's flag, always shown for this format when present — no caption below it
+  // naming the state, since the prompt text already names it (e.g. "Name the top cities in
   // Vermont.") — unlike MultipleChoiceQuestion's imageCaption, which exists for question types
-  // whose prompt never names the subject.
-  entityType: "city" | "senator" | "candidate" | "team";
+  // whose prompt never names the subject. Mutually exclusive with silhouettePath below — a
+  // question sets exactly one of the two. Optional (not just nullable) because a silhouette
+  // question sets silhouettePath instead and has no flag URL to speak of at all.
+  imageUrl?: string;
+  // See MultipleChoiceQuestion.silhouettePath — same inline theme-aware vector shape, used here
+  // for the border-recall question type (state borders read more naturally off a shape than a
+  // flag). Undefined for every entityType that shows a flag instead.
+  silhouettePath?: string;
+  entityType: "city" | "senator" | "candidate" | "team" | "state";
   targets: SearchSelectEntry[]; // correct answers, already in slot/display order
   // Only populated for entityType "candidate" — the searchable pool for the other three types is
   // a single shared nationwide index built once per category-pool-fetch
@@ -107,6 +114,17 @@ export type SearchSelectQuestion = {
   // race, so its search pool is computed per-question by the generator itself (its own targets
   // plus a handful of real candidates from nearby races) rather than drawn from a shared index.
   searchPool?: SearchSelectEntry[];
+  // Only populated for the border-recall question type — precomputed shape/position data
+  // (state-border-region-geo.ts) for a post-answer regional map reveal: the subject plus every
+  // real neighbor, all fit into ONE shared coordinate space so they land in their correct
+  // position relative to each other (unlike the single, independently-fit shape `silhouettePath`
+  // shows before answering). Geometry only — found/missed coloring isn't baked in here since that
+  // depends on the player's own answer, not anything precomputable at question-build time; the
+  // view cross-references each neighbor's `id` against the answered result's foundIds instead.
+  revealBorderMap?: {
+    subject: { label: string; path: string; labelX: number; labelY: number };
+    neighbors: { id: string; label: string; path: string; labelX: number; labelY: number }[];
+  };
 };
 
 export type QuizQuestion = MultipleChoiceQuestion | MapClickQuestion | SearchSelectQuestion;

@@ -1,5 +1,5 @@
 import Fuse from "fuse.js";
-import type { CityFact, SportsTeam } from "@/lib/geography-data";
+import type { CityFact, SportsTeam, StateFact } from "@/lib/geography-data";
 import type { TermWithLegislator } from "@/lib/legislators-data";
 import type { SearchSelectEntry } from "./types";
 
@@ -37,6 +37,11 @@ export function buildSenatorEntries(
 
 export function buildTeamEntries(teams: SportsTeam[]): SearchSelectEntry[] {
   return teams.map((t) => ({ id: t.id, label: t.name, photoUrl: t.logoUrl, league: t.league }));
+}
+
+/** Powers the "name all states that border {state}" search-select question. */
+export function buildStateEntries(states: StateFact[]): SearchSelectEntry[] {
+  return states.map((s) => ({ id: s.stateId, label: s.stateName }));
 }
 
 /**

@@ -12,8 +12,12 @@ import {
   buildCityPopulationQuestions,
   buildCityRecallQuestions,
   buildStateSilhouetteQuestions,
+  buildStateNonBorderQuestions,
+  buildStateBorderRecallQuestions,
 } from "./geography-questions";
 import type { StateFact, CityFact } from "@/lib/geography-data";
+import { getAllStates } from "@/lib/states";
+import { getStateNeighborAbbrs } from "@/lib/state-borders";
 
 function makeCities(n: number): CityFact[] {
   return Array.from({ length: n }, (_, i) => ({
@@ -716,5 +720,179 @@ describe("buildStateSilhouetteQuestions", () => {
     for (const q of questions) {
       expect(q.options).not.toContain("District of Columbia");
     }
+  });
+});
+
+// The full 51-entry real pool (50 states + D.C.), needed for the two border generators below —
+// real adjacency (Missouri borders Kansas, Utah does NOT border New Mexico, etc.) only exists
+// between real state abbreviations, and a subject's real neighbor has to actually be present in
+// `facts` for it to survive the nameByAbbr lookup inside each generator.
+function makeAllRealStateFacts(): StateFact[] {
+  return getAllStates().map((s) => ({
+    stateId: s.abbr,
+    stateName: s.name,
+    capitalName: `${s.name} Capital`,
+    flagUrl: `https://example.com/flag-${s.abbr}.png`,
+    population: 1000,
+  }));
+}
+
+describe("buildStateNonBorderQuestions", () => {
+  const facts = makeAllRealStateFacts();
+  // The exact number of states with >=3 real neighbors — passing this (rather than a guessed
+  // number) as `count` deterministically returns every eligible subject once, so tests below
+  // don't depend on random sampling happening to include the specific state being checked.
+  const eligibleNonBorderCount = facts.filter(
+    (f) => getStateNeighborAbbrs(f.stateId).length >= 3,
+  ).length;
+
+  it("builds the requested number of questions", () => {
+    const questions = buildStateNonBorderQuestions(facts, 5);
+    expect(questions).toHaveLength(5);
+  });
+
+  it("phrases the prompt naming the subject state, with 4 options", () => {
+    const [q] = buildStateNonBorderQuestions(facts, 1);
+    expect(q.prompt).toMatch(/^Which of these states does NOT border .+\?$/);
+    expect(q.options).toHaveLength(4);
+  });
+
+  it("shows the subject's silhouette, not a flag", () => {
+    const [q] = buildStateNonBorderQuestions(facts, 1);
+    expect(q.silhouettePath).toMatch(/^M/);
+    expect(q.imageUrl).toBeNull();
+  });
+
+  it("never asks about a state with fewer than 3 real neighbors (e.g. Maine, D.C.)", () => {
+    const questions = buildStateNonBorderQuestions(facts, eligibleNonBorderCount);
+    const subjects = questions.map((q) =>
+      q.prompt.replace("Which of these states does NOT border ", "").replace("?", ""),
+    );
+    expect(subjects).not.toContain("Maine");
+    expect(subjects).not.toContain("District of Columbia");
+  });
+
+  it("the correct answer never actually borders the subject, and the 3 traps always do", () => {
+    const questions = buildStateNonBorderQuestions(facts, eligibleNonBorderCount);
+    for (const q of questions) {
+      const subjectName = q.prompt
+        .replace("Which of these states does NOT border ", "")
+        .replace("?", "");
+      const subject = facts.find((f) => f.stateName === subjectName)!;
+      const realNeighborAbbrs = new Set(getStateNeighborAbbrs(subject.stateId));
+      const realNeighborNames = new Set(
+        facts.filter((f) => realNeighborAbbrs.has(f.stateId)).map((f) => f.stateName),
+      );
+      q.options.forEach((option, i) => {
+        if (i === q.correctIndex) {
+          expect(realNeighborNames.has(option)).toBe(false);
+        } else {
+          expect(realNeighborNames.has(option)).toBe(true);
+        }
+      });
+    }
+  });
+
+  it("never lets Utah's Four-Corners point-only touch with New Mexico count as a real border", () => {
+    // Regression guard for the classic "shares a single point, not an edge" case — Utah and New
+    // Mexico only meet at the Four Corners point, so New Mexico must never appear as a "trap"
+    // (real-border) option for a Utah question. Uses the full eligible count (not a random
+    // sample), so this deterministically includes Utah rather than depending on it being picked.
+    const questions = buildStateNonBorderQuestions(facts, eligibleNonBorderCount);
+    const utahQuestion = questions.find((q) => q.prompt.includes("Utah"))!;
+    expect(utahQuestion).toBeDefined();
+    const traps = utahQuestion.options.filter((_, i) => i !== utahQuestion.correctIndex);
+    expect(traps).not.toContain("New Mexico");
+  });
+
+  it("never lets D.C. appear as any option (trap or correct answer) for another state's question", () => {
+    // Maryland/Virginia both really do border D.C., so it's the case most likely to leak through
+    // as a trap option if the exclusion were broken.
+    const questions = buildStateNonBorderQuestions(facts, eligibleNonBorderCount);
+    for (const q of questions) {
+      expect(q.options).not.toContain("District of Columbia");
+    }
+  });
+});
+
+describe("buildStateBorderRecallQuestions", () => {
+  const facts = makeAllRealStateFacts();
+
+  it("builds the requested number of questions", () => {
+    const questions = buildStateBorderRecallQuestions(facts, 5);
+    expect(questions).toHaveLength(5);
+  });
+
+  // 48 is the exact number of eligible subjects (51 states+D.C., minus Alaska/Hawaii/D.C. itself)
+  // — passing this as `count` deterministically returns every eligible subject once.
+  const eligibleBorderRecallCount = 48;
+
+  it("excludes Alaska and Hawaii (zero real land neighbors)", () => {
+    const questions = buildStateBorderRecallQuestions(facts, eligibleBorderRecallCount);
+    const subjects = questions.map((q) =>
+      q.prompt.replace("Name all the states that border ", "").replace(".", ""),
+    );
+    expect(subjects).not.toContain("Alaska");
+    expect(subjects).not.toContain("Hawaii");
+  });
+
+  it("excludes D.C. entirely — never a subject — while still including Maine", () => {
+    const questions = buildStateBorderRecallQuestions(facts, eligibleBorderRecallCount);
+    const subjects = questions.map((q) =>
+      q.prompt.replace("Name all the states that border ", "").replace(".", ""),
+    );
+    expect(subjects).not.toContain("District of Columbia");
+    expect(subjects).toContain("Maine");
+  });
+
+  it("never targets D.C. as a neighbor either (e.g. for Maryland or Virginia)", () => {
+    const questions = buildStateBorderRecallQuestions(facts, eligibleBorderRecallCount);
+    const mdQuestion = questions.find((q) => q.prompt.includes("Maryland"))!;
+    const vaQuestion = questions.find((q) => q.prompt.includes("Virginia"))!;
+    expect(mdQuestion).toBeDefined();
+    expect(vaQuestion).toBeDefined();
+    expect(mdQuestion.targets.map((t) => t.label)).not.toContain("District of Columbia");
+    expect(vaQuestion.targets.map((t) => t.label)).not.toContain("District of Columbia");
+    expect(mdQuestion.revealBorderMap!.neighbors.map((n) => n.label)).not.toContain(
+      "District of Columbia",
+    );
+  });
+
+  it("orders targets clockwise from north, not alphabetically (Vermont: NH east, MA south, NY west)", () => {
+    const questions = buildStateBorderRecallQuestions(facts, eligibleBorderRecallCount);
+    const vermontQuestion = questions.find((q) => q.prompt.includes("Vermont"))!;
+    expect(vermontQuestion).toBeDefined();
+    expect(vermontQuestion.targets.map((t) => t.label)).toEqual([
+      "New Hampshire",
+      "Massachusetts",
+      "New York",
+    ]);
+  });
+
+  it("precomputes a revealBorderMap with the subject plus every real neighbor's shape", () => {
+    const questions = buildStateBorderRecallQuestions(facts, eligibleBorderRecallCount);
+    const vermontQuestion = questions.find((q) => q.prompt.includes("Vermont"))!;
+    const map = vermontQuestion.revealBorderMap!;
+    expect(map).toBeDefined();
+    expect(map.subject.label).toBe("Vermont");
+    expect(map.subject.path).toMatch(/^M/);
+    expect(map.neighbors.map((n) => n.label).sort()).toEqual([
+      "Massachusetts",
+      "New Hampshire",
+      "New York",
+    ]);
+    for (const n of map.neighbors) {
+      expect(n.path).toMatch(/^M/);
+      expect(typeof n.labelX).toBe("number");
+      expect(typeof n.labelY).toBe("number");
+    }
+  });
+
+  it("sets format to search-select, entityType to state, and shows a silhouette not a flag", () => {
+    const [q] = buildStateBorderRecallQuestions(facts, 1);
+    expect(q.format).toBe("search-select");
+    expect(q.entityType).toBe("state");
+    expect(q.silhouettePath).toMatch(/^M/);
+    expect(q.imageUrl).toBeUndefined();
   });
 });

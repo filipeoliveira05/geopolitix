@@ -6,7 +6,7 @@ import type { QuizCategoryMeta } from "@/lib/quiz/category-config";
 import {
   fetchCategoryPool,
   buildCategorySession,
-  buildSharedSearchFn,
+  buildSharedSearchFns,
   getCategoryPoolSize,
   categoryHasMatchingMode,
   buildMatchingBoard,
@@ -44,8 +44,8 @@ export function QuizCategoryClient({ category }: { category: QuizCategoryMeta })
     queryFn: () => fetchCategoryPool(category.id),
   });
 
-  const sharedSearch = useMemo(
-    () => (pool !== undefined ? buildSharedSearchFn(category.id, pool) : null),
+  const sharedSearchFns = useMemo(
+    () => (pool !== undefined ? buildSharedSearchFns(category.id, pool) : {}),
     [category.id, pool],
   );
 
@@ -88,7 +88,7 @@ export function QuizCategoryClient({ category }: { category: QuizCategoryMeta })
       <QuestionSession
         questions={phase.questions}
         onComplete={finish}
-        sharedSearch={sharedSearch}
+        sharedSearchFns={sharedSearchFns}
       />
     );
   }

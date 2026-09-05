@@ -141,7 +141,13 @@ export function SearchSelectQuestionView({
   return (
     <div>
       <div className="relative mb-4 h-28 w-full">
-        <Image src={question.imageUrl} alt="" fill unoptimized className="object-contain" />
+        {question.silhouettePath ? (
+          <svg viewBox="0 0 100 100" className="h-full w-full text-ink" aria-hidden="true">
+            <path d={question.silhouettePath} fill="currentColor" fillRule="evenodd" />
+          </svg>
+        ) : (
+          <Image src={question.imageUrl as string} alt="" fill unoptimized className="object-contain" />
+        )}
       </div>
       <p className="mb-4 text-lg font-medium text-ink">{question.prompt}</p>
 
@@ -257,6 +263,53 @@ export function SearchSelectQuestionView({
           </button>
         )}
       </div>
+
+      {answered && question.revealBorderMap && (
+        <div className="relative mt-4 h-48 w-full animate-fade-in">
+          <svg viewBox="0 0 100 100" className="h-full w-full">
+            <path
+              d={question.revealBorderMap.subject.path}
+              fillRule="evenodd"
+              className="fill-seal"
+            />
+            {question.revealBorderMap.neighbors.map((n) => (
+              <path
+                key={n.id}
+                d={n.path}
+                fillRule="evenodd"
+                className={foundIds.includes(n.id) ? "fill-emerald-600" : "fill-muted"}
+              />
+            ))}
+            <text
+              x={question.revealBorderMap.subject.labelX}
+              y={question.revealBorderMap.subject.labelY}
+              fontSize="3.5"
+              textAnchor="middle"
+              stroke="var(--paper)"
+              strokeWidth="0.6"
+              paintOrder="stroke"
+              className="fill-ink font-medium"
+            >
+              {question.revealBorderMap.subject.label}
+            </text>
+            {question.revealBorderMap.neighbors.map((n) => (
+              <text
+                key={n.id}
+                x={n.labelX}
+                y={n.labelY}
+                fontSize="3.5"
+                textAnchor="middle"
+                stroke="var(--paper)"
+                strokeWidth="0.6"
+                paintOrder="stroke"
+                className="fill-ink"
+              >
+                {n.label}
+              </text>
+            ))}
+          </svg>
+        </div>
+      )}
     </div>
   );
 }
