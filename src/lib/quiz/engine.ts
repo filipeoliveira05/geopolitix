@@ -12,9 +12,14 @@ import {
   type CollegeProgram,
 } from "@/lib/geography-data";
 import { getAllCurrentGovernors, type GovernorFact } from "@/lib/governors-data";
-import { getAllCurrentLegislatorsWithPhoto, type LegislatorStateFact } from "@/lib/legislators-data";
+import {
+  getAllCurrentLegislatorsWithPhoto,
+  getSenatorsByStateMap,
+  type LegislatorStateFact,
+  type TermWithLegislator,
+} from "@/lib/legislators-data";
 import { getHouseSeatCountsByState, type HouseSeatCountFact } from "@/lib/districts-data";
-import { getSenateAndGovernorRaces } from "@/lib/races-data";
+import { getSenateAndGovernorRaces, type Race } from "@/lib/races-data";
 import {
   buildCapitalQuestions,
   buildFlagQuestions,
@@ -26,6 +31,7 @@ import {
   buildIsLargestCityQuestions,
   buildStatePopulationQuestions,
   buildCityPopulationQuestions,
+  buildCityRecallQuestions,
 } from "./geography-questions";
 import {
   buildGovernorQuestions,
@@ -34,11 +40,13 @@ import {
   buildOfficeholderNameQuestions,
   buildChamberQuestions,
   buildHouseSeatCountQuestions,
+  buildSenatorRecallQuestions,
 } from "./officeholders-questions";
 import {
   candidateFactsFromRaces,
   buildCandidatePartyQuestions,
   buildIncumbencyQuestions,
+  buildRaceCandidateRecallQuestions,
   type CandidateFact,
 } from "./midterms-questions";
 import {
@@ -51,6 +59,7 @@ import {
   buildSchoolFromNicknameQuestions,
   buildCollegeConferenceQuestions,
   buildProTeamCountQuestions,
+  buildStateTeamRecallQuestions,
   buildMatchingPairs,
   restrictToPowerConferences,
   COLLEGE_FOOTBALL_POWER_CONFERENCES,
@@ -58,8 +67,20 @@ import {
 } from "./sports-questions";
 import { countOddOneOutEligibleStates, buildOddOneOutQuestions } from "./mashups-questions";
 import { pickRandom, randomWeightedSplit } from "./random";
+import {
+  buildCityEntries,
+  buildSenatorEntries,
+  buildTeamEntries,
+  createEntitySearch,
+} from "./search-select-index";
 import type { QuizCategoryId } from "./category-config";
-import type { QuizQuestion, MultipleChoiceQuestion, MatchingPair } from "./types";
+import type {
+  QuizQuestion,
+  MultipleChoiceQuestion,
+  MatchingPair,
+  QuestionFormat,
+  SearchSelectEntry,
+} from "./types";
 
 export const SESSION_LENGTH = 10;
 export const MATCHING_PAIR_COUNT = 6;
@@ -70,12 +91,19 @@ type OfficeholdersPool = {
   governors: GovernorFact[];
   legislatorsWithPhoto: LegislatorStateFact[];
   houseSeatCounts: HouseSeatCountFact[];
+  states: StateFact[]; // flag/name lookup for buildSenatorRecallQuestions
+  senatorsByState: Map<string, TermWithLegislator[]>;
 };
-type MidtermsPool = { candidates: CandidateFact[] };
+type MidtermsPool = {
+  candidates: CandidateFact[];
+  races: Race[]; // buildRaceCandidateRecallQuestions needs per-race candidate lists
+  states: StateFact[]; // flag/name lookup
+};
 type SportsPool = {
   teams: SportsTeam[];
   collegeFootball: CollegeProgram[];
   collegeBasketball: CollegeProgram[];
+  states: StateFact[]; // flag/name lookup for buildStateTeamRecallQuestions
 };
 type MashupsPool = {
   geography: GeographyPool;
@@ -104,26 +132,39 @@ export async function fetchCategoryPool(category: QuizCategoryId): Promise<unkno
       return pool;
     }
     case "officeholders": {
-      const [governors, legislatorsWithPhoto, houseSeatCounts] = await Promise.all([
-        getAllCurrentGovernors(),
-        getAllCurrentLegislatorsWithPhoto(),
-        getHouseSeatCountsByState(),
-      ]);
-      const pool: OfficeholdersPool = { governors, legislatorsWithPhoto, houseSeatCounts };
+      const [governors, legislatorsWithPhoto, houseSeatCounts, states, senatorsByState] =
+        await Promise.all([
+          getAllCurrentGovernors(),
+          getAllCurrentLegislatorsWithPhoto(),
+          getHouseSeatCountsByState(),
+          getAllStateCapitalsAndFlags(),
+          getSenatorsByStateMap(null),
+        ]);
+      const pool: OfficeholdersPool = {
+        governors,
+        legislatorsWithPhoto,
+        houseSeatCounts,
+        states,
+        senatorsByState,
+      };
       return pool;
     }
     case "midterms": {
-      const races = await getSenateAndGovernorRaces();
-      const pool: MidtermsPool = { candidates: candidateFactsFromRaces(races) };
+      const [races, states] = await Promise.all([
+        getSenateAndGovernorRaces(),
+        getAllStateCapitalsAndFlags(),
+      ]);
+      const pool: MidtermsPool = { candidates: candidateFactsFromRaces(races), races, states };
       return pool;
     }
     case "sports": {
-      const [teams, collegeFootball, collegeBasketball] = await Promise.all([
+      const [teams, collegeFootball, collegeBasketball, states] = await Promise.all([
         getAllSportsTeams(),
         getAllCollegeFootball(),
         getAllCollegeBasketball(),
+        getAllStateCapitalsAndFlags(),
       ]);
-      const pool: SportsPool = { teams, collegeFootball, collegeBasketball };
+      const pool: SportsPool = { teams, collegeFootball, collegeBasketball, states };
       return pool;
     }
     case "mashups": {
@@ -133,26 +174,40 @@ export async function fetchCategoryPool(category: QuizCategoryId): Promise<unkno
         governors,
         legislatorsWithPhoto,
         houseSeatCounts,
+        officeholderStates,
+        senatorsByState,
         races,
+        midtermsStates,
         teams,
         collegeFootball,
         collegeBasketball,
+        sportsStates,
       ] = await Promise.all([
         getAllStateCapitalsAndFlags(),
         getAllCitiesWithState(),
         getAllCurrentGovernors(),
         getAllCurrentLegislatorsWithPhoto(),
         getHouseSeatCountsByState(),
+        getAllStateCapitalsAndFlags(),
+        getSenatorsByStateMap(null),
         getSenateAndGovernorRaces(),
+        getAllStateCapitalsAndFlags(),
         getAllSportsTeams(),
         getAllCollegeFootball(),
         getAllCollegeBasketball(),
+        getAllStateCapitalsAndFlags(),
       ]);
       const pool: MashupsPool = {
         geography: { states, cities },
-        officeholders: { governors, legislatorsWithPhoto, houseSeatCounts },
-        midterms: { candidates: candidateFactsFromRaces(races) },
-        sports: { teams, collegeFootball, collegeBasketball },
+        officeholders: {
+          governors,
+          legislatorsWithPhoto,
+          houseSeatCounts,
+          states: officeholderStates,
+          senatorsByState,
+        },
+        midterms: { candidates: candidateFactsFromRaces(races), races, states: midtermsStates },
+        sports: { teams, collegeFootball, collegeBasketball, states: sportsStates },
       };
       return pool;
     }
@@ -175,11 +230,19 @@ export function getCategoryPoolSize(category: QuizCategoryId, pool: unknown): nu
       return Math.min(states.length, cities.length);
     }
     case "officeholders": {
-      const { governors, legislatorsWithPhoto, houseSeatCounts } = pool as OfficeholdersPool;
-      return Math.min(governors.length, legislatorsWithPhoto.length, houseSeatCounts.length);
+      const { governors, legislatorsWithPhoto, houseSeatCounts, senatorsByState } =
+        pool as OfficeholdersPool;
+      return Math.min(
+        governors.length,
+        legislatorsWithPhoto.length,
+        houseSeatCounts.length,
+        senatorsByState.size,
+      );
     }
-    case "midterms":
-      return (pool as MidtermsPool).candidates.length;
+    case "midterms": {
+      const { candidates, races } = pool as MidtermsPool;
+      return Math.min(candidates.length, races.length);
+    }
     case "sports":
       return (pool as SportsPool).teams.length;
     case "mashups":
@@ -190,100 +253,90 @@ export function getCategoryPoolSize(category: QuizCategoryId, pool: unknown): nu
 }
 
 /**
- * Turns an already-fetched pool into one session's worth of questions. `pool` must be exactly
- * what `fetchCategoryPool` returned for this same category — each switch branch casts it back to
- * the concrete shape its generators expect.
- *
- * Each question type's count is randomized per session via `randomWeightedSplit` — a true
- * multinomial roll per session slot, so a type can land on 0 (skipped entirely this session) up
- * to the full session length, not a fixed even/thirds division and not a guaranteed-at-least-1
- * split either (the user explicitly rejected that: with a category's generator count close to or
- * equal to SESSION_LENGTH, a guaranteed-minimum split degenerates into an always-exactly-1-each
- * pattern with zero real variety). The combined result is shuffled (`pickRandom(qs, qs.length)`,
- * the same full-shuffle idiom `buildSpeedRoundPool` already used below) so type order is random
- * too.
+ * Turns an already-fetched pool into one session's worth of questions, respecting the player's
+ * enabled formats (from the start screen's format picker). Each category branch with more than
+ * one generator builds a `[format, generatorFn]` table, filters it down to `enabledFormats`
+ * BEFORE rolling `randomWeightedSplit` — a disabled format's generators are never in the roll at
+ * all, not just zeroed out afterward. `randomWeightedSplit` is a true multinomial roll per session
+ * slot (a generator can land on 0, up to the full session length) — see random.ts's own doc
+ * comment. The combined result is shuffled (`pickRandom(qs, qs.length)`) so type order is random
+ * too. `pool` must be exactly what `fetchCategoryPool` returned for this same category.
  */
-export function buildCategorySession(category: QuizCategoryId, pool: unknown): QuizQuestion[] {
+export function buildCategorySession(
+  category: QuizCategoryId,
+  pool: unknown,
+  enabledFormats: QuestionFormat[],
+): QuizQuestion[] {
   switch (category) {
     case "geography": {
       const { states: facts, cities } = pool as GeographyPool;
-      const [
-        capitalCount,
-        flagCount,
-        mapClickCount,
-        abbreviationCount,
-        cityStateCount,
-        largestCityCount,
-        isCapitalCount,
-        isLargestCityCount,
-        statePopulationCount,
-        cityPopulationCount,
-      ] = randomWeightedSplit(SESSION_LENGTH, 10);
-      const questions: QuizQuestion[] = [
-        ...buildCapitalQuestions(facts, capitalCount),
-        ...buildFlagQuestions(facts, flagCount),
-        ...buildMapClickQuestions(facts, mapClickCount),
-        ...buildAbbreviationQuestions(facts, abbreviationCount),
-        ...buildCityStateQuestions(cities, cityStateCount),
-        ...buildLargestCityQuestions(cities, facts, largestCityCount),
-        ...buildIsCapitalQuestions(cities, facts, isCapitalCount),
-        ...buildIsLargestCityQuestions(cities, facts, isLargestCityCount),
-        ...buildStatePopulationQuestions(facts, statePopulationCount),
-        ...buildCityPopulationQuestions(cities, cityPopulationCount),
+      const generators: [QuestionFormat, (n: number) => QuizQuestion[]][] = [
+        ["multiple-choice", (n) => buildCapitalQuestions(facts, n)],
+        ["multiple-choice", (n) => buildFlagQuestions(facts, n)],
+        ["map-click", (n) => buildMapClickQuestions(facts, n)],
+        ["multiple-choice", (n) => buildAbbreviationQuestions(facts, n)],
+        ["multiple-choice", (n) => buildCityStateQuestions(cities, n)],
+        ["multiple-choice", (n) => buildLargestCityQuestions(cities, facts, n)],
+        ["multiple-choice", (n) => buildIsCapitalQuestions(cities, facts, n)],
+        ["multiple-choice", (n) => buildIsLargestCityQuestions(cities, facts, n)],
+        ["multiple-choice", (n) => buildStatePopulationQuestions(facts, n)],
+        ["multiple-choice", (n) => buildCityPopulationQuestions(cities, n)],
+        ["search-select", (n) => buildCityRecallQuestions(cities, facts, n)],
       ];
+      const active = generators.filter(([format]) => enabledFormats.includes(format));
+      const counts = randomWeightedSplit(SESSION_LENGTH, active.length);
+      const questions = active.flatMap(([, build], i) => build(counts[i]));
       return pickRandom(questions, questions.length);
     }
     case "officeholders": {
-      const { governors, legislatorsWithPhoto, houseSeatCounts } = pool as OfficeholdersPool;
-      const [governorCount, photoCount, partyCount, nameCount, chamberCount, seatCountCount] =
-        randomWeightedSplit(SESSION_LENGTH, 6);
-      const questions: QuizQuestion[] = [
-        ...buildGovernorQuestions(governors, governorCount),
-        ...buildOfficeholderPhotoQuestions(legislatorsWithPhoto, governors, photoCount),
-        ...buildOfficeholderPartyQuestions(legislatorsWithPhoto, governors, partyCount),
-        ...buildOfficeholderNameQuestions(legislatorsWithPhoto, governors, nameCount),
-        ...buildChamberQuestions(legislatorsWithPhoto, chamberCount),
-        ...buildHouseSeatCountQuestions(houseSeatCounts, seatCountCount),
+      const { governors, legislatorsWithPhoto, houseSeatCounts, states, senatorsByState } =
+        pool as OfficeholdersPool;
+      const generators: [QuestionFormat, (n: number) => QuizQuestion[]][] = [
+        ["multiple-choice", (n) => buildGovernorQuestions(governors, n)],
+        ["multiple-choice", (n) => buildOfficeholderPhotoQuestions(legislatorsWithPhoto, governors, n)],
+        ["multiple-choice", (n) => buildOfficeholderPartyQuestions(legislatorsWithPhoto, governors, n)],
+        ["multiple-choice", (n) => buildOfficeholderNameQuestions(legislatorsWithPhoto, governors, n)],
+        ["multiple-choice", (n) => buildChamberQuestions(legislatorsWithPhoto, n)],
+        ["multiple-choice", (n) => buildHouseSeatCountQuestions(houseSeatCounts, n)],
+        ["search-select", (n) => buildSenatorRecallQuestions(senatorsByState, states, n)],
       ];
+      const active = generators.filter(([format]) => enabledFormats.includes(format));
+      const counts = randomWeightedSplit(SESSION_LENGTH, active.length);
+      const questions = active.flatMap(([, build], i) => build(counts[i]));
       return pickRandom(questions, questions.length);
     }
     case "midterms": {
-      const { candidates } = pool as MidtermsPool;
-      const [partyCount, incumbencyCount] = randomWeightedSplit(SESSION_LENGTH, 2);
-      const questions: QuizQuestion[] = [
-        ...buildCandidatePartyQuestions(candidates, partyCount),
-        ...buildIncumbencyQuestions(candidates, incumbencyCount),
+      const { candidates, races, states } = pool as MidtermsPool;
+      const generators: [QuestionFormat, (n: number) => QuizQuestion[]][] = [
+        ["multiple-choice", (n) => buildCandidatePartyQuestions(candidates, n)],
+        ["multiple-choice", (n) => buildIncumbencyQuestions(candidates, n)],
+        ["search-select", (n) => buildRaceCandidateRecallQuestions(races, states, n)],
       ];
+      const active = generators.filter(([format]) => enabledFormats.includes(format));
+      const counts = randomWeightedSplit(SESSION_LENGTH, active.length);
+      const questions = active.flatMap(([, build], i) => build(counts[i]));
       return pickRandom(questions, questions.length);
     }
     case "sports": {
-      const { teams, collegeFootball, collegeBasketball } = pool as SportsPool;
-      const [
-        logoCount,
-        teamStateCount,
-        leagueCount,
-        teamCityCount,
-        teamByCityCount,
-        teamByStateCount,
-        nicknameCount,
-        collegeConferenceCount,
-        proTeamCountCount,
-      ] = randomWeightedSplit(SESSION_LENGTH, 9);
-      const questions: QuizQuestion[] = [
-        ...buildTeamLogoQuestions(teams, collegeFootball, collegeBasketball, logoCount),
-        ...buildTeamStateQuestions(teams, teamStateCount),
-        ...buildLeagueQuestions(teams, leagueCount),
-        ...buildTeamCityQuestions(teams, teamCityCount),
-        ...buildTeamByCityQuestions(teams, teamByCityCount),
-        ...buildTeamByStateQuestions(teams, teamByStateCount),
-        ...buildSchoolFromNicknameQuestions(collegeFootball, collegeBasketball, nicknameCount),
-        ...buildCollegeConferenceQuestions(
-          collegeFootball,
-          collegeBasketball,
-          collegeConferenceCount,
-        ),
-        ...buildProTeamCountQuestions(teams, proTeamCountCount),
+      const { teams, collegeFootball, collegeBasketball, states } = pool as SportsPool;
+      const generators: [QuestionFormat, (n: number) => QuizQuestion[]][] = [
+        ["multiple-choice", (n) => buildTeamLogoQuestions(teams, collegeFootball, collegeBasketball, n)],
+        ["multiple-choice", (n) => buildTeamStateQuestions(teams, n)],
+        ["multiple-choice", (n) => buildLeagueQuestions(teams, n)],
+        ["multiple-choice", (n) => buildTeamCityQuestions(teams, n)],
+        ["multiple-choice", (n) => buildTeamByCityQuestions(teams, n)],
+        ["multiple-choice", (n) => buildTeamByStateQuestions(teams, n)],
+        ["multiple-choice", (n) => buildSchoolFromNicknameQuestions(collegeFootball, collegeBasketball, n)],
+        [
+          "multiple-choice",
+          (n) => buildCollegeConferenceQuestions(collegeFootball, collegeBasketball, n),
+        ],
+        ["multiple-choice", (n) => buildProTeamCountQuestions(teams, n)],
+        ["search-select", (n) => buildStateTeamRecallQuestions(teams, states, n)],
       ];
+      const active = generators.filter(([format]) => enabledFormats.includes(format));
+      const counts = randomWeightedSplit(SESSION_LENGTH, active.length);
+      const questions = active.flatMap(([, build], i) => build(counts[i]));
       return pickRandom(questions, questions.length);
     }
     case "mashups": {
@@ -292,6 +345,29 @@ export function buildCategorySession(category: QuizCategoryId, pool: unknown): Q
     }
     default:
       throw new Error(`No quiz engine registered for category "${category}"`);
+  }
+}
+
+/**
+ * The shared search function for a category's search-select questions with entityType "city",
+ * "senator", or "team" — built once per pool (one Fuse instance internally, reused across every
+ * keystroke by the caller). Returns null for a category with no shared-index entityType: Midterms
+ * uses each question's own `searchPool` field instead (a candidate's relevance is scoped to one
+ * race, not a nationwide index), and Mashups has no search-select questions at all.
+ */
+export function buildSharedSearchFn(
+  category: QuizCategoryId,
+  pool: unknown,
+): ((query: string) => SearchSelectEntry[]) | null {
+  switch (category) {
+    case "geography":
+      return createEntitySearch(buildCityEntries((pool as GeographyPool).cities));
+    case "officeholders":
+      return createEntitySearch(buildSenatorEntries((pool as OfficeholdersPool).senatorsByState));
+    case "sports":
+      return createEntitySearch(buildTeamEntries((pool as SportsPool).teams));
+    default:
+      return null;
   }
 }
 

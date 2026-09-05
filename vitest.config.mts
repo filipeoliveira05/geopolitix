@@ -18,5 +18,15 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["src/**/*.test.ts"],
+    // engine.test.ts (added alongside the search-select format) is the first test to import
+    // engine.ts, which transitively pulls in geography-data.ts -> supabase.ts — that module
+    // throws at IMPORT time (not call time) if these env vars are unset, since Vitest doesn't
+    // auto-load .env.local the way Next.js's own tooling does. Dummy values are enough: every
+    // quiz test (including engine.test.ts) only ever calls pure functions over in-memory data,
+    // never an actual Supabase query.
+    env: {
+      NEXT_PUBLIC_SUPABASE_URL: "https://example.invalid",
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: "test-anon-key",
+    },
   },
 });
