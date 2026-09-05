@@ -72,11 +72,11 @@ export function SearchSelectQuestionView({
   search: (query: string) => SearchSelectEntry[];
 }) {
   // Local play state (which targets have been found so far, the search box's current text, the
-  // transient wrong-guess flash) resets naturally because QuestionSession renders this component
-  // with a `key` derived from the session's question index — React remounts it fresh for every
-  // new question rather than reusing the same instance, so there's no separate reset-on-prop-
-  // change effect needed here (that pattern would call setState synchronously inside an effect,
-  // which is itself a real anti-pattern, not just a style nit).
+  // transient wrong-guess flash) resets naturally because QuestionSession wraps the active
+  // question view in a container keyed on the session's question index — React remounts this
+  // component fresh for every new question rather than reusing the same instance, so there's no
+  // separate reset-on-prop-change effect needed here (that pattern would call setState
+  // synchronously inside an effect, which is itself a real anti-pattern, not just a style nit).
   const [localFoundIds, setLocalFoundIds] = useState<string[]>([]);
   const [query, setQuery] = useState("");
   const [wrongFlash, setWrongFlash] = useState(false);

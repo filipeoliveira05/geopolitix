@@ -7,6 +7,7 @@ import { createEntitySearch } from "@/lib/quiz/search-select-index";
 import { MultipleChoiceQuestionView } from "./MultipleChoiceQuestionView";
 import { MapClickQuestionView } from "./MapClickQuestionView";
 import { SearchSelectQuestionView } from "./SearchSelectQuestionView";
+import { QuizProgressHeader } from "./QuizProgressHeader";
 
 export function QuestionSession({
   questions,
@@ -35,38 +36,42 @@ export function QuestionSession({
 
   return (
     <div className="mx-auto w-full max-w-lg">
-      <p className="mb-2 text-sm text-muted">
-        Question {session.index + 1} of {session.total} — Score: {session.score}
-      </p>
-      {question.format === "multiple-choice" ? (
-        <MultipleChoiceQuestionView
-          question={question}
-          chosenIndex={session.chosenIndex}
-          onAnswer={session.answerMultipleChoice}
-        />
-      ) : question.format === "map-click" ? (
-        <MapClickQuestionView
-          question={question}
-          clickedStateId={session.mapClickAnswer}
-          onAnswer={session.answerMapClick}
-        />
-      ) : (
-        <SearchSelectQuestionView
-          key={session.index}
-          question={question}
-          result={session.searchSelectResult}
-          onAnswer={session.answerSearchSelect}
-          search={
-            question.entityType === "candidate"
-              ? createEntitySearch(question.searchPool ?? [])
-              : (sharedSearch ?? (() => []))
-          }
-        />
-      )}
+      <QuizProgressHeader
+        total={session.total}
+        currentIndex={session.index}
+        answeredCount={session.answers.length}
+        score={session.score}
+      />
+      <div key={session.index} className="animate-fade-in">
+        {question.format === "multiple-choice" ? (
+          <MultipleChoiceQuestionView
+            question={question}
+            chosenIndex={session.chosenIndex}
+            onAnswer={session.answerMultipleChoice}
+          />
+        ) : question.format === "map-click" ? (
+          <MapClickQuestionView
+            question={question}
+            clickedStateId={session.mapClickAnswer}
+            onAnswer={session.answerMapClick}
+          />
+        ) : (
+          <SearchSelectQuestionView
+            question={question}
+            result={session.searchSelectResult}
+            onAnswer={session.answerSearchSelect}
+            search={
+              question.entityType === "candidate"
+                ? createEntitySearch(question.searchPool ?? [])
+                : (sharedSearch ?? (() => []))
+            }
+          />
+        )}
+      </div>
       {hasAnswered && (
         <button
           onClick={session.next}
-          className="mt-4 rounded bg-seal px-4 py-2 text-sm font-medium text-white"
+          className="mt-4 animate-pop-in rounded bg-seal px-4 py-2 text-sm font-medium text-white transition-transform hover:scale-105 active:scale-95"
         >
           Next
         </button>
