@@ -253,10 +253,15 @@ step genuinely errored. **Full workflow history/design reasoning in `docs/status
   `TeamProfile` component for all three tables' individual pages (logo, bio, home city link, own
   `last_synced_at`).
 - **`/quiz`, `/quiz/[category]`** — five categories (Geography, Officeholders, 2026 Midterms,
-  Sports, Mashups), each a mix of multiple-choice/map-click question types plus, for Sports and
-  Mashups, an extra matching-pairs/speed-round session type. **Full architecture, every category's
-  question-type batch writeup, and every real bug caught building it (a Strict-Mode map cleanup
-  bug, a speed-round timer/setState bug, a PostgREST ambiguous-FK bug) are in
+  Sports, Mashups), each a mix of multiple-choice/map-click/search-and-select question types plus,
+  for Sports and Mashups, an extra matching-pairs/speed-round session type. Search-and-select
+  (added 2026-09-05) is a type-and-pick-from-live-search format — Geography (cities),
+  Officeholders (senators), Midterms (candidates), Sports (teams) each have one — scored by
+  partial credit; every session is now scored 0-100 points (10/question) rather than a plain
+  right-count, and a start-screen format picker lets the player choose which formats appear.
+  **Full architecture, every category's question-type batch writeup, and every real bug caught
+  building it (a Strict-Mode map cleanup bug, a speed-round timer/setState bug, a PostgREST
+  ambiguous-FK bug, a search-index answer-spoiler bug, a population-reveal line-wrap bug) are in
   `docs/quiz-notes.md`** — read it before adding a new question type to any category.
 
 **Synced data**, via `npm run sync:<name>`: `states`, `legislators`/`terms`, `governors`,

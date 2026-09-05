@@ -523,7 +523,10 @@ plan.
   excluded per the existing scope decision), `buildStateTeamRecallQuestions` (Sports,
   `sports-questions.ts` — 0-team states excluded, same "a question with nothing to find isn't a
   real question" reasoning as every other eligibility-filtered generator here). Mashups was left
-  untouched (odd-one-out only) — no search-select item was requested there. Every new generator
+  untouched (odd-one-out only) — no search-select item was requested there, and its speed round
+  (see the Mashups entry above) also never pulls from any search-select generator — same
+  "unsuited to rapid-fire pace" reasoning that already excludes map-click there, just now also
+  true of a format needing a live-search input and multiple guesses. Every new generator
   resolves the subject state's flag/name from a `states: StateFact[]` array passed in alongside its
   own data (Officeholders/Midterms/Sports pools each needed this field added — Geography already
   had it), not from the global `getStateName()` lookup — caught live via a real test failure
@@ -590,3 +593,68 @@ plan.
   fills a numbered slot and updates the "Found X / Y" count, format selections persist across a
   page reload, and the results screen shows a 0-100 point score with "Found X/Y: ..." / "Missed:
   ..." rows for any question that wasn't fully completed — zero console/page errors throughout.
+
+**Post-merge playtesting fixes (2026-09-05, same day, after merging the above to `main`)** — the
+user manually played the shipped feature and reported small concrete issues one at a time over
+several follow-up messages; each was fixed, verified live via a real Playwright run against the
+dev server, and committed immediately (no explicit "commit" needed each time — a deliberate
+departure from this app's usual "wait to be told" commit cadence, judged appropriate here since
+each report was a complete, standalone, already-verified fix, not mid-feature iteration):
+- **Format picker changed from an inline row to a vertical list** (`FormatPicker.tsx`) — purely a
+  layout tweak (`flex flex-wrap` → `flex flex-col`), no behavior change.
+- **Removed the redundant state-name caption under the flag** on every search-select question
+  (`SearchSelectQuestion.imageCaption` removed from the type entirely, not just hidden in the
+  view — it was unused anywhere else) — the prompt already names the state in text (e.g. "Name the
+  top cities in Vermont."), so repeating it under the flag was pure redundancy.
+- **Real bug: the city search index spoiled its own answer.** `buildCityEntries`
+  (`search-select-index.ts`) originally labeled every suggestion `"CityName, StateId"` for
+  disambiguation (matching `buildCityPopulationQuestions`' convention elsewhere) — but for a "name
+  cities in {state}" question, showing the state right in the autocomplete suggestion told the
+  player the answer before they even clicked it. Fixed to plain city names; matching still works
+  correctly via each entry's own `id`, and two same-named cities from different states now just
+  look identical in the dropdown — an acceptable ambiguity a real player would face too, not a bug.
+- **Capital question now shows the state's flag below the prompt** (`buildCapitalQuestions`,
+  previously text-only) — needed a new opt-in `imageBelowPrompt` field on `MultipleChoiceQuestion`
+  (`MultipleChoiceQuestionView` renders the image after the prompt instead of before when set)
+  rather than changing image placement globally, since every OTHER image question type (flag-guess,
+  photo-guess) needs the image to show BEFORE the prompt — it IS the clue there, whereas the
+  capital question already names the state in text and the flag is just a supplementary
+  illustration.
+- **Largest-city question now reveals each option's real population after answering**, same as the
+  two population-comparison question types — needed a new `getOptionPopulation` opt on the shared
+  `buildMultipleChoiceQuestion` builder (`build-multiple-choice.ts`), since that generator (unlike
+  the two comparison ones) goes through the shared subject+distractor-pool builder rather than
+  constructing its `MultipleChoiceQuestion` object by hand. The builder tracks which pool ITEM
+  produced each final option TEXT (a `Map<string, T>`, first-seen wins, mirroring the existing
+  dedup-by-text logic) so population can be looked up after the final shuffle, which only ever
+  carried option strings before. `LargestCityFact` and `largestCityPerState()` both gained real
+  `population` data to feed this (previously only carried city NAMES for the distractor pool, no
+  population figures at all).
+- **Two real, live-only population-display bugs, only visible with real data**: (1) the population
+  span sat between the option label and the check/x icon as a middle flex child under
+  `justify-between`, so its horizontal position shifted per row depending on option-text length and
+  icon presence instead of lining up across options — fixed by grouping population+icon into one
+  right-aligned flex unit. (2) That fix's own first version gave the population column a fixed
+  `w-16` width for alignment, which fit typical city populations but not larger STATE populations
+  (e.g. Florida's "23 659 198") — `formatPopulation`'s plain-space thousand separators became wrap
+  points once the number didn't fit, breaking it onto two lines (only ever caught on a real device,
+  synthetic test populations were all small). The fixed width was never actually needed for
+  alignment in the first place — every option row is the same button width, so right-aligning
+  within the row already lines up the digits across options — replaced with `whitespace-nowrap`,
+  which can't wrap regardless of digit count.
+- **Is-largest-city reveal split into two lines** — `"{city}: {pop}. Largest: {largest}, {pop}."`
+  read as one run-on sentence; now a `\n` separates the two facts, rendered via
+  `whitespace-pre-line` on the one `<p>` that renders `revealText` (its only consumer, so this
+  doesn't touch any other question type).
+- **Candidate party and photo added to the race-recall search-select question** — `SearchSelectEntry`
+  gained optional `party`/`photoUrl` fields (undefined for city/senator/team entries, which have
+  neither), populated by `buildRaceCandidateRecallQuestions` on both `targets` and the `searchPool`/
+  `nearby` candidates (same resolved-photo source — legislator > governor > standalone priority —
+  every other candidate photo in this app already uses). Rendered via the existing `PartyBadge`
+  component and a new small `CandidateAvatar` helper (`SearchSelectQuestionView.tsx`) in BOTH the
+  live search dropdown (small avatar) and a found/revealed slot (larger avatar, taller row to
+  match) — the user explicitly asked for both, not just the post-answer reveal. A real candidate
+  with no synced photo falls back to a plain silhouette icon rather than a broken image, same
+  "fixed-size slot either way" reasoning `QuizResultsScreen`'s own thumbnail-or-icon rows already
+  use. Confirmed no conflicts before building: the sizing bump only applies when a target actually
+  carries `photoUrl` (candidates only), so city/senator/team rows are untouched.
