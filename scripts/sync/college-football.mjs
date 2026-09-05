@@ -1,3 +1,5 @@
+// See docs/data-sync-notes.md before modifying this script — full sourcing research and every real gotcha caught building it lives there, not repeated here.
+//
 // Populates the Supabase `college_football_programs` table from Wikipedia's own
 // "List of NCAA Division I FBS football programs" article — one big wikitable, 138 schools,
 // unlike sports.mjs's per-league sections on a different page. Run manually via

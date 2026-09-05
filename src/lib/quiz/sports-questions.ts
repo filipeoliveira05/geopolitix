@@ -1,3 +1,5 @@
+// See docs/quiz-notes.md before adding a new question type or touching this file — full architecture and every category's question-type batch writeup lives there, not repeated here.
+
 import type { SportsTeam, CollegeProgram } from "@/lib/geography-data";
 import { getAllStates, getStateName } from "@/lib/states";
 import { pickRandom } from "./random";

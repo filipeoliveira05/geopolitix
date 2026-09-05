@@ -1,3 +1,5 @@
+// See docs/quiz-notes.md before adding a new question type or touching this file — full architecture and every category's question-type batch writeup lives there, not repeated here.
+
 import type { StateFact, CityFact } from "@/lib/geography-data";
 import { formatPopulation } from "@/lib/format";
 import { pickRandom } from "./random";

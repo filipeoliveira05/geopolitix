@@ -1,3 +1,5 @@
+// See docs/data-sync-notes.md before modifying this script — full sourcing research and every real gotcha caught building it lives there, not repeated here.
+//
 // Populates the Supabase `governor_terms` table (plan §4) from Wikidata —
 // OpenStates (the `governors` table's source) has no history endpoint, only
 // current officeholders. Run manually via `npm run sync:governor-history`.

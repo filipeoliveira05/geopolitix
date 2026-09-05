@@ -1,3 +1,5 @@
+// See docs/data-sync-notes.md before modifying this script — full sourcing research and every real gotcha caught building it lives there, not repeated here.
+//
 // Populates the Supabase `races_2026`/`race_candidates` tables (plan §4)
 // from Wikipedia, for Senate, Governor, and House. Run manually via
 // `npm run sync:races`.

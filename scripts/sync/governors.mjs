@@ -1,3 +1,5 @@
+// See docs/data-sync-notes.md before modifying this script — full sourcing research and every real gotcha caught building it lives there, not repeated here.
+//
 // Populates the Supabase `governors` table (plan §4) from the OpenStates
 // API v3 (v3.openstates.org, plan §3) — requires a free account + API key,
 // set as OPENSTATES_API_KEY. Run manually via `npm run sync:governors`.

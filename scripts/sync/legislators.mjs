@@ -1,3 +1,5 @@
+// See docs/data-sync-notes.md before modifying this script — full sourcing research and every real gotcha caught building it lives there, not repeated here.
+//
 // Populates the Supabase `legislators`/`terms` tables (plan §4) from the
 // `unitedstates/congress-legislators` public dataset
 // (github.com/unitedstates/congress-legislators) — no API key needed. Run

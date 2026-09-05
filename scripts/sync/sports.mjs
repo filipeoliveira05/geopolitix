@@ -1,3 +1,5 @@
+// See docs/data-sync-notes.md before modifying this script — full sourcing research and every real gotcha caught building it lives there, not repeated here.
+//
 // Populates the Supabase `sports_teams` table from Wikipedia's own
 // "List of professional sports teams in the United States and Canada"
 // article — a single page with one table per major league, in the

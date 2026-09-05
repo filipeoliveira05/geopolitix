@@ -1,3 +1,5 @@
+// See docs/data-sync-notes.md before modifying this script — full sourcing research and every real gotcha caught building it lives there, not repeated here.
+//
 // Populates the Supabase `college_basketball_programs` table by joining two Wikipedia pages —
 // "List of NCAA Division I men's basketball programs" (School/Nickname/Home arena/Conference/
 // Tournament stats, ~366 rows, no city/state at all) and "List of NCAA Division I institutions"

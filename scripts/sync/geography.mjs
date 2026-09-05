@@ -1,3 +1,5 @@
+// See docs/data-sync-notes.md before modifying this script — full sourcing research and every real gotcha caught building it lives there, not repeated here.
+//
 // Populates the Supabase `states` table's population/region/flag_url/capital_city_id and the
 // `cities` table (top 10 most populous cities + capital per state) — entirely from World
 // Population Review, no API key needed. Run manually via `npm run sync:geography`.
