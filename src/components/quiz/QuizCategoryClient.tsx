@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { QuizCategoryMeta } from "@/lib/quiz/category-config";
 import {
   fetchCategoryPool,
   buildCategorySession,
+  buildSharedSearchFn,
   getCategoryPoolSize,
   categoryHasMatchingMode,
   buildMatchingBoard,
@@ -17,6 +18,7 @@ import type {
   MultipleChoiceQuestion,
   AnsweredQuestion,
   MatchingPair,
+  QuestionFormat,
 } from "@/lib/quiz/types";
 import { QuizStartScreen } from "./QuizStartScreen";
 import { QuestionSession } from "./QuestionSession";
@@ -42,9 +44,14 @@ export function QuizCategoryClient({ category }: { category: QuizCategoryMeta })
     queryFn: () => fetchCategoryPool(category.id),
   });
 
-  function start() {
+  const sharedSearch = useMemo(
+    () => (pool !== undefined ? buildSharedSearchFn(category.id, pool) : null),
+    [category.id, pool],
+  );
+
+  function start(enabledFormats: QuestionFormat[]) {
     if (!pool) return;
-    const questions = buildCategorySession(category.id, pool);
+    const questions = buildCategorySession(category.id, pool, enabledFormats);
     setPhase({ name: "session", questions });
   }
 
@@ -77,7 +84,13 @@ export function QuizCategoryClient({ category }: { category: QuizCategoryMeta })
   }
 
   if (phase.name === "session") {
-    return <QuestionSession questions={phase.questions} onComplete={finish} />;
+    return (
+      <QuestionSession
+        questions={phase.questions}
+        onComplete={finish}
+        sharedSearch={sharedSearch}
+      />
+    );
   }
 
   if (phase.name === "results") {
