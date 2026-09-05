@@ -6,6 +6,7 @@ import type { HouseSeatCountFact } from "@/lib/districts-data";
 import type { StateFact } from "@/lib/geography-data";
 import { pickRandom } from "./random";
 import { buildMultipleChoiceQuestion } from "./build-multiple-choice";
+import { fullLegislatorName } from "./search-select-index";
 import type { MultipleChoiceQuestion, SearchSelectQuestion } from "./types";
 
 export function buildGovernorQuestions(
@@ -223,10 +224,6 @@ export function buildHouseSeatCountQuestions(
       getOptionText: (f) => String(f.seatCount),
     }),
   );
-}
-
-function fullLegislatorName(legislator: { firstName: string | null; lastName: string | null }): string {
-  return [legislator.firstName, legislator.lastName].filter(Boolean).join(" ");
 }
 
 /**
