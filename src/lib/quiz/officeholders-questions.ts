@@ -180,6 +180,7 @@ export function buildOfficeholderNameQuestions(
     return buildMultipleChoiceQuestion(subject, distractorPool, {
       getPrompt: nameCluePrompt,
       getOptionText: (f) => f.name,
+      getOptionParty: (f) => f.party,
       getImageUrl: (f) => f.photoUrl,
     });
   });
