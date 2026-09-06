@@ -111,7 +111,7 @@ export function MultipleChoiceQuestionView({
               alt=""
               fill
               unoptimized
-              className="rounded object-cover"
+              className="rounded object-contain"
             />
           </div>
           {question.revealCaption && (
