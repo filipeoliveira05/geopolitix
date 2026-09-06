@@ -357,6 +357,20 @@ describe("buildIsCapitalQuestions", () => {
     const prompts = buildIsCapitalQuestions(cities, statesMissingOneFlag, 1).map((q) => q.prompt);
     expect(prompts[0]).toContain("State1");
   });
+
+  it("reveals the real capital when the guessed city is wrong, confirms it when right", () => {
+    const questions = buildIsCapitalQuestions(makeCitiesWithCapitals(20), makeFacts(20), 20);
+    for (const q of questions) {
+      const stateIndex = q.prompt.match(/State(\d+)\?$/)?.[1];
+      if (q.correctIndex === 0) {
+        expect(q.revealText).toBe(`Capital${stateIndex} is indeed the capital of State${stateIndex}.`);
+      } else {
+        expect(q.revealText).toMatch(
+          new RegExp(`^City${stateIndex}_\\d+ is not the capital\\.\\nThe capital of State${stateIndex} is Capital${stateIndex}\\.$`),
+        );
+      }
+    }
+  });
 });
 
 describe("buildIsLargestCityQuestions", () => {

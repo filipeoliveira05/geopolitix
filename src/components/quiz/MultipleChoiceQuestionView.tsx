@@ -78,6 +78,9 @@ export function MultipleChoiceQuestionView({
                 )}
                 <span>
                   {option}
+                  {question.optionStateAbbrs && answered && question.optionStateAbbrs[i] && (
+                    <span className="opacity-80">, {question.optionStateAbbrs[i]}</span>
+                  )}
                   {question.optionsAreParties && (
                     // Inherits the button's own white text once highlighted, rather than the
                     // PartyBadge component's own hardcoded color classes — a party's color badge

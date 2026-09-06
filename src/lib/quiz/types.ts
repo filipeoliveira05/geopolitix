@@ -87,6 +87,12 @@ export type MultipleChoiceQuestion = {
   // that option (e.g. a governor with no synced photo). Undefined means this question type has no
   // per-option photo at all.
   optionImages?: (string | null)[];
+  // Shown next to each option's text as ", XX", but only AFTER answering (same reveal timing as
+  // optionPopulations above) — the capital question's whole point is guessing, so naming each
+  // option's real state up front would give it away. Lets a player who got it wrong see exactly
+  // which real state they mixed the capital up with. Index-aligned with `options`; undefined means
+  // this question type has no per-option state to reveal.
+  optionStateAbbrs?: (string | null)[];
   // Renders a party badge next to revealCaption, same imageCaptionParty convention. Undefined
   // means no badge; a question type with no party concept simply never sets it.
   revealCaptionParty?: string | null;

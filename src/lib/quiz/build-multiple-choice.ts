@@ -41,6 +41,10 @@ export function buildMultipleChoiceQuestion<T>(
     // Shown next to each option (MultipleChoiceQuestion.optionImages) — for a question type whose
     // options are people worth showing a face for up front (e.g. "who is the governor of X?").
     getOptionImage?: (item: T) => string | null;
+    // Shown next to each option after answering (MultipleChoiceQuestion.optionStateAbbrs) — for a
+    // question type whose options are cities/entities worth naming the real owning state for
+    // (e.g. "what is the capital of X?").
+    getOptionStateAbbr?: (item: T) => string | null;
     getRevealCaptionParty?: (subject: T) => string | null;
     optionsAreParties?: boolean;
     // Defaults to 4 (every Geography/Officeholders question uses this many). A question type
@@ -99,6 +103,12 @@ export function buildMultipleChoiceQuestion<T>(
       ? options.map((text) => {
           const item = itemByText.get(text);
           return item ? (opts.getOptionImage as (item: T) => string | null)(item) : null;
+        })
+      : undefined,
+    optionStateAbbrs: opts.getOptionStateAbbr
+      ? options.map((text) => {
+          const item = itemByText.get(text);
+          return item ? (opts.getOptionStateAbbr as (item: T) => string | null)(item) : null;
         })
       : undefined,
     options,

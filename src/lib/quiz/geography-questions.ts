@@ -18,6 +18,7 @@ export function buildCapitalQuestions(facts: StateFact[], count: number): Multip
     buildMultipleChoiceQuestion(subject, facts, {
       getPrompt: (s) => `What is the capital of ${s.stateName}?`,
       getOptionText: (f) => f.capitalName,
+      getOptionStateAbbr: (f) => f.stateId,
       // The state is already named in the prompt, so the flag is a supplementary illustration,
       // not the clue itself (unlike buildFlagQuestions, where showing the flag first IS the
       // question) — shown below the prompt rather than above it.
@@ -304,6 +305,11 @@ export function buildIsCapitalQuestions(
     const capital = stateCities.find((c) => c.isCapital)!;
     const nonCapitals = stateCities.filter((c) => !c.isCapital);
     const city = Math.random() < 0.5 ? capital : pickRandom(nonCapitals, 1)[0];
+    // Mirrors buildIsLargestCityQuestions' revealText — a "No" answer previously left the real
+    // capital unstated entirely, so a wrong guess taught nothing beyond "that wasn't it".
+    const revealText = city.isCapital
+      ? `${city.cityName} is indeed the capital of ${city.stateName}.`
+      : `${city.cityName} is not the capital.\nThe capital of ${city.stateName} is ${capital.cityName}.`;
     return {
       format: "multiple-choice",
       prompt: `Is ${city.cityName} the capital of ${city.stateName}?`,
@@ -312,6 +318,7 @@ export function buildIsCapitalQuestions(
       imageCaptionParty: undefined,
       revealImageUrl: null,
       revealCaption: null,
+      revealText,
       optionsAreParties: false,
       options: ["Yes", "No"],
       correctIndex: city.isCapital ? 0 : 1,
