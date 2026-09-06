@@ -30,6 +30,10 @@ export function buildMultipleChoiceQuestion<T>(
     // comparison generators already established, just plumbed through this shared builder instead
     // of bypassing it.
     getOptionPopulation?: (item: T) => number | null;
+    // Shown next to each option (MultipleChoiceQuestion.optionParties) — for a question type
+    // whose options are people/parties worth badging (e.g. "who is the governor of X?").
+    getOptionParty?: (item: T) => string | null;
+    getRevealCaptionParty?: (subject: T) => string | null;
     optionsAreParties?: boolean;
     // Defaults to 4 (every Geography/Officeholders question uses this many). A question type
     // whose real answer space has fewer than 4 distinct values (e.g. political party —
@@ -68,11 +72,18 @@ export function buildMultipleChoiceQuestion<T>(
     imageCaptionParty: opts.getImageCaptionParty ? opts.getImageCaptionParty(subject) : undefined,
     revealImageUrl: opts.getRevealImageUrl ? opts.getRevealImageUrl(subject) : null,
     revealCaption: opts.getRevealCaption ? opts.getRevealCaption(subject) : null,
+    revealCaptionParty: opts.getRevealCaptionParty ? opts.getRevealCaptionParty(subject) : undefined,
     optionsAreParties: opts.optionsAreParties ?? false,
     optionPopulations: opts.getOptionPopulation
       ? options.map((text) => {
           const item = itemByText.get(text);
           return item ? (opts.getOptionPopulation as (item: T) => number | null)(item) : null;
+        })
+      : undefined,
+    optionParties: opts.getOptionParty
+      ? options.map((text) => {
+          const item = itemByText.get(text);
+          return item ? (opts.getOptionParty as (item: T) => string | null)(item) : null;
         })
       : undefined,
     options,

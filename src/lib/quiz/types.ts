@@ -74,6 +74,15 @@ export type MultipleChoiceQuestion = {
   // cities with a known population) simply shows nothing for that option. Undefined for every
   // other question type.
   optionPopulations?: (number | null)[];
+  // Shown next to each option, always (not gated by answering, unlike optionPopulations above) —
+  // a party badge doesn't hand the player the answer the way a population figure would, so there's
+  // no reason to hide it pre-answer. Index-aligned with `options`; a null entry renders the
+  // "unknown party" badge (same imageCaptionParty convention), while the field being entirely
+  // undefined means this question type has no concept of party at all.
+  optionParties?: (string | null)[];
+  // Renders a party badge next to revealCaption, same imageCaptionParty convention. Undefined
+  // means no badge; a question type with no party concept simply never sets it.
+  revealCaptionParty?: string | null;
   // Shown only AFTER answering, as a list below the options — e.g. the pro-team-count question
   // revealing the actual synced teams for the asked-about state (name/league/logo each), so
   // guessing a bucket ("0"/"1"/"2"/"3+") still teaches which real teams that state has. An empty

@@ -76,6 +76,18 @@ export function MultipleChoiceQuestionView({
                     ({partyStyle(option).letter})
                   </span>
                 )}
+                {question.optionParties && (
+                  // Same highlighted-inherits-white-text treatment as optionsAreParties above —
+                  // here the option text is a person's name and the party is a separate per-item
+                  // field, so PartyBadge itself can't be reused directly (it always applies its
+                  // own color classes).
+                  <span
+                    className={`font-medium ${highlighted ? "" : partyStyle(question.optionParties[i]).textClassName}`}
+                  >
+                    {" "}
+                    ({partyStyle(question.optionParties[i]).letter})
+                  </span>
+                )}
               </span>
               {/* Population + icon grouped into one flex child (rather than each being its own
                   sibling under justify-between) so they sit together as a single right-aligned
@@ -115,7 +127,12 @@ export function MultipleChoiceQuestionView({
             />
           </div>
           {question.revealCaption && (
-            <p className="text-sm font-medium text-ink">{question.revealCaption}</p>
+            <p className="text-sm font-medium text-ink">
+              {question.revealCaption}{" "}
+              {question.revealCaptionParty !== undefined && (
+                <PartyBadge party={question.revealCaptionParty} />
+              )}
+            </p>
           )}
         </div>
       )}
