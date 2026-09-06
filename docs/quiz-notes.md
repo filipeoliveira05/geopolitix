@@ -923,3 +923,40 @@ by using the start screen's format picker to isolate a single format (dramatical
 of landing on the target generator within a few sessions) and, for `buildMapClickQuestions`
 specifically, a small hardcoded per-state lon/lat centroid table to click a real target state's
 polygon directly rather than guessing screen coordinates blind.
+
+**Two small fixes (2026-09-06, separate same-day session)**:
+- **Search-and-select input triggering Android's password/card/address autofill bar.** The
+  `<input type="text">` in `SearchSelectQuestionView.tsx` had no `autoComplete`/`name` hints, so
+  Android's Autofill framework fell back to guessing the field's purpose from context and showed
+  key/card/pin icons above the keyboard instead of a plain one. Fixed by switching to
+  `type="search"` (search inputs are excluded from Autofill's login/payment/address heuristics) plus
+  explicit `autoComplete="off"`, `autoCorrect="off"`, `autoCapitalize="none"`, `spellCheck={false}`,
+  and a `name` attribute — same convention worth checking if any future free-text input in this app
+  ever shows the same unwanted suggestion bar.
+- **"Which state is this?" (the silhouette-guess MC question) now reveals the correct state on a
+  real interactive US map**, reusing `QuizMapClick` (previously only used by `MapClickQuestion`)
+  instead of leaving the reveal to the option list's own coloring — same green-highlight-plus-label
+  convention `MapClickQuestionView` already established. Wired via a new
+  `MultipleChoiceQuestion.revealStateAbbr` field (set by `buildStateSilhouetteQuestions` via a new
+  `getRevealStateAbbr` opt on `buildMultipleChoiceQuestion`), rendered in
+  `MultipleChoiceQuestionView` by mounting `QuizMapClick` post-answer with a synthetic
+  `{clickedStateId: targetId, targetStateId: targetId, correct: true}` feedback object (no
+  wrong-click state to show here, since the player answered via option buttons, not a map click) and
+  a no-op `onSelectState` (the reveal map isn't clickable). **Real bug found via this reuse, not a
+  hypothetical**: `QuizMapClick` had only ever been mounted BEFORE the player answers
+  (`MapClickQuestionView` renders it immediately, so by the time `feedback` goes non-null the map's
+  async `"load"` event — which adds the GeoJSON source/layers — has long since fired). This new
+  reveal-only usage mounts `QuizMapClick` for the FIRST time already carrying non-null feedback, so
+  the feedback effect's `setFeatureState` call could race `"load"` and fire before the source
+  existed at all — surfaced live as a console "Style is not done loading" error swallowed by the
+  route's error boundary, silently dropping the highlight with zero visible sign anything was wrong.
+  Fixed by adding a `loaded` state to `QuizMapClick`, set `true` inside the `"load"` callback (reset
+  on unmount), and gating the feedback effect on it — any future caller that mounts this component
+  already-answered gets the same protection for free.
+  - **Verification note**: reaching this specific question type for a live check needed the same
+    format-picker-isolation trick as the pass above (unchecking Map Click/Search & Select to
+    concentrate the roll on multiple-choice generators) plus looping several fresh sessions, since
+    the silhouette generator is 1 of 12 multiple-choice generators sharing a 10-question session —
+    the first live run actually reproduced the race bug above (confirmed via the browser's own
+    console error), and the fix was verified by re-running the same script and confirming both the
+    highlight rendered AND the console stayed clean.

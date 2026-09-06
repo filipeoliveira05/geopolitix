@@ -265,17 +265,20 @@ step genuinely errored. **Full workflow history/design reasoning in `docs/status
   plain right-count, and a start-screen format picker lets the player choose which formats appear.
   Geography also has two shape-guessing multiple-choice types (state-silhouette, state-border)
   rendered as an inline theme-aware SVG computed from the same real `us-atlas` polygon geometry the
-  interactive map itself uses — no new synced image or table. A cross-category convention, settled
-  2026-09-06: an option whose text already IS the entity being guessed (a state, a team) gets its
-  own abbreviation/tag baked directly into the option label, unconditionally (no spoiler risk);
-  anything that would hand away the answer (a population figure, which state each odd-one-out option
-  is really from) stays a reveal gated behind answering instead — picking the wrong one of these two
-  is the actual bug to avoid, not a style nit. **Full architecture, every category's question-type
-  batch writeup, and every real bug caught building it (a Strict-Mode map cleanup bug, a
-  speed-round timer/setState bug, a PostgREST ambiguous-FK bug, a search-index answer-spoiler bug, a
-  population-reveal line-wrap bug, an antimeridian/Four-Corners geometry gotcha, a self-adjacent-
-  polygon bug that let Oregon border itself) are in `docs/quiz-notes.md`** — read it before adding a
-  new question type to any category.
+  interactive map itself uses — no new synced image or table. The state-silhouette question's reveal
+  (added 2026-09-06) highlights the correct state on a real interactive map, reusing `QuizMapClick`
+  (the same component `MapClickQuestion` uses) rather than a second bespoke map. A cross-category
+  convention, settled 2026-09-06: an option whose text already IS the entity being guessed (a state,
+  a team) gets its own abbreviation/tag baked directly into the option label, unconditionally (no
+  spoiler risk); anything that would hand away the answer (a population figure, which state each
+  odd-one-out option is really from) stays a reveal gated behind answering instead — picking the
+  wrong one of these two is the actual bug to avoid, not a style nit. **Full architecture, every
+  category's question-type batch writeup, and every real bug caught building it (a Strict-Mode map
+  cleanup bug, a speed-round timer/setState bug, a PostgREST ambiguous-FK bug, a search-index
+  answer-spoiler bug, a population-reveal line-wrap bug, an antimeridian/Four-Corners geometry
+  gotcha, a self-adjacent-polygon bug that let Oregon border itself, a `QuizMapClick`
+  mounted-already-answered race that dropped a reveal highlight silently) are in
+  `docs/quiz-notes.md`** — read it before adding a new question type to any category.
 
 **Synced data**, via `npm run sync:<name>`: `states`, `legislators`/`terms`, `governors`,
 `governor_terms`, `races_2026`/`race_candidates`, `candidates`, `districts` (+ Storage geometry
