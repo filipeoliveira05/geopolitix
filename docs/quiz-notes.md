@@ -787,3 +787,139 @@ synced image or Supabase table:
     correct answer (every candidate set is built by filtering/mapping over that pool) — confirmed
     live that West Virginia's "which does NOT border" question (bordering both Maryland and
     Virginia) shows no D.C. option, and covered by regression tests for both generators.
+
+**"Improve what already exists" playtesting pass (2026-09-06, separate session)** — no new question
+types this time; the user played every category live on a phone, reported small concrete issues one
+at a time (same cadence as the 2026-09-05 post-merge pass above), and, once the backlog of reported
+bugs was clear, asked outright "what could we improve here" per category and worked through the
+resulting list. Two cross-category conventions emerged and were then deliberately applied
+everywhere they fit, not just where first reported:
+- **"Bake the entity's own identifier into the option, unconditionally" vs. "gate a reveal behind
+  answering"** — the two are NOT interchangeable, and picking the wrong one is the actual mistake to
+  avoid. Baking in an option's own abbreviation/tag is safe exactly when the option text already IS
+  the entity being guessed (a state, a team, a school) — its own abbreviation doesn't tell the player
+  which option is correct, only what that option itself is called, so it can render from the very
+  first frame with zero spoiler risk. A gated reveal is for the opposite case: information that WOULD
+  hand away the answer if shown before answering (a population figure implying a size comparison, or
+  — the one real near-miss this session — showing each odd-one-out option's real state up front,
+  which would make the odd one trivially visible by inspection; caught before shipping, not after).
+  Landed as: `MultipleChoiceQuestion.optionStateAbbrs` (added this session, always-baked-then-later-
+  reconsidered — see below) for a question whose options are already state names or capitals-with-a-
+  state, and the pre-existing `optionPopulations`/`revealText`/`revealImageUrl` family for the
+  gated case.
+  - **Format iteration, from direct user pushback**: the state-abbreviation bake for the capital
+    question first shipped comma-separated ("Frankfort, KY"), gated behind answering (a real spoiler
+    risk there, since the prompt already names the state). Once the SAME idea was extended to
+    flag/silhouette/city-state questions (where the option IS the state, so baking is safe
+    up-front), the user pointed out the comma reads as a "city, its containing state" pairing
+    (`buildCityPopulationQuestions`' own convention) — wrong relationship for "a state, its own
+    abbreviation." Switched to parentheses (`"Missouri (MO)"`), which was already the established
+    convention for exactly this pairing elsewhere in this session's own map-click reveal
+    (`"North Carolina (NC)"`) — a good example of checking for an existing convention before
+    picking a new one, not the other way around.
+- **Every reveal teaches the ACTUAL answer, not just right/wrong.** Two real, symmetric gaps were
+  found and fixed by comparing a question type against its own sibling that already got this right:
+  `buildIsCapitalQuestions` (Geography) had zero reveal at all, unlike its sibling
+  `buildIsLargestCityQuestions`, which already named the real answer on a miss — fixed with the
+  same `revealText` pattern. `buildIncumbencyQuestions` (Midterms) had the identical gap, fixed the
+  same way, then upgraded further per the user's own follow-up spec into a proper
+  `MultipleChoiceQuestion.revealCandidates` list (name/party/photo/incumbent-tag for every real
+  candidate in the subject's own race, computed by re-grouping the flattened `CandidateFact` pool
+  back by race — same `raceLabel()` key the prompt itself already uses), with the race's own name
+  shown as a `revealText` line directly above the list, at the user's explicit placement request.
+
+Per-category changes, roughly in the order worked:
+- **Sports**: `MultipleChoiceQuestionView`'s `revealImageUrl` block was cropping a wide logo (e.g.
+  the Rams') with `object-cover`, meant for circular photos, not logos — every other logo-rendering
+  spot in this codebase already used `object-contain`; this was the one that got missed. Fixed to
+  match.
+- **Officeholders**: `buildGovernorQuestions` previously hid all 4 candidates' photos/parties behind
+  a post-answer reveal of just the correct one — the user pushed back ("I prefer all four to show
+  the photo, in that case no reveal is necessary") since seeing all four up front IS the
+  face-to-name teaching moment, no need to hide it. Redesigned with two new fields:
+  `optionParties`/`optionImages` (both always-shown, index-aligned with `options`, populated via new
+  `getOptionParty`/`getOptionImage` opts on `buildMultipleChoiceQuestion`). Avatar size bumped from
+  32px to 56px at the user's follow-up request ("make the photos bigger"), which then meant EVERY
+  multiple-choice option row across every category got enlarged too (`py-2`/`text-sm` →
+  `py-3`/`text-base`), at the user's explicit ask to apply it everywhere, not just the one question
+  type with photos. `buildChamberQuestions` gained a `revealText` reveal naming the legislator's
+  state (a new `getRevealText` opt on the shared builder) — the user asked "what could this question
+  reveal?" and this was the one piece of real info not already shown. Same abbreviation-bake pattern
+  applied to `buildOfficeholderPhotoQuestions`'s state options.
+  `buildOfficeholderNameQuestions` gained `optionParties` too, matching the governor question.
+  `buildSenatorRecallQuestions` (search-select) gained `party`/`photoUrl` on its senator targets —
+  previously `SearchSelectEntry.party`/`.photoUrl` were documented as candidate/team-only; generalized
+  to also cover `entityType: "senator"` (party comes from the TERM, not the legislator, since a
+  legislator can serve non-consecutive terms under different parties).
+- **Geography**: **Real bug, caught from a playtest screenshot, not a design nit**: Oregon's own
+  `us-atlas` TopoJSON geometry shares an arc with itself (a multipolygon/island artifact) —
+  `topojson-client`'s `neighbors()` doesn't guard against a geometry bordering itself, so
+  `getStateNeighborAbbrs("OR")` wrongly included `"OR"`, which surfaced as Oregon appearing as a
+  legitimate answer to "name the states that border Oregon" (its own search-select recall question).
+  Fixed with an explicit `a !== abbr` filter in `state-borders.ts` (single source of truth for both
+  border question types), covered by a new regression test, confirmed live that no OTHER state has
+  the same self-adjacency artifact. Both border-reveal maps (search-select AND the does-NOT-border
+  MC) gained a thin `--paper`-colored stroke between adjacent state shapes — the user found the
+  reveal "confusing" with no visual separation between same-colored neighbors; the stroke color
+  reuses the same theme-aware convention the maps' own text labels already established.
+  `buildStateNonBorderQuestions` gained the SAME `revealBorderMap` reveal
+  `buildStateBorderRecallQuestions` already had (previously only the search-select sibling revealed
+  the region map) — no found/missed distinction needed here since nothing was "found" one at a
+  time, every real neighbor just renders with the same highlight. `buildCapitalQuestions` gained a
+  gated `optionStateAbbrs` reveal (state each option's OWN city really belongs to, letting a wrong
+  guess show exactly which real state it got confused with) plus, per the "every reveal teaches the
+  actual answer" principle above, `buildIsCapitalQuestions` gained a `revealText` naming the real
+  capital on a miss. `buildMapClickQuestions` went from teaching literally nothing beyond a
+  highlight to a full redesign in two rounds: first pass added `revealText` (state name/abbr/
+  capital/population, via a new `MapClickQuestion.revealText` field) plus `targetFlagUrl`; the user
+  then asked for a full visual rework — "say wrong state. you clicked on x." as its own line (not
+  squeezed next to the flag), and BOTH the clicked-wrong and correct states labeled directly on the
+  map (just the correct one when right). Needed `QuizMapClick.tsx`'s `onSelectState` callback to
+  also pass the clicked feature's own display NAME (only available at click time from the map
+  feature itself, not precomputable at question-build time) and new DOM `Marker` labels reusing
+  `state-labels-geo.ts`'s existing centroid computation (previously only `UsMap.tsx` drew these) —
+  filtered to just the 1-2 relevant abbreviations per question rather than all 50, unlike `UsMap`'s
+  always-show-everything convention. D.C. excluded as a map-click subject entirely (too small to
+  reliably click on this map). `buildCityRecallQuestions` gained a `population` field on its own
+  `targets` (never on the shared searchPool entries, which would leak the "top cities" ranking
+  before it's found) — shown next to a found/revealed city, reinforcing the actual numbers on top of
+  the already-implicit rank ordering. The bare state-name options on `buildFlagQuestions`/
+  `buildStateSilhouetteQuestions`/`buildCityStateQuestions` all got the abbreviation baked directly
+  into `getOptionText` (see the format-iteration note above for the comma→parentheses reversal).
+- **2026 Midterms**: `buildIncumbencyQuestions` reworked per the two principles above — see the
+  `revealCandidates` writeup there. `buildRaceCandidateRecallQuestions` (search-select) gained
+  `isIncumbent` on its targets, shown as a small "(Incumbent)" tag once a candidate is found/revealed
+  (a new `SearchSelectEntry.isIncumbent` field, target-only, same not-in-the-searchPool reasoning as
+  `population` above though here simply because incumbency isn't relevant to searching, not a
+  spoiler concern).
+- **Sports**: same abbreviation-bake pattern applied across the board once the Geography/
+  Officeholders precedent existed — `buildTeamStateQuestions` ("State (XX)"),
+  `buildTeamCityQuestions` ("City, XX" — comma here IS correct, since a city genuinely needs its
+  containing state for disambiguation, the opposite relationship from the state-abbreviation case
+  above; several city names repeat across states in the synced pool). Extended further at the
+  user's own follow-up ask to also tag team-name options with their league/conference —
+  `buildTeamByCityQuestions`/`buildTeamByStateQuestions` ("Team (League)") and
+  `buildSchoolFromNicknameQuestions` ("School (Conference)") — same no-spoiler reasoning: knowing a
+  team's league or a school's conference doesn't hint at which one is actually based in the
+  asked-about place, or has the asked-about nickname.
+- **Mashups**: `buildOddOneOutQuestions` was the one generator with zero images and zero reveal at
+  all (confirmed nothing was missing here during the 2026-09-04 pass above — this session found
+  otherwise once actually asked "what could we improve"). Gained `optionImages` (each option's own
+  team logo, shown immediately — a logo doesn't hand away which team is from a different state
+  unless the player already knows that mapping) and a gated `optionStateAbbrs` reveal (each option's
+  real state, shown only after answering, since revealing states up front would make the odd one out
+  trivially visible by inspection — the one case this session where baking immediately would have
+  been the actual bug, caught before shipping by reasoning through the "bake vs. gate" principle
+  above rather than by trial and error). `optionImages` rendering a team logo (rectangular) through
+  the existing circular-crop styling built for people's photos would have cropped it (the same class
+  of bug fixed for the Rams above) — added a new `optionImagesAreLogos` boolean flag that switches
+  the view to a square `object-contain` box instead, reusable by any future question type whose
+  `optionImages` are logos rather than faces.
+
+**Verification note**: every change in this pass was checked live via a real (headless) Playwright
+browser against the running dev server before being reported done — the quiz's random session
+composition made reaching a specific question type non-trivial for automated verification, handled
+by using the start screen's format picker to isolate a single format (dramatically raising the odds
+of landing on the target generator within a few sessions) and, for `buildMapClickQuestions`
+specifically, a small hardcoded per-state lon/lat centroid table to click a real target state's
+polygon directly rather than guessing screen coordinates blind.

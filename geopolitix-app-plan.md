@@ -374,7 +374,11 @@ with their own results screen and their own `localStorage` best-score key (no ac
 §9's Open Decisions). Full architecture, every category's question-type batch writeup, and the
 real bugs caught building all of it (a Strict-Mode map cleanup bug, a speed-round timer/setState
 bug, a PostgREST ambiguous-FK bug on the cities/states embed, an antimeridian/Four-Corners
-geometry gotcha) are documented in `docs/quiz-notes.md`.
+geometry gotcha, a self-adjacent-polygon bug that let Oregon border itself) are documented in
+`docs/quiz-notes.md`, including a 2026-09-06 playtesting pass that added no new question types but
+established a cross-category convention: bake an option's own abbreviation/tag in unconditionally
+when the option text already IS the entity being guessed (no spoiler risk), vs. gate a reveal
+behind answering when showing it up front WOULD hand away the answer.
 
 ---
 
