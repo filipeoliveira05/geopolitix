@@ -620,6 +620,31 @@ describe("buildMapClickQuestions", () => {
     expect(q.targetStateId).toMatch(/^S\d+$/);
     expect(q.targetStateName).toMatch(/^State\d+$/);
   });
+
+  it("reveals the state's abbreviation, capital, and population, one fact per line", () => {
+    const [q] = buildMapClickQuestions(makeFacts(1), 1);
+    expect(q.revealText).toBe("State0 (S0)\nCapital: Capital0\nPopulation: 1 000");
+  });
+
+  it("still reveals a fact when the state has no synced population", () => {
+    const facts = makeFacts(1).map((f) => ({ ...f, population: null }));
+    const [q] = buildMapClickQuestions(facts, 1);
+    expect(q.revealText).toBe("State0 (S0)\nCapital: Capital0");
+  });
+
+  it("uses the state's flag as targetFlagUrl", () => {
+    const [q] = buildMapClickQuestions(makeFacts(1), 1);
+    expect(q.targetFlagUrl).toBe("https://example.com/flag0.png");
+  });
+
+  it("never picks D.C. as a subject", () => {
+    const facts = [
+      ...makeFacts(3),
+      { stateId: "DC", stateName: "District of Columbia", capitalName: "Washington", flagUrl: "https://example.com/flag-dc.png", population: 700000 },
+    ];
+    const questions = buildMapClickQuestions(facts, 3);
+    expect(questions.map((q) => q.targetStateId)).not.toContain("DC");
+  });
 });
 
 function makeCitiesForState(stateId: string, stateName: string, populations: number[]): CityFact[] {
@@ -667,6 +692,12 @@ describe("buildCityRecallQuestions", () => {
     const [q] = buildCityRecallQuestions(cities, makeFacts(1), 1);
     expect(q.targets).toHaveLength(2);
     expect(q.targets.map((t) => t.id).sort()).toEqual(["S0-city0", "S0-city1"]);
+  });
+
+  it("carries each target's own population, for a post-answer reveal", () => {
+    const cities = makeCitiesForState("S0", "State0", [100, 500, 300]);
+    const [q] = buildCityRecallQuestions(cities, makeFacts(1), 1);
+    expect(q.targets.map((t) => t.population)).toEqual([500, 300, 100]);
   });
 });
 

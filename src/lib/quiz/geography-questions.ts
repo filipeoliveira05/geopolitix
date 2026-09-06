@@ -560,17 +560,33 @@ export function buildCityRecallQuestions(
       prompt: `Name the top cities in ${stateName}.`,
       imageUrl: flagByState.get(stateId) as string,
       entityType: "city",
-      targets: sorted.map((c) => ({ id: c.cityId, label: c.cityName })),
+      targets: sorted.map((c) => ({ id: c.cityId, label: c.cityName, population: c.population })),
     };
   });
 }
 
+/**
+ * revealText adds bonus fact lines shown after answering (right or wrong) — map-click otherwise
+ * teaches nothing beyond a highlight, unlike every other Geography question type here, which
+ * reveals at least one extra fact on top of the correct answer itself. D.C. is excluded as a
+ * subject — same blanket treatment as the two border question types — its real shape is too small
+ * to reliably click on this map at all.
+ */
 export function buildMapClickQuestions(facts: StateFact[], count: number): MapClickQuestion[] {
-  const subjects = pickRandom(facts, count);
+  const eligible = facts.filter((f) => f.stateId !== "DC");
+  const subjects = pickRandom(eligible, count);
   return subjects.map((s) => ({
     format: "map-click",
     prompt: `Click on ${s.stateName}.`,
     targetStateId: s.stateId,
     targetStateName: s.stateName,
+    targetFlagUrl: s.flagUrl,
+    revealText: [
+      `${s.stateName} (${s.stateId})`,
+      `Capital: ${s.capitalName}`,
+      s.population !== null ? `Population: ${formatPopulation(s.population)}` : null,
+    ]
+      .filter((line): line is string => line !== null)
+      .join("\n"),
   }));
 }

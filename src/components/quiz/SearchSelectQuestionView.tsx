@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import Image from "next/image";
 import type { SearchSelectQuestion, SearchSelectEntry } from "@/lib/quiz/types";
 import { vibrateWrongAnswer } from "@/lib/quiz/haptics";
+import { formatPopulation } from "@/lib/format";
 import { PartyBadge } from "@/components/PartyBadge";
 import { CheckIcon } from "./icons";
 
@@ -240,7 +241,16 @@ export function SearchSelectQuestionView({
                       <span className="text-muted"> ({target.league})</span>
                     )}
                   </span>
-                  {isFound && <CheckIcon className="ml-auto h-4 w-4 text-emerald-600" />}
+                  {(target.population != null || isFound) && (
+                    <span className="ml-auto flex items-center gap-2">
+                      {target.population != null && (
+                        <span className="whitespace-nowrap font-mono text-xs tabular-nums opacity-80">
+                          {formatPopulation(target.population)}
+                        </span>
+                      )}
+                      {isFound && <CheckIcon className="h-4 w-4 text-emerald-600" />}
+                    </span>
+                  )}
                 </>
               ) : (
                 <span>__________</span>

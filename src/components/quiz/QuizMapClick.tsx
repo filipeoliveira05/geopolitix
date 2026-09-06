@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import {
   Map as MapLibreMap,
+  Marker,
   setWorkerUrl,
   type StyleSpecification,
   type LngLatBoundsLike,
@@ -12,6 +13,7 @@ import {
 import "maplibre-gl/dist/maplibre-gl.css";
 import { getUsStatesGeoJson } from "@/lib/us-states-geo";
 import { remapInsetStates } from "@/lib/us-insets";
+import { getStateLabelsGeoJson } from "@/lib/state-labels-geo";
 
 // Same worker-resolution gotcha UsMap.tsx already documents and fixes — MapLibre resolves its
 // worker relative to its own bundled module's import.meta.url, which points at an internal
@@ -82,7 +84,10 @@ export function QuizMapClick({
   onSelectState,
   feedback,
 }: {
-  onSelectState: (abbr: string) => void;
+  // Passes the clicked state's own display name alongside its abbreviation — the "wrong state,
+  // you clicked on X" reveal message needs a human-readable name, which is only available from the
+  // clicked map feature itself at click time, not precomputable at question-build time.
+  onSelectState: (abbr: string, name: string) => void;
   feedback: MapClickFeedback;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -95,6 +100,7 @@ export function QuizMapClick({
   // instead of silently no-op-ing. This flag lets that cleanup skip itself once removal has
   // already happened, regardless of which effect's cleanup React happens to run first.
   const removedRef = useRef(false);
+  const labelMarkersRef = useRef<Marker[]>([]);
 
   useEffect(() => {
     onSelectStateRef.current = onSelectState;
@@ -156,7 +162,8 @@ export function QuizMapClick({
       });
       map.on("click", FILL_LAYER_ID, (e: MapLayerMouseEvent) => {
         const abbr = e.features?.[0]?.properties?.abbr as string | undefined;
-        if (abbr) onSelectStateRef.current(abbr);
+        const name = e.features?.[0]?.properties?.name as string | undefined;
+        if (abbr) onSelectStateRef.current(abbr, name ?? abbr);
       });
     });
 
@@ -177,13 +184,34 @@ export function QuizMapClick({
       { source: SOURCE_ID, id: feedback.targetStateId },
       { result: "correct-target" },
     );
-    if (!feedback.correct && feedback.clickedStateId !== feedback.targetStateId) {
+    const showWrongLabel = !feedback.correct && feedback.clickedStateId !== feedback.targetStateId;
+    if (showWrongLabel) {
       map.setFeatureState({ source: SOURCE_ID, id: feedback.clickedStateId }, { result: "wrong-click" });
     }
+
+    // Name labels for the state(s) feedback is about — just the correct state when right, both
+    // when wrong — so the reveal names them directly on the map, not just in the text below it.
+    const relevantAbbrs = new Set([feedback.targetStateId]);
+    if (showWrongLabel) relevantAbbrs.add(feedback.clickedStateId);
+    for (const labelFeature of getStateLabelsGeoJson().features) {
+      if (!relevantAbbrs.has(labelFeature.properties.abbr)) continue;
+      const el = document.createElement("div");
+      el.textContent = labelFeature.properties.abbr;
+      el.className =
+        "pointer-events-none select-none text-xs font-bold text-white " +
+        "[filter:drop-shadow(0_0_2px_rgba(0,0,0,0.8))_drop-shadow(0_0_2px_rgba(0,0,0,0.8))]";
+      const marker = new Marker({ element: el, anchor: "center" })
+        .setLngLat(labelFeature.geometry.coordinates as [number, number])
+        .addTo(map);
+      labelMarkersRef.current.push(marker);
+    }
+
     return () => {
+      for (const marker of labelMarkersRef.current) marker.remove();
+      labelMarkersRef.current = [];
       if (removedRef.current) return; // map already torn down — nothing to clean up
       map.setFeatureState({ source: SOURCE_ID, id: feedback.targetStateId }, { result: null });
-      if (!feedback.correct && feedback.clickedStateId !== feedback.targetStateId) {
+      if (showWrongLabel) {
         map.setFeatureState({ source: SOURCE_ID, id: feedback.clickedStateId }, { result: null });
       }
     };

@@ -23,6 +23,11 @@ export type SearchSelectEntry = {
   // "(League)" convention MultipleChoiceQuestionView's own revealTeams rows already use. Undefined
   // for every other entityType, which has no concept of a league.
   league?: string;
+  // Only populated on a city-recall question's own `targets` entries (never on the shared
+  // search-pool entries a player searches against, which would spoil the "top cities" ranking
+  // before it's found) — shown next to a found/revealed target's name once its row is actually
+  // revealed, same reveal timing SearchSelectQuestionView already gates photo/party on.
+  population?: number | null;
 };
 
 export type MultipleChoiceQuestion = {
@@ -121,6 +126,15 @@ export type MapClickQuestion = {
   prompt: string;
   targetStateId: string;
   targetStateName: string;
+  // Shown next to the reveal facts below — the target state's own flag, same visual reinforcement
+  // every other Geography question type already gives its subject.
+  targetFlagUrl: string;
+  // Shown after answering (right or wrong), one fact per line (\n-joined, rendered with
+  // whitespace-pre-line) — the state's name/abbreviation, capital, and population, reinforcing
+  // recall beyond just "that was/wasn't it". The "wrong state, you clicked on X" line is NOT part
+  // of this — that names the clicked state, which is only known at answer time, not question-build
+  // time, so the view derives it itself from the click event's own state name.
+  revealText: string;
 };
 
 export type SearchSelectQuestion = {
