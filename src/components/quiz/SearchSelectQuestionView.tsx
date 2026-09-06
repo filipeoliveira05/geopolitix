@@ -270,6 +270,8 @@ export function SearchSelectQuestionView({
             <path
               d={question.revealBorderMap.subject.path}
               fillRule="evenodd"
+              stroke="var(--paper)"
+              strokeWidth="0.4"
               className="fill-seal"
             />
             {question.revealBorderMap.neighbors.map((n) => (
@@ -277,6 +279,8 @@ export function SearchSelectQuestionView({
                 key={n.id}
                 d={n.path}
                 fillRule="evenodd"
+                stroke="var(--paper)"
+                strokeWidth="0.4"
                 className={foundIds.includes(n.id) ? "fill-emerald-600" : "fill-muted"}
               />
             ))}

@@ -183,10 +183,19 @@ export function MultipleChoiceQuestionView({
             <path
               d={question.revealBorderMap.subject.path}
               fillRule="evenodd"
+              stroke="var(--paper)"
+              strokeWidth="0.4"
               className="fill-seal"
             />
             {question.revealBorderMap.neighbors.map((n) => (
-              <path key={n.id} d={n.path} fillRule="evenodd" className="fill-emerald-600" />
+              <path
+                key={n.id}
+                d={n.path}
+                fillRule="evenodd"
+                stroke="var(--paper)"
+                strokeWidth="0.4"
+                className="fill-emerald-600"
+              />
             ))}
             <text
               x={question.revealBorderMap.subject.labelX}
