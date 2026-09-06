@@ -126,6 +126,16 @@ describe("buildOfficeholderPhotoQuestions", () => {
       expect(q.imageCaption).toBe(matchingFact?.governorName);
     }
   });
+
+  it("shows every option's abbreviation from the start, not just the correct one (no spoiler risk here)", () => {
+    const legislators = makeLegislatorFacts(10);
+    const questions = buildOfficeholderPhotoQuestions(legislators, [], 5);
+    for (const q of questions) {
+      for (const option of q.options) {
+        expect(option).toMatch(/^State\d+ \(S\d+\)$/);
+      }
+    }
+  });
 });
 
 describe("buildOfficeholderPartyQuestions", () => {

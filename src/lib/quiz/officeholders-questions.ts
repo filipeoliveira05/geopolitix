@@ -91,7 +91,10 @@ export function buildOfficeholderPhotoQuestions(
   return subjects.map((subject) =>
     buildMultipleChoiceQuestion(subject, pool, {
       getPrompt: (s) => `Which state is this ${s.roleLabel} from?`,
-      getOptionText: (f) => f.stateName,
+      // "(XX)" baked directly into the option text, shown from the start — same not-a-spoiler
+      // reasoning as Geography's flag/silhouette/city-state questions: the option here already IS
+      // the state name being guessed, so its own abbreviation gives nothing extra away.
+      getOptionText: (f) => `${f.stateName} (${f.stateId})`,
       getImageUrl: (f) => f.photoUrl,
       getImageCaption: (f) => f.name,
       getImageCaptionParty: (f) => f.party,
