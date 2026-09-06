@@ -121,6 +121,7 @@ export function buildStateNonBorderQuestions(
       3,
     );
     const options = pickRandom([correct, ...traps], 4);
+    const regionMap = getBorderRegionMap(subject.stateId);
 
     return {
       format: "multiple-choice",
@@ -132,6 +133,25 @@ export function buildStateNonBorderQuestions(
       revealImageUrl: null,
       revealCaption: null,
       optionsAreParties: false,
+      revealBorderMap: regionMap
+        ? {
+            subject: {
+              label: regionMap.subject.name,
+              path: regionMap.subject.path,
+              labelX: regionMap.subject.labelX,
+              labelY: regionMap.subject.labelY,
+            },
+            neighbors: regionMap.neighbors
+              .filter((n) => n.abbr !== "DC")
+              .map((n) => ({
+                id: n.abbr,
+                label: n.name,
+                path: n.path,
+                labelX: n.labelX,
+                labelY: n.labelY,
+              })),
+          }
+        : undefined,
       options: options.map((f) => f.stateName),
       correctIndex: options.findIndex((f) => f.stateId === correct.stateId),
     };

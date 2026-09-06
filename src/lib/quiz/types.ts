@@ -97,6 +97,15 @@ export type MultipleChoiceQuestion = {
   // real, distinct state — the subject genuinely has zero synced teams — and the view renders an
   // explicit "no teams" message for it rather than nothing.
   revealTeams?: { name: string; league: string; logoUrl: string | null }[];
+  // Only populated for the does-NOT-border question type — same precomputed regional-map shape
+  // SearchSelectQuestion.revealBorderMap uses (state-border-region-geo.ts), shown after answering
+  // so the player sees which states actually do border the subject. Unlike the search-select
+  // version there's no found/missed distinction to color (nothing here was "found" one at a time),
+  // so every real neighbor renders with the same highlight.
+  revealBorderMap?: {
+    subject: { label: string; path: string; labelX: number; labelY: number };
+    neighbors: { id: string; label: string; path: string; labelX: number; labelY: number }[];
+  };
   options: string[];
   correctIndex: number;
 };

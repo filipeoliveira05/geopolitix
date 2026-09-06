@@ -813,6 +813,25 @@ describe("buildStateNonBorderQuestions", () => {
       expect(q.options).not.toContain("District of Columbia");
     }
   });
+
+  it("precomputes a revealBorderMap with the subject plus every real neighbor's shape", () => {
+    const questions = buildStateNonBorderQuestions(facts, eligibleNonBorderCount);
+    const vermontQuestion = questions.find((q) => q.prompt.includes("Vermont"))!;
+    const map = vermontQuestion.revealBorderMap!;
+    expect(map).toBeDefined();
+    expect(map.subject.label).toBe("Vermont");
+    expect(map.subject.path).toMatch(/^M/);
+    expect(map.neighbors.map((n) => n.label).sort()).toEqual([
+      "Massachusetts",
+      "New Hampshire",
+      "New York",
+    ]);
+    for (const n of map.neighbors) {
+      expect(n.path).toMatch(/^M/);
+      expect(typeof n.labelX).toBe("number");
+      expect(typeof n.labelY).toBe("number");
+    }
+  });
 });
 
 describe("buildStateBorderRecallQuestions", () => {
