@@ -90,14 +90,26 @@ describe("buildFlagQuestions", () => {
     }
   });
 
-  it("has state names as options, with the correct one matching the flag shown", () => {
+  it("has \"State (XX)\"-labeled options, with the correct one matching the flag shown", () => {
     const facts = makeFacts(10);
     const questions = buildFlagQuestions(facts, 5);
     for (const q of questions) {
       const correctOption = q.options[q.correctIndex];
-      const matchingFact = facts.find((f) => f.stateName === correctOption);
+      const match = correctOption.match(/^(.+) \((\w+)\)$/);
+      expect(match).toBeTruthy();
+      const matchingFact = facts.find((f) => f.stateName === match?.[1] && f.stateId === match?.[2]);
       expect(matchingFact).toBeDefined();
       expect(matchingFact?.flagUrl).toBe(q.imageUrl);
+    }
+  });
+
+  it("shows every option's abbreviation from the start, not just the correct one (no spoiler risk here)", () => {
+    const facts = makeFacts(10);
+    const questions = buildFlagQuestions(facts, 5);
+    for (const q of questions) {
+      for (const option of q.options) {
+        expect(option).toMatch(/^State\d+ \(S\d+\)$/);
+      }
     }
   });
 
@@ -162,6 +174,16 @@ describe("buildCityStateQuestions", () => {
     expect(new Set(prompts).size).toBe(prompts.length);
   });
 
+  it("shows every option's abbreviation from the start, not just the correct one (no spoiler risk here)", () => {
+    const cities = makeCities(10);
+    const questions = buildCityStateQuestions(cities, 5);
+    for (const q of questions) {
+      for (const option of q.options) {
+        expect(option).toMatch(/^State\d+ \(S\d+\)$/);
+      }
+    }
+  });
+
   it("phrases the prompt naming the subject city", () => {
     const [q] = buildCityStateQuestions(makeCities(10), 1);
     expect(q.prompt).toMatch(/^Which state is City\d+ in\?$/);
@@ -174,7 +196,7 @@ describe("buildCityStateQuestions", () => {
       const cityName = q.prompt.match(/^Which state is (\w+) in\?$/)?.[1];
       const matchingCity = cities.find((c) => c.cityName === cityName);
       expect(matchingCity).toBeDefined();
-      expect(q.options[q.correctIndex]).toBe(matchingCity?.stateName);
+      expect(q.options[q.correctIndex]).toBe(`${matchingCity?.stateName} (${matchingCity?.stateId})`);
     }
   });
 
@@ -729,6 +751,16 @@ describe("buildStateSilhouetteQuestions", () => {
     }
   });
 
+  it("shows every option's abbreviation from the start, not just the correct one (no spoiler risk here)", () => {
+    const facts = makeRealFacts(10);
+    const questions = buildStateSilhouetteQuestions(facts, 5);
+    for (const q of questions) {
+      for (const option of q.options) {
+        expect(option).toMatch(/^State\d+ \(\w{2}\)$/);
+      }
+    }
+  });
+
   it("sets silhouettePath to a real SVG path string and leaves imageUrl null", () => {
     const questions = buildStateSilhouetteQuestions(makeRealFacts(10), 5);
     for (const q of questions) {
@@ -742,7 +774,7 @@ describe("buildStateSilhouetteQuestions", () => {
     const questions = buildStateSilhouetteQuestions(facts, 5);
     for (const q of questions) {
       expect(q.options).toHaveLength(4);
-      expect(q.options[q.correctIndex]).toMatch(/^State\d+$/);
+      expect(q.options[q.correctIndex]).toMatch(/^State\d+ \(\w{2}\)$/);
     }
   });
 

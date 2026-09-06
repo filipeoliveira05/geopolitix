@@ -33,7 +33,10 @@ export function buildFlagQuestions(facts: StateFact[], count: number): MultipleC
   return subjects.map((subject) =>
     buildMultipleChoiceQuestion(subject, facts, {
       getPrompt: () => "Which state does this flag belong to?",
-      getOptionText: (f) => f.stateName,
+      // "(XX)" baked directly into the option text, shown from the start — unlike
+      // buildCapitalQuestions' getOptionStateAbbr, the option here already IS the state name being
+      // guessed, so its own abbreviation carries no spoiler risk at all.
+      getOptionText: (f) => `${f.stateName} (${f.stateId})`,
       getImageUrl: (f) => f.flagUrl,
     }),
   );
@@ -58,7 +61,8 @@ export function buildStateSilhouetteQuestions(
   return subjects.map((subject) =>
     buildMultipleChoiceQuestion(subject, eligible, {
       getPrompt: () => "Which state is this?",
-      getOptionText: (f) => f.stateName,
+      // Same not-a-spoiler reasoning as buildFlagQuestions above.
+      getOptionText: (f) => `${f.stateName} (${f.stateId})`,
       getSilhouettePath: (f) => getStateSilhouettePath(f.stateId),
     }),
   );
@@ -259,7 +263,8 @@ export function buildCityStateQuestions(
   return subjects.map((subject) =>
     buildMultipleChoiceQuestion(subject, cities, {
       getPrompt: (c) => `Which state is ${c.cityName} in?`,
-      getOptionText: (c) => c.stateName,
+      // Same not-a-spoiler reasoning as buildFlagQuestions above.
+      getOptionText: (c) => `${c.stateName} (${c.stateId})`,
     }),
   );
 }
