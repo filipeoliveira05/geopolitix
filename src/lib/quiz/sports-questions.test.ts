@@ -2,6 +2,10 @@ import { describe, it, expect } from "vitest";
 import {
   buildTeamLogoQuestions,
   buildTeamStateQuestions,
+  buildTeamCityQuestions,
+  buildTeamByCityQuestions,
+  buildTeamByStateQuestions,
+  buildSchoolFromNicknameQuestions,
   buildMatchingPairs,
   buildProTeamCountQuestions,
   buildStateTeamRecallQuestions,
@@ -121,6 +125,73 @@ describe("buildTeamStateQuestions", () => {
     for (const q of questions) {
       expect(q.options).toHaveLength(4);
       expect(q.options[q.correctIndex]).toBeTruthy();
+    }
+  });
+
+  it("shows every option's abbreviation from the start, not just the correct one (no spoiler risk here)", () => {
+    const questions = buildTeamStateQuestions(makeTeams(10), 5);
+    for (const q of questions) {
+      for (const option of q.options) {
+        expect(option).toMatch(/^.+ \(\w{2}\)$/);
+      }
+    }
+  });
+});
+
+describe("buildTeamCityQuestions", () => {
+  it("shows every option as \"CityName, XX\" from the start (disambiguates repeated city names)", () => {
+    const teams = makeTeams(10);
+    const questions = buildTeamCityQuestions(teams, 5);
+    for (const q of questions) {
+      for (const option of q.options) {
+        expect(option).toMatch(/^City\d+, \w{2}$/);
+      }
+    }
+  });
+
+  it("has the subject's own city/state as the correct answer", () => {
+    const teams = makeTeams(10);
+    const questions = buildTeamCityQuestions(teams, 5);
+    for (const q of questions) {
+      const subjectName = q.prompt.match(/^Which city is the (.+) based in\?$/)?.[1];
+      const subject = teams.find((t) => t.name === subjectName);
+      expect(q.options[q.correctIndex]).toBe(`${subject?.cityName}, ${subject?.stateId}`);
+    }
+  });
+});
+
+describe("buildTeamByCityQuestions", () => {
+  it("shows every option as \"TeamName (League)\" from the start (not a spoiler)", () => {
+    const teams = makeTeams(10);
+    const questions = buildTeamByCityQuestions(teams, 5);
+    for (const q of questions) {
+      for (const option of q.options) {
+        expect(option).toMatch(/^Team\d+ \(NFL\)$/);
+      }
+    }
+  });
+});
+
+describe("buildTeamByStateQuestions", () => {
+  it("shows every option as \"TeamName (League)\" from the start (not a spoiler)", () => {
+    const teams = makeTeams(10);
+    const questions = buildTeamByStateQuestions(teams, 5);
+    for (const q of questions) {
+      for (const option of q.options) {
+        expect(option).toMatch(/^Team\d+ \(NFL\)$/);
+      }
+    }
+  });
+});
+
+describe("buildSchoolFromNicknameQuestions", () => {
+  it("shows every option as \"School (Conference)\" from the start (not a spoiler)", () => {
+    const programs = makeCollegePrograms(10, "SEC");
+    const questions = buildSchoolFromNicknameQuestions(programs, [], 5);
+    for (const q of questions) {
+      for (const option of q.options) {
+        expect(option).toMatch(/^SchoolSEC\d+ \(SEC\)$/);
+      }
     }
   });
 });

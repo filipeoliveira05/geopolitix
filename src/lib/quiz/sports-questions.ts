@@ -88,7 +88,10 @@ export function buildTeamStateQuestions(
   return subjects.map((subject) =>
     buildMultipleChoiceQuestion(subject, facts, {
       getPrompt: (t) => `Which state is the ${t.name} based in?`,
-      getOptionText: (t) => t.stateName,
+      // "(XX)" baked directly into the option text, shown from the start — same not-a-spoiler
+      // reasoning as Geography's flag/silhouette/city-state questions: the option here already IS
+      // the state name being guessed, so its own abbreviation gives nothing extra away.
+      getOptionText: (t) => `${t.stateName} (${t.stateId})`,
       // Shown immediately, not gated behind answering — the team name is already in the prompt,
       // so the logo doesn't spoil the state answer (same reasoning as the midterms questions). No
       // caption — the team name is already right there in the prompt text, so repeating it under
@@ -125,7 +128,11 @@ export function buildTeamCityQuestions(
   return subjects.map((subject) =>
     buildMultipleChoiceQuestion(subject, teams, {
       getPrompt: (t) => `Which city is the ${t.name} based in?`,
-      getOptionText: (t) => t.cityName,
+      // "CityName, XX" — same disambiguation convention buildCityPopulationQuestions' own labels
+      // already use, since several city names repeat across different states in the synced pool
+      // (multiple "Portland"s). Shown from the start: the team name is already in the prompt, so
+      // this doesn't spoil which option is correct.
+      getOptionText: (t) => `${t.cityName}, ${t.stateId}`,
       // Same reasoning as buildTeamStateQuestions: team is already named in the prompt, so
       // showing the logo up front doesn't spoil the city answer, and no caption is needed since
       // the name would just repeat the prompt text.
@@ -148,7 +155,9 @@ export function buildTeamByCityQuestions(
     const otherCitiesPool = teams.filter((t) => t.cityName !== subject.cityName);
     return buildMultipleChoiceQuestion(subject, [subject, ...otherCitiesPool], {
       getPrompt: (t) => `Which of these teams is based in ${t.cityName}?`,
-      getOptionText: (t) => t.name,
+      // "(League)" baked into each option, shown from the start — which league a team plays in
+      // doesn't hint at which one is actually based in the asked-about city, so no spoiler risk.
+      getOptionText: (t) => `${t.name} (${t.league})`,
       // Shown only after answering — the correct team's logo/name, same reveal timing the
       // governor question uses, so the round still teaches a logo-to-name association even
       // though the logo can't be shown up front here.
@@ -171,7 +180,8 @@ export function buildTeamByStateQuestions(
     const otherStatesPool = facts.filter((t) => t.stateId !== subject.stateId);
     return buildMultipleChoiceQuestion(subject, [subject, ...otherStatesPool], {
       getPrompt: (t) => `Which of these teams is based in ${t.stateName}?`,
-      getOptionText: (t) => t.name,
+      // Same not-a-spoiler reasoning as buildTeamByCityQuestions above.
+      getOptionText: (t) => `${t.name} (${t.league})`,
       // Same reveal-timing reasoning as buildTeamByCityQuestions.
       getRevealImageUrl: (t) => t.logoUrl,
       getRevealCaption: (t) => t.name,
@@ -192,7 +202,10 @@ export function buildSchoolFromNicknameQuestions(
   return subjects.map((subject) =>
     buildMultipleChoiceQuestion(subject, pool, {
       getPrompt: (p) => `Which school's team is called the ${p.nickname}?`,
-      getOptionText: (p) => p.school,
+      // "(Conference)" baked into each option, shown from the start — pool is already restricted
+      // to power-conference programs (conference guaranteed non-null), and which conference a
+      // school plays in doesn't hint at its nickname, so no spoiler risk.
+      getOptionText: (p) => `${p.school} (${p.conference})`,
       // No image up front — a program's logo usually names or strongly hints at the school
       // itself, which would give away the answer to a question that's asking for the school.
       // Reveals it below the options after answering instead, same reveal timing as the sports
