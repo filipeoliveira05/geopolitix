@@ -64,14 +64,18 @@ export function MultipleChoiceQuestionView({
             >
               <span className="flex items-center gap-2">
                 {question.optionImages && (
-                  <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-full">
+                  <div
+                    className={`relative h-14 w-14 shrink-0 ${
+                      question.optionImagesAreLogos ? "" : "overflow-hidden rounded-full"
+                    }`}
+                  >
                     {question.optionImages[i] && (
                       <Image
                         src={question.optionImages[i] as string}
                         alt=""
                         fill
                         unoptimized
-                        className="object-cover"
+                        className={question.optionImagesAreLogos ? "object-contain" : "object-cover"}
                       />
                     )}
                   </div>

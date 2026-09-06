@@ -97,6 +97,12 @@ export type MultipleChoiceQuestion = {
   // that option (e.g. a governor with no synced photo). Undefined means this question type has no
   // per-option photo at all.
   optionImages?: (string | null)[];
+  // When true, optionImages renders as a square object-contain box instead of the default circular
+  // object-cover crop — for a question type whose optionImages are team logos (e.g. the odd-one-out
+  // question), not people's photos. A circular crop cuts off a horizontally-wide logo's edges (a
+  // real bug caught on the Rams' logo elsewhere in this app); a photo has no such problem since a
+  // headshot is already roughly square. Undefined/false means the default circular photo crop.
+  optionImagesAreLogos?: boolean;
   // Shown next to each option's text as ", XX", but only AFTER answering (same reveal timing as
   // optionPopulations above) — the capital question's whole point is guessing, so naming each
   // option's real state up front would give it away. Lets a player who got it wrong see exactly

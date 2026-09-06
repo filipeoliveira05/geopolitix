@@ -2,7 +2,12 @@ import { describe, it, expect } from "vitest";
 import { countOddOneOutEligibleStates, buildOddOneOutQuestions } from "./mashups-questions";
 import type { SportsTeam } from "@/lib/geography-data";
 
-function makeTeam(id: string, stateId: string, name: string): SportsTeam {
+function makeTeam(
+  id: string,
+  stateId: string,
+  name: string,
+  logoUrl: string | null = null,
+): SportsTeam {
   return {
     id,
     name,
@@ -10,7 +15,7 @@ function makeTeam(id: string, stateId: string, name: string): SportsTeam {
     cityName: "City",
     stateId,
     wikipediaTitle: null,
-    logoUrl: null,
+    logoUrl,
     bioSummary: null,
     lastSyncedAt: null,
   };
@@ -61,6 +66,29 @@ describe("buildOddOneOutQuestions", () => {
       const otherStates = otherNames.map((n) => teams.find((t) => t.name === n)?.stateId);
       expect(new Set(otherStates).size).toBe(1); // the other three share exactly one state
       expect(otherStates[0]).not.toBe(oddTeam?.stateId); // the odd one is genuinely different
+    }
+  });
+
+  it("shows each option's own logo up front, flagged as logos (square crop, not circular)", () => {
+    const teams = makeTeams().map((t) => ({ ...t, logoUrl: `https://example.com/${t.id}.png` }));
+    const questions = buildOddOneOutQuestions(teams, 2);
+    for (const q of questions) {
+      expect(q.optionImagesAreLogos).toBe(true);
+      q.options.forEach((name, i) => {
+        const team = teams.find((t) => t.name === name);
+        expect(q.optionImages?.[i]).toBe(team?.logoUrl);
+      });
+    }
+  });
+
+  it("reveals each option's real state only after answering (optionStateAbbrs)", () => {
+    const teams = makeTeams();
+    const questions = buildOddOneOutQuestions(teams, 2);
+    for (const q of questions) {
+      q.options.forEach((name, i) => {
+        const team = teams.find((t) => t.name === name);
+        expect(q.optionStateAbbrs?.[i]).toBe(team?.stateId);
+      });
     }
   });
 });

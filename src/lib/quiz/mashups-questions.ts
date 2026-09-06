@@ -40,11 +40,22 @@ export function buildOddOneOutQuestions(
     const threeFromState = pickRandom(stateTeams, 3);
     const otherStateTeams = teams.filter((t) => t.stateId !== stateId);
     const [oddOne] = pickRandom(otherStateTeams, 1);
-    const options = pickRandom([...threeFromState.map((t) => t.name), oddOne.name], 4);
+    const candidates = [...threeFromState, oddOne];
+    const itemByName = new Map(candidates.map((t) => [t.name, t]));
+    const options = pickRandom(candidates.map((t) => t.name), 4);
     return {
       format: "multiple-choice",
       prompt: "Which of these teams is NOT based in the same state as the others?",
       imageUrl: null,
+      // Shown immediately — a team's own logo doesn't spoil which state it's based in unless the
+      // player already knows that mapping, same reasoning the governor question's optionImages
+      // already established for photo/name association.
+      optionImages: options.map((name) => itemByName.get(name)?.logoUrl ?? null),
+      optionImagesAreLogos: true,
+      // Gated behind answering, unlike optionImages above — showing each option's real state up
+      // front would make the odd one out trivially visible by inspection, defeating the question
+      // entirely. Lets the player see WHY the odd one is odd, not just that they got it right/wrong.
+      optionStateAbbrs: options.map((name) => itemByName.get(name)?.stateId ?? null),
       options,
       correctIndex: options.indexOf(oddOne.name),
     };
