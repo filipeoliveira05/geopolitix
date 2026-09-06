@@ -60,7 +60,7 @@ export function MultipleChoiceQuestionView({
               key={option}
               onClick={() => onAnswer(i)}
               disabled={answered}
-              className={`flex items-center justify-between gap-2 rounded border px-4 text-left text-sm ${question.optionImages ? "py-3" : "py-2"} ${stateClassName}`}
+              className={`flex items-center justify-between gap-2 rounded border px-4 py-3 text-left text-base ${stateClassName}`}
             >
               <span className="flex items-center gap-2">
                 {question.optionImages && (
