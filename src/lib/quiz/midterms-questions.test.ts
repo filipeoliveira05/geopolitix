@@ -210,6 +210,73 @@ describe("buildIncumbencyQuestions", () => {
     expect(chalQ.options[chalQ.correctIndex]).toBe("No");
   });
 
+  it("reveals every real candidate in the subject's own race, photo/name/party/incumbent status each", () => {
+    const incumbent: CandidateFact = {
+      name: "Inc",
+      party: "Democrat",
+      isIncumbent: true,
+      stateName: "Texas",
+      office: "senate",
+      districtNumber: null,
+      photoUrl: "https://example.com/inc.png",
+    };
+    const challenger: CandidateFact = {
+      name: "Chal",
+      party: "Republican",
+      isIncumbent: false,
+      stateName: "Texas",
+      office: "senate",
+      districtNumber: null,
+      photoUrl: "https://example.com/chal.png",
+    };
+    const otherRaceCandidate: CandidateFact = {
+      name: "Other",
+      party: "Democrat",
+      isIncumbent: true,
+      stateName: "Ohio",
+      office: "senate",
+      districtNumber: null,
+      photoUrl: null,
+    };
+    const pool = [incumbent, challenger, otherRaceCandidate];
+
+    const [chalQ] = buildIncumbencyQuestions(pool, 3).filter((q) => q.prompt.startsWith("Is Chal"));
+    expect(chalQ.revealCandidates).toEqual([
+      { name: "Inc", party: "Democrat", photoUrl: "https://example.com/inc.png", isIncumbent: true },
+      { name: "Chal", party: "Republican", photoUrl: "https://example.com/chal.png", isIncumbent: false },
+    ]);
+  });
+
+  it("falls back to just the subject when no race-mates are in the given pool (open race, no incumbent)", () => {
+    const challenger: CandidateFact = {
+      name: "Chal",
+      party: "Republican",
+      isIncumbent: false,
+      stateName: "Texas",
+      office: "senate",
+      districtNumber: null,
+      photoUrl: null,
+    };
+    const [q] = buildIncumbencyQuestions([challenger], 1);
+    expect(q.revealCandidates).toEqual([
+      { name: "Chal", party: "Republican", photoUrl: null, isIncumbent: false },
+    ]);
+  });
+
+  it("names the race above the candidate list, matching the prompt's own race label", () => {
+    const senate: CandidateFact = {
+      name: "Sen",
+      party: "Democrat",
+      isIncumbent: true,
+      stateName: "Alaska",
+      office: "senate",
+      districtNumber: null,
+      photoUrl: null,
+    };
+    const [q] = buildIncumbencyQuestions([senate], 1);
+    expect(q.revealText).toBe("Alaska Senate race");
+  });
+
   it("shows the subject's photo/name/party immediately (not gated behind answering)", () => {
     const subject: CandidateFact = {
       name: "Inc",

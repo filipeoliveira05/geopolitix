@@ -97,18 +97,42 @@ export function buildIncumbencyQuestions(
   facts: CandidateFact[],
   count: number,
 ): MultipleChoiceQuestion[] {
+  // Groups the flattened pool back by race (same raceLabel key every subject's own prompt already
+  // uses) so the reveal below can show every real candidate in the subject's own race — mirrors
+  // buildIsCapitalQuestions' revealText fix in spirit (a wrong guess previously taught nothing
+  // beyond "that wasn't it"), but as a full candidate lineup rather than a single fact.
+  const byRace = new Map<string, CandidateFact[]>();
+  for (const f of facts) {
+    const key = raceLabel(f.stateName, f.office, f.districtNumber);
+    if (!byRace.has(key)) byRace.set(key, []);
+    byRace.get(key)!.push(f);
+  }
+
   const subjects = pickRandom(facts, count);
-  return subjects.map((s) => ({
-    format: "multiple-choice",
-    prompt: `Is ${s.name} the incumbent in the ${raceLabel(s.stateName, s.office, s.districtNumber)} race?`,
-    imageUrl: s.photoUrl,
-    imageCaption: s.name,
-    // Unlike the party question, incumbency isn't derivable from a party badge — safe to show,
-    // same as the Legislator question's caption.
-    imageCaptionParty: s.party,
-    options: ["Yes", "No"],
-    correctIndex: s.isIncumbent ? 0 : 1,
-  }));
+  return subjects.map((s) => {
+    const race = raceLabel(s.stateName, s.office, s.districtNumber);
+    const raceMates = byRace.get(race) ?? [s];
+    return {
+      format: "multiple-choice",
+      prompt: `Is ${s.name} the incumbent in the ${race} race?`,
+      imageUrl: s.photoUrl,
+      imageCaption: s.name,
+      // Unlike the party question, incumbency isn't derivable from a party badge — safe to show,
+      // same as the Legislator question's caption.
+      imageCaptionParty: s.party,
+      // Shown right above the revealCandidates list below — names the race the candidates are
+      // running in, since the prompt itself scrolls out of view by the time the reveal renders.
+      revealText: `${race} race`,
+      revealCandidates: raceMates.map((f) => ({
+        name: f.name,
+        party: f.party,
+        photoUrl: f.photoUrl,
+        isIncumbent: f.isIncumbent,
+      })),
+      options: ["Yes", "No"],
+      correctIndex: s.isIncumbent ? 0 : 1,
+    };
+  });
 }
 
 const CANDIDATE_SEARCH_POOL_SAMPLE_SIZE = 20;

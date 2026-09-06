@@ -108,6 +108,11 @@ export type MultipleChoiceQuestion = {
   // real, distinct state — the subject genuinely has zero synced teams — and the view renders an
   // explicit "no teams" message for it rather than nothing.
   revealTeams?: { name: string; league: string; logoUrl: string | null }[];
+  // Only populated for the incumbency question — every real candidate in the subject's own race
+  // (photo/name/party/incumbent status each), shown after answering so a wrong "No" guess (or a
+  // right one) still teaches the race's full lineup, not just a one-line fact. Same reveal-timing
+  // convention as revealTeams above, just for people instead of teams.
+  revealCandidates?: { name: string; party: string; photoUrl: string | null; isIncumbent: boolean }[];
   // Only populated for the does-NOT-border question type — same precomputed regional-map shape
   // SearchSelectQuestion.revealBorderMap uses (state-border-region-geo.ts), shown after answering
   // so the player sees which states actually do border the subject. Unlike the search-select

@@ -180,6 +180,31 @@ export function MultipleChoiceQuestionView({
           )}
         </div>
       )}
+      {answered && question.revealCandidates && (
+        <div className="mt-4 flex flex-col gap-2">
+          {question.revealCandidates.map((candidate) => (
+            <div key={candidate.name} className="flex items-center gap-3">
+              <div className="relative h-10 w-10 shrink-0 overflow-hidden rounded-full">
+                {candidate.photoUrl && (
+                  <Image
+                    src={candidate.photoUrl}
+                    alt=""
+                    fill
+                    unoptimized
+                    className="object-cover"
+                  />
+                )}
+              </div>
+              <p className="text-sm text-ink">
+                {candidate.name} <PartyBadge party={candidate.party} />
+                {candidate.isIncumbent && (
+                  <span className="ml-1 text-xs text-muted">(Incumbent)</span>
+                )}
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
       {answered && question.revealBorderMap && (
         <div className="relative mt-4 h-48 w-full animate-fade-in">
           <svg viewBox="0 0 100 100" className="h-full w-full">
