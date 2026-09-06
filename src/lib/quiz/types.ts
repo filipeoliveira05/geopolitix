@@ -81,6 +81,12 @@ export type MultipleChoiceQuestion = {
   // "unknown party" badge (same imageCaptionParty convention), while the field being entirely
   // undefined means this question type has no concept of party at all.
   optionParties?: (string | null)[];
+  // Shown next to each option, always (same non-gated reasoning as optionParties — a photo of a
+  // person doesn't hand the player their name the way a population figure would give away a
+  // biggest/smallest comparison). Index-aligned with `options`; a null entry renders no avatar for
+  // that option (e.g. a governor with no synced photo). Undefined means this question type has no
+  // per-option photo at all.
+  optionImages?: (string | null)[];
   // Renders a party badge next to revealCaption, same imageCaptionParty convention. Undefined
   // means no badge; a question type with no party concept simply never sets it.
   revealCaptionParty?: string | null;

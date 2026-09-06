@@ -66,14 +66,17 @@ describe("buildGovernorQuestions", () => {
     expect(q.imageUrl).toBeNull();
   });
 
-  it("sets the correct governor's photo/name as the reveal image, shown only after answering", () => {
+  it("shows each option's own photo and party up front, with no reveal (all four faces already visible)", () => {
     const facts = makeGovernorFacts(10);
     const questions = buildGovernorQuestions(facts, 5);
     for (const q of questions) {
-      const correctOption = q.options[q.correctIndex];
-      const matchingFact = facts.find((f) => f.governorName === correctOption);
-      expect(q.revealImageUrl).toBe(matchingFact?.photoUrl);
-      expect(q.revealCaption).toBe(matchingFact?.governorName);
+      expect(q.revealImageUrl).toBeFalsy();
+      expect(q.revealCaption).toBeFalsy();
+      q.options.forEach((option, i) => {
+        const matchingFact = facts.find((f) => f.governorName === option);
+        expect(q.optionImages?.[i]).toBe(matchingFact?.photoUrl);
+        expect(q.optionParties?.[i]).toBe(matchingFact?.party);
+      });
     }
   });
 });

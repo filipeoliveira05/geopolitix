@@ -19,9 +19,10 @@ export function buildGovernorQuestions(
       getPrompt: (s) => `Who is the current governor of ${s.stateName}?`,
       getOptionText: (f) => f.governorName,
       getOptionParty: (f) => f.party,
-      getRevealImageUrl: (s) => s.photoUrl,
-      getRevealCaption: (s) => s.governorName,
-      getRevealCaptionParty: (s) => s.party,
+      // Shown next to each option up front — with all four faces on screen, no separate
+      // post-answer reveal is needed to teach the face-to-name association (unlike the officeholder
+      // name-guess question, whose single subject photo IS the clue and can't also be an option).
+      getOptionImage: (f) => f.photoUrl,
     }),
   );
 }
@@ -205,6 +206,7 @@ export function buildChamberQuestions(
       getImageUrl: (f) => f.photoUrl,
       getImageCaption: (f) => f.legislatorName,
       getImageCaptionParty: (f) => f.party,
+      getRevealText: (f) => `Represents ${f.stateName}.`,
       optionCount: 2,
     }),
   );

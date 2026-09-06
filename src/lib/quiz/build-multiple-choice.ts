@@ -24,6 +24,11 @@ export function buildMultipleChoiceQuestion<T>(
     getImageCaptionParty?: (subject: T) => string | null;
     getRevealImageUrl?: (subject: T) => string | null;
     getRevealCaption?: (subject: T) => string | null;
+    // Shown next to revealImageUrl/revealCaption, but no image or caption involved
+    // (MultipleChoiceQuestion.revealText) — for a question type that wants to teach one extra fact
+    // after answering, unrelated to the reveal photo/name (e.g. the chamber question also
+    // revealing the legislator's state).
+    getRevealText?: (subject: T) => string | null;
     // Shown next to each option after answering (MultipleChoiceQuestion.optionPopulations) — for
     // a question type whose options are real-world entities with a population worth revealing
     // (e.g. "what's the largest city in X?"), same reveal-timing convention the two population-
@@ -33,6 +38,9 @@ export function buildMultipleChoiceQuestion<T>(
     // Shown next to each option (MultipleChoiceQuestion.optionParties) — for a question type
     // whose options are people/parties worth badging (e.g. "who is the governor of X?").
     getOptionParty?: (item: T) => string | null;
+    // Shown next to each option (MultipleChoiceQuestion.optionImages) — for a question type whose
+    // options are people worth showing a face for up front (e.g. "who is the governor of X?").
+    getOptionImage?: (item: T) => string | null;
     getRevealCaptionParty?: (subject: T) => string | null;
     optionsAreParties?: boolean;
     // Defaults to 4 (every Geography/Officeholders question uses this many). A question type
@@ -73,6 +81,7 @@ export function buildMultipleChoiceQuestion<T>(
     revealImageUrl: opts.getRevealImageUrl ? opts.getRevealImageUrl(subject) : null,
     revealCaption: opts.getRevealCaption ? opts.getRevealCaption(subject) : null,
     revealCaptionParty: opts.getRevealCaptionParty ? opts.getRevealCaptionParty(subject) : undefined,
+    revealText: opts.getRevealText ? opts.getRevealText(subject) : null,
     optionsAreParties: opts.optionsAreParties ?? false,
     optionPopulations: opts.getOptionPopulation
       ? options.map((text) => {
@@ -84,6 +93,12 @@ export function buildMultipleChoiceQuestion<T>(
       ? options.map((text) => {
           const item = itemByText.get(text);
           return item ? (opts.getOptionParty as (item: T) => string | null)(item) : null;
+        })
+      : undefined,
+    optionImages: opts.getOptionImage
+      ? options.map((text) => {
+          const item = itemByText.get(text);
+          return item ? (opts.getOptionImage as (item: T) => string | null)(item) : null;
         })
       : undefined,
     options,

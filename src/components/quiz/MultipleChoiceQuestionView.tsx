@@ -60,34 +60,49 @@ export function MultipleChoiceQuestionView({
               key={option}
               onClick={() => onAnswer(i)}
               disabled={answered}
-              className={`flex items-center justify-between gap-2 rounded border px-4 py-2 text-left text-sm ${stateClassName}`}
+              className={`flex items-center justify-between gap-2 rounded border px-4 text-left text-sm ${question.optionImages ? "py-3" : "py-2"} ${stateClassName}`}
             >
-              <span>
-                {option}
-                {question.optionsAreParties && (
-                  // Inherits the button's own white text once highlighted, rather than the
-                  // PartyBadge component's own hardcoded color classes — a party's color badge
-                  // (e.g. Republican's red) can otherwise clash against a same-colored highlight
-                  // (a wrong-answer red background), so real party colors only show pre-answer.
-                  <span
-                    className={`font-medium ${highlighted ? "" : partyStyle(option).textClassName}`}
-                  >
-                    {" "}
-                    ({partyStyle(option).letter})
-                  </span>
+              <span className="flex items-center gap-2">
+                {question.optionImages && (
+                  <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-full">
+                    {question.optionImages[i] && (
+                      <Image
+                        src={question.optionImages[i] as string}
+                        alt=""
+                        fill
+                        unoptimized
+                        className="object-cover"
+                      />
+                    )}
+                  </div>
                 )}
-                {question.optionParties && (
-                  // Same highlighted-inherits-white-text treatment as optionsAreParties above —
-                  // here the option text is a person's name and the party is a separate per-item
-                  // field, so PartyBadge itself can't be reused directly (it always applies its
-                  // own color classes).
-                  <span
-                    className={`font-medium ${highlighted ? "" : partyStyle(question.optionParties[i]).textClassName}`}
-                  >
-                    {" "}
-                    ({partyStyle(question.optionParties[i]).letter})
-                  </span>
-                )}
+                <span>
+                  {option}
+                  {question.optionsAreParties && (
+                    // Inherits the button's own white text once highlighted, rather than the
+                    // PartyBadge component's own hardcoded color classes — a party's color badge
+                    // (e.g. Republican's red) can otherwise clash against a same-colored highlight
+                    // (a wrong-answer red background), so real party colors only show pre-answer.
+                    <span
+                      className={`font-medium ${highlighted ? "" : partyStyle(option).textClassName}`}
+                    >
+                      {" "}
+                      ({partyStyle(option).letter})
+                    </span>
+                  )}
+                  {question.optionParties && (
+                    // Same highlighted-inherits-white-text treatment as optionsAreParties above —
+                    // here the option text is a person's name and the party is a separate per-item
+                    // field, so PartyBadge itself can't be reused directly (it always applies its
+                    // own color classes).
+                    <span
+                      className={`font-medium ${highlighted ? "" : partyStyle(question.optionParties[i]).textClassName}`}
+                    >
+                      {" "}
+                      ({partyStyle(question.optionParties[i]).letter})
+                    </span>
+                  )}
+                </span>
               </span>
               {/* Population + icon grouped into one flex child (rather than each being its own
                   sibling under justify-between) so they sit together as a single right-aligned
