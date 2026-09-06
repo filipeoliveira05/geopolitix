@@ -360,7 +360,7 @@ describe("buildSenatorRecallQuestions", () => {
   it("handles a 1-senator state (vacancy) without breaking", () => {
     const senatorsByState = new Map([["S0", [makeSenator("L0", "Amy", "Adams", "S0")]]]);
     const [q] = buildSenatorRecallQuestions(senatorsByState, makeStateFacts(1), 1);
-    expect(q.targets).toEqual([{ id: "L0", label: "Amy Adams" }]);
+    expect(q.targets).toEqual([{ id: "L0", label: "Amy Adams", party: "Democrat", photoUrl: null }]);
   });
 
   it("excludes a state with zero current senators", () => {

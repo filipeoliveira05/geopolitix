@@ -29,7 +29,12 @@ export function buildSenatorEntries(
   const entries: SearchSelectEntry[] = [];
   for (const senators of senatorsByState.values()) {
     for (const s of senators) {
-      entries.push({ id: s.legislator.id, label: fullLegislatorName(s.legislator) });
+      entries.push({
+        id: s.legislator.id,
+        label: fullLegislatorName(s.legislator),
+        party: s.term.party,
+        photoUrl: s.legislator.photoUrl,
+      });
     }
   }
   return entries;

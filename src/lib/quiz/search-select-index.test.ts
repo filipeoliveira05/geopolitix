@@ -57,7 +57,9 @@ describe("buildSenatorEntries", () => {
         ],
       ],
     ]);
-    expect(buildSenatorEntries(senatorsByState)).toEqual([{ id: "L1", label: "Amy Adams" }]);
+    expect(buildSenatorEntries(senatorsByState)).toEqual([
+      { id: "L1", label: "Amy Adams", party: "Democrat", photoUrl: null },
+    ]);
   });
 });
 
