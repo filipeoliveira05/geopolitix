@@ -346,6 +346,20 @@ describe("buildRaceCandidateRecallQuestions", () => {
     expect(q.targets.find((t) => t.label === "Zed")?.party).toBe("Republican");
   });
 
+  it("carries each candidate's own incumbency status on their target, for an (Incumbent) tag shown once found", () => {
+    const races = [
+      makeRace({
+        candidates: [
+          makeCandidate({ id: "c1", name: "Amy", isIncumbent: true }),
+          makeCandidate({ id: "c2", name: "Zed", isIncumbent: false }),
+        ],
+      }),
+    ];
+    const [q] = buildRaceCandidateRecallQuestions(races, makeStateFacts(["TX"]), 1);
+    expect(q.targets.find((t) => t.label === "Amy")?.isIncumbent).toBe(true);
+    expect(q.targets.find((t) => t.label === "Zed")?.isIncumbent).toBe(false);
+  });
+
   it("carries each candidate's photoUrl (including null for a real candidate with none)", () => {
     const races = [
       makeRace({

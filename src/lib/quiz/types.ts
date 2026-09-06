@@ -28,6 +28,11 @@ export type SearchSelectEntry = {
   // before it's found) — shown next to a found/revealed target's name once its row is actually
   // revealed, same reveal timing SearchSelectQuestionView already gates photo/party on.
   population?: number | null;
+  // Only populated on the race-candidate-recall question's own `targets` entries (never on
+  // searchPool entries, same not-in-the-dropdown reasoning as population above, though here it's
+  // simply not relevant there rather than a spoiler) — a small "(Incumbent)" tag shown next to a
+  // found/revealed target's name.
+  isIncumbent?: boolean;
 };
 
 export type MultipleChoiceQuestion = {

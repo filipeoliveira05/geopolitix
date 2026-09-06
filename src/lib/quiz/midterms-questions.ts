@@ -171,6 +171,7 @@ export function buildRaceCandidateRecallQuestions(
       label: c.name,
       party: c.party,
       photoUrl: c.photoUrl,
+      isIncumbent: c.isIncumbent,
     }));
     const nearby = withRealCandidates
       .filter(({ race: otherRace }) => otherRace.id !== race.id)

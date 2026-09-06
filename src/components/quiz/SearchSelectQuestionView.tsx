@@ -240,6 +240,9 @@ export function SearchSelectQuestionView({
                     {target.league !== undefined && (
                       <span className="text-muted"> ({target.league})</span>
                     )}
+                    {target.isIncumbent && (
+                      <span className="ml-1 text-xs text-muted">(Incumbent)</span>
+                    )}
                   </span>
                   {(target.population != null || isFound) && (
                     <span className="ml-auto flex items-center gap-2">
