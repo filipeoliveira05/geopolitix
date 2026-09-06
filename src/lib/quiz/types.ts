@@ -133,6 +133,12 @@ export type MultipleChoiceQuestion = {
     subject: { label: string; path: string; labelX: number; labelY: number };
     neighbors: { id: string; label: string; path: string; labelX: number; labelY: number }[];
   };
+  // Only populated for the silhouette-guess question type — the subject's own state abbreviation,
+  // shown after answering as a real interactive US map (QuizMapClick, reused in reveal-only mode)
+  // with just that state highlighted, same visual convention as MapClickQuestion's own correct-
+  // target highlight. Distinct from revealBorderMap above, which draws a small precomputed
+  // subject-plus-neighbors shape rather than the full national map.
+  revealStateAbbr?: string;
   options: string[];
   correctIndex: number;
 };

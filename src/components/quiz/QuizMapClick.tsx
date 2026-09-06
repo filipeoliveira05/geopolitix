@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Map as MapLibreMap,
   Marker,
@@ -101,6 +101,15 @@ export function QuizMapClick({
   // already happened, regardless of which effect's cleanup React happens to run first.
   const removedRef = useRef(false);
   const labelMarkersRef = useRef<Marker[]>([]);
+  // Tracks whether this map instance's "load" event (and the source/layers it adds) has actually
+  // fired yet — MapClickQuestionView mounts this component before the player answers, so by the
+  // time `feedback` goes non-null the map has long since loaded. A reveal-only caller (e.g.
+  // MultipleChoiceQuestionView's silhouette reveal) mounts this component for the first time
+  // ALREADY carrying non-null feedback, so the feedback effect below can otherwise race the
+  // asynchronous "load" event and call setFeatureState before SOURCE_ID exists — caught live as a
+  // console "Style is not done loading" error that silently ate the highlight via the error
+  // boundary. Gating the feedback effect on this flag defers it until load actually completes.
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     onSelectStateRef.current = onSelectState;
@@ -165,21 +174,24 @@ export function QuizMapClick({
         const name = e.features?.[0]?.properties?.name as string | undefined;
         if (abbr) onSelectStateRef.current(abbr, name ?? abbr);
       });
+
+      setLoaded(true);
     });
 
     return () => {
       removedRef.current = true;
       map.remove();
       mapRef.current = null;
+      setLoaded(false);
     };
   }, []);
 
-  // Applies/clears the correct-target (green) and wrong-click (red) highlighting — only ever
-  // runs once the map has actually loaded, since `feedback` can only become non-null as a
-  // reaction to a click event the map itself fired, which can't happen before "load".
+  // Applies/clears the correct-target (green) and wrong-click (red) highlighting. Gated on
+  // `loaded`, not just `feedback` — see the `loaded` state's own doc comment above for why a
+  // reveal-only caller can otherwise race the map's asynchronous "load" event.
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !feedback) return;
+    if (!map || !feedback || !loaded) return;
     map.setFeatureState(
       { source: SOURCE_ID, id: feedback.targetStateId },
       { result: "correct-target" },
@@ -215,7 +227,7 @@ export function QuizMapClick({
         map.setFeatureState({ source: SOURCE_ID, id: feedback.clickedStateId }, { result: null });
       }
     };
-  }, [feedback]);
+  }, [feedback, loaded]);
 
   return (
     <div ref={containerRef} className="h-80 w-full overflow-hidden rounded border border-rule" />

@@ -45,6 +45,9 @@ export function buildMultipleChoiceQuestion<T>(
     // question type whose options are cities/entities worth naming the real owning state for
     // (e.g. "what is the capital of X?").
     getOptionStateAbbr?: (item: T) => string | null;
+    // Shown after answering (MultipleChoiceQuestion.revealStateAbbr) — for a question type whose
+    // subject IS a state, so the reveal can highlight it directly on a real interactive US map.
+    getRevealStateAbbr?: (subject: T) => string | null;
     getRevealCaptionParty?: (subject: T) => string | null;
     optionsAreParties?: boolean;
     // Defaults to 4 (every Geography/Officeholders question uses this many). A question type
@@ -86,6 +89,9 @@ export function buildMultipleChoiceQuestion<T>(
     revealCaption: opts.getRevealCaption ? opts.getRevealCaption(subject) : null,
     revealCaptionParty: opts.getRevealCaptionParty ? opts.getRevealCaptionParty(subject) : undefined,
     revealText: opts.getRevealText ? opts.getRevealText(subject) : null,
+    revealStateAbbr: opts.getRevealStateAbbr
+      ? (opts.getRevealStateAbbr(subject) ?? undefined)
+      : undefined,
     optionsAreParties: opts.optionsAreParties ?? false,
     optionPopulations: opts.getOptionPopulation
       ? options.map((text) => {

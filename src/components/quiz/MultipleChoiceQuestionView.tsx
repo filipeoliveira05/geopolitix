@@ -4,6 +4,11 @@ import { PartyBadge } from "@/components/PartyBadge";
 import { partyStyle } from "@/lib/party-colors";
 import { formatPopulation } from "@/lib/format";
 import { CheckIcon, XIcon } from "./icons";
+import { QuizMapClick } from "./QuizMapClick";
+
+// No-op — the reveal map below is display-only, never clickable (the question is already
+// answered by the time it renders).
+function noopSelectState() {}
 
 // Solid fills (not a faint tint) so right/wrong is unmistakable at a glance on both light and
 // dark themes — an earlier version used `bg-emerald-500/10`/`bg-red-500/10` (a 10% tint over a
@@ -137,6 +142,18 @@ export function MultipleChoiceQuestionView({
           );
         })}
       </div>
+      {answered && question.revealStateAbbr && (
+        <div className="mt-4">
+          <QuizMapClick
+            onSelectState={noopSelectState}
+            feedback={{
+              clickedStateId: question.revealStateAbbr,
+              targetStateId: question.revealStateAbbr,
+              correct: true,
+            }}
+          />
+        </div>
+      )}
       {answered && question.revealImageUrl && (
         <div className="mt-4 flex items-center gap-3">
           <div className="relative h-16 w-16 shrink-0">

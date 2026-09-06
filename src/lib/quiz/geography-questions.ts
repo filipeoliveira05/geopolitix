@@ -64,6 +64,7 @@ export function buildStateSilhouetteQuestions(
       // Same not-a-spoiler reasoning as buildFlagQuestions above.
       getOptionText: (f) => `${f.stateName} (${f.stateId})`,
       getSilhouettePath: (f) => getStateSilhouettePath(f.stateId),
+      getRevealStateAbbr: (f) => f.stateId,
     }),
   );
 }
