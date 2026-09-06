@@ -155,7 +155,12 @@ export function SearchSelectQuestionView({
       {!answered && (
         <div className="relative mb-4">
           <input
-            type="text"
+            type="search"
+            autoComplete="off"
+            autoCorrect="off"
+            autoCapitalize="none"
+            spellCheck={false}
+            name="quiz-search-select"
             value={query}
             onChange={(e) => {
               setQuery(e.target.value);
