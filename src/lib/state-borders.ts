@@ -28,9 +28,12 @@ function getAllNeighbors(): Map<string, string[]> {
     geometries.forEach((_, i) => {
       const abbr = abbrByIndex[i];
       if (!abbr) return;
+      // Filters out `abbr` itself, not just null — a state whose TopoJSON geometry shares an arc
+      // with itself (e.g. an island/multipolygon artifact; confirmed for Oregon) otherwise shows
+      // up as its own neighbor, which topojson-client's neighbors() doesn't guard against.
       const neighborAbbrs = neighborIndexes[i]
         .map((j) => abbrByIndex[j])
-        .filter((a): a is string => a !== null);
+        .filter((a): a is string => a !== null && a !== abbr);
       cachedNeighbors!.set(abbr, neighborAbbrs);
     });
   }
