@@ -146,6 +146,7 @@ export function MultipleChoiceQuestionView({
         <div className="mt-4">
           <QuizMapClick
             onSelectState={noopSelectState}
+            interactive={false}
             feedback={{
               clickedStateId: question.revealStateAbbr,
               targetStateId: question.revealStateAbbr,

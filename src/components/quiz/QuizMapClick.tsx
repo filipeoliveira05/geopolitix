@@ -83,12 +83,19 @@ export type MapClickFeedback = {
 export function QuizMapClick({
   onSelectState,
   feedback,
+  interactive = true,
 }: {
   // Passes the clicked state's own display name alongside its abbreviation — the "wrong state,
   // you clicked on X" reveal message needs a human-readable name, which is only available from the
   // clicked map feature itself at click time, not precomputable at question-build time.
   onSelectState: (abbr: string, name: string) => void;
   feedback: MapClickFeedback;
+  // False for a display-only reveal map (e.g. MultipleChoiceQuestionView's silhouette reveal,
+  // which passes a no-op onSelectState — the question is already answered by the time it renders).
+  // Disables pan/zoom handlers so a touch drag on the map scrolls the page underneath it instead
+  // of being captured as a map gesture — on mobile this otherwise trapped scrolling right where
+  // players need to reach the "Next" button below the map.
+  interactive?: boolean;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
@@ -134,6 +141,17 @@ export function QuizMapClick({
       renderWorldCopies: false,
     });
     mapRef.current = map;
+
+    if (!interactive) {
+      map.dragPan.disable();
+      map.scrollZoom.disable();
+      map.boxZoom.disable();
+      map.dragRotate.disable();
+      map.keyboard.disable();
+      map.doubleClickZoom.disable();
+      map.touchZoomRotate.disable();
+      map.touchPitch.disable();
+    }
 
     map.on("load", () => {
       const raw = getUsStatesGeoJson();
@@ -184,6 +202,10 @@ export function QuizMapClick({
       mapRef.current = null;
       setLoaded(false);
     };
+    // `interactive` intentionally excluded — it's fixed per call site (never toggles on an
+    // already-mounted map), so re-running this whole mount/teardown effect on its account would
+    // just tear down and recreate the map for no behavioral gain.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Applies/clears the correct-target (green) and wrong-click (red) highlighting. Gated on
