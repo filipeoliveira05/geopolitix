@@ -960,3 +960,22 @@ polygon directly rather than guessing screen coordinates blind.
     the first live run actually reproduced the race bug above (confirmed via the browser's own
     console error), and the fix was verified by re-running the same script and confirming both the
     highlight rendered AND the console stayed clean.
+
+**Reveal map trapped mobile scroll (2026-09-07)**: the silhouette
+reveal map above worked, but on a touchscreen a one-finger swipe starting on the map panned the
+map instead of scrolling the page — since the reveal renders above the Next button, this made
+Next hard to reach without swiping from off-map screen edges. Cause: MapLibre GL sets the canvas
+container's CSS `touch-action` (`none`/`pan-x pan-y`, depending on which gesture handlers are
+enabled) based on its own `dragPan`/`touchZoomRotate`/etc. handler state, and `QuizMapClick` never
+had a way to turn those handlers off — even for a reveal-only mount with a no-op
+`onSelectState`, the map still behaved as a pannable/zoomable surface and so still claimed touch
+gestures for itself. Fixed by adding an `interactive` prop (default `true`, so
+`MapClickQuestionView`'s real click-to-answer map is unaffected) to `QuizMapClick`; when `false`,
+the mount effect disables `dragPan`/`scrollZoom`/`boxZoom`/`dragRotate`/`keyboard`/
+`doubleClickZoom`/`touchZoomRotate`/`touchPitch` right after map construction, and
+`MultipleChoiceQuestionView`'s silhouette reveal now passes `interactive={false}`. Verified by
+checking the canvas container's computed `touch-action` went from a blocking value to `auto` once
+disabled (the actual CSS mechanism the browser uses to decide whether a touch gesture is handled
+natively or handed to JS) — a real finger swipe on a physical device is the only way to observe
+the scroll behavior directly, so that computed-style check stood in for it during the automated
+Playwright pass, and the user confirmed the fix on their own phone afterward.
