@@ -33,7 +33,7 @@ type Phase =
   | { name: "session"; questions: QuizQuestion[] }
   | { name: "results"; answers: AnsweredQuestion[] }
   | { name: "matching"; pairs: MatchingPair[] }
-  | { name: "matching-results"; mistakes: number }
+  | { name: "matching-results"; mistakes: number; pairCount: number }
   | { name: "speed-round"; questions: MultipleChoiceQuestion[] }
   | { name: "speed-round-results"; answers: AnsweredQuestion[] };
 
@@ -72,7 +72,8 @@ export function QuizCategoryClient({ category }: { category: QuizCategoryMeta })
   }
 
   function finishMatching(mistakes: number) {
-    setPhase({ name: "matching-results", mistakes });
+    const pairCount = phase.name === "matching" ? phase.pairs.length : 0;
+    setPhase({ name: "matching-results", mistakes, pairCount });
   }
 
   function finishSpeedRound(answers: AnsweredQuestion[]) {
@@ -108,6 +109,7 @@ export function QuizCategoryClient({ category }: { category: QuizCategoryMeta })
       <MatchingResultsScreen
         category={category}
         mistakes={phase.mistakes}
+        pairCount={phase.pairCount}
         onPlayAgain={playAgain}
       />
     );
