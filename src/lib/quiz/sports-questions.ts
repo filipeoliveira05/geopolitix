@@ -68,6 +68,8 @@ export function buildTeamLogoQuestions(
   const subjects = pickRandom(pool, count);
   return subjects.map((subject) =>
     buildMultipleChoiceQuestion(subject, pool, {
+      questionType: "sports.team_logo",
+      getSubjectId: (s) => s.key,
       getPrompt: () => "Which team is this?",
       // League for pro teams, conference for college programs — not a spoiler since the
       // team/school name is the thing being guessed, same baked-in-option convention as
@@ -97,6 +99,8 @@ export function buildTeamStateQuestions(
   const subjects = pickRandom(facts, count);
   return subjects.map((subject) =>
     buildMultipleChoiceQuestion(subject, facts, {
+      questionType: "sports.team_state",
+      getSubjectId: (t) => t.id,
       getPrompt: (t) => `Which state is the ${t.name} based in?`,
       // "(XX)" baked directly into the option text, shown from the start — same not-a-spoiler
       // reasoning as Geography's flag/silhouette/city-state questions: the option here already IS
@@ -120,6 +124,8 @@ export function buildLeagueQuestions(
   const subjects = pickRandom(teams, count);
   return subjects.map((subject) =>
     buildMultipleChoiceQuestion(subject, teams, {
+      questionType: "sports.league",
+      getSubjectId: (t) => t.id,
       getPrompt: (t) => `Which league does the ${t.name} play in?`,
       getOptionText: (t) => t.league,
       // Team is already named in the prompt, so the logo doesn't spoil the league answer — same
@@ -137,6 +143,8 @@ export function buildTeamCityQuestions(
   const subjects = pickRandom(teams, count);
   return subjects.map((subject) =>
     buildMultipleChoiceQuestion(subject, teams, {
+      questionType: "sports.team_city",
+      getSubjectId: (t) => t.id,
       getPrompt: (t) => `Which city is the ${t.name} based in?`,
       // "CityName, XX" — same disambiguation convention buildCityPopulationQuestions' own labels
       // already use, since several city names repeat across different states in the synced pool
@@ -164,6 +172,8 @@ export function buildTeamByCityQuestions(
     // buildTeamCityQuestions), so showing the subject's logo up front would give it away.
     const otherCitiesPool = teams.filter((t) => t.cityName !== subject.cityName);
     return buildMultipleChoiceQuestion(subject, [subject, ...otherCitiesPool], {
+      questionType: "sports.team_by_city",
+      getSubjectId: (t) => t.id,
       getPrompt: (t) => `Which of these teams is based in ${t.cityName}?`,
       // "(League)" baked into each option, shown from the start — which league a team plays in
       // doesn't hint at which one is actually based in the asked-about city, so no spoiler risk.
@@ -189,6 +199,8 @@ export function buildTeamByStateQuestions(
     // pool or it'd also be a genuinely correct answer.
     const otherStatesPool = facts.filter((t) => t.stateId !== subject.stateId);
     return buildMultipleChoiceQuestion(subject, [subject, ...otherStatesPool], {
+      questionType: "sports.team_by_state",
+      getSubjectId: (t) => t.id,
       getPrompt: (t) => `Which of these teams is based in ${t.stateName}?`,
       // Same not-a-spoiler reasoning as buildTeamByCityQuestions above.
       getOptionText: (t) => `${t.name} (${t.league})`,
@@ -211,6 +223,8 @@ export function buildSchoolFromNicknameQuestions(
   const subjects = pickRandom(pool, count);
   return subjects.map((subject) =>
     buildMultipleChoiceQuestion(subject, pool, {
+      questionType: "sports.school_nickname",
+      getSubjectId: (p) => p.id,
       getPrompt: (p) => `Which school's team is called the ${p.nickname}?`,
       // "(Conference)" baked into each option, shown from the start — pool is already restricted
       // to power-conference programs (conference guaranteed non-null), and which conference a
@@ -238,6 +252,8 @@ export function buildCollegeConferenceQuestions(
   const subjects = pickRandom(pool, count);
   return subjects.map((subject) =>
     buildMultipleChoiceQuestion(subject, pool, {
+      questionType: "sports.college_conference",
+      getSubjectId: (p) => p.id,
       getPrompt: (p) => `Which conference does ${p.school} play in?`,
       getOptionText: (p) => p.conference as string,
       // School is already named in the prompt, so showing the logo doesn't spoil the conference
@@ -271,6 +287,8 @@ export function buildProTeamCountQuestions(
     const correctBucket = bucketForTeamCount(stateTeams.length);
     return {
       format: "multiple-choice",
+      questionType: "sports.pro_team_count",
+      subjects: [{ id: state.abbr, label: state.name }],
       prompt: `How many pro sports teams does ${state.name} have?`,
       imageUrl: null,
       imageCaption: null,
@@ -327,6 +345,7 @@ export function buildStateTeamRecallQuestions(
     const sorted = [...stateTeams].sort((a, b) => a.name.localeCompare(b.name));
     return {
       format: "search-select",
+      questionType: "sports.state_team_recall",
       prompt: `Name every pro sports team based in ${stateName}.`,
       imageUrl: flagByState.get(stateId) as string,
       entityType: "team",
