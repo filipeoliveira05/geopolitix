@@ -37,7 +37,7 @@ export function SpeedRoundResultsScreen({
           mistakes: null,
           pairCount: null,
         },
-        answers: deriveSessionAnswerRows(category.id, answers),
+        answers: deriveSessionAnswerRows(answers),
       }),
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: ["quiz-best", category.id, "speed_round"] }),

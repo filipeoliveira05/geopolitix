@@ -11,16 +11,27 @@ export type DerivedAnswerRow = {
   points: number | null;
 };
 
+// Every questionType is prefixed with its true owning category (e.g. "geography.capital" ->
+// "geography"), which is NOT always the same as the session's own category — Mashups' speed
+// round mixes in questions drawn straight from Geography/Officeholders/Midterms/Sports'
+// generators, so stamping every row with the outer session category (as an earlier version of
+// this function did) produced two separate stats rows for the same question_type under two
+// different categories. Deriving it from the question itself is what the per-question-type/
+// per-subject accuracy tracking actually wants — "which category does this QUESTION belong to,"
+// not "which category page was this session played from."
+function categoryFromQuestionType(questionType: string): QuizCategoryId {
+  return questionType.split(".")[0] as QuizCategoryId;
+}
+
 /**
  * One row per answered SUBJECT, not per answered question — a multi-target search-select
  * question contributes one row per target (found or missed), and a two-way comparison
  * multiple-choice question contributes one row per compared entity, both sharing that question's
  * correct/incorrect outcome. See docs/superpowers/specs/2026-09-08-quiz-history-design.md.
  */
-export function deriveAnswerRows(
-  category: QuizCategoryId,
-  answered: AnsweredQuestion,
-): DerivedAnswerRow[] {
+export function deriveAnswerRows(answered: AnsweredQuestion): DerivedAnswerRow[] {
+  const category = categoryFromQuestionType(answered.question.questionType);
+
   if (answered.format === "multiple-choice") {
     return answered.question.subjects.map((s) => ({
       category,
@@ -58,9 +69,6 @@ export function deriveAnswerRows(
   }));
 }
 
-export function deriveSessionAnswerRows(
-  category: QuizCategoryId,
-  answers: AnsweredQuestion[],
-): DerivedAnswerRow[] {
-  return answers.flatMap((a) => deriveAnswerRows(category, a));
+export function deriveSessionAnswerRows(answers: AnsweredQuestion[]): DerivedAnswerRow[] {
+  return answers.flatMap((a) => deriveAnswerRows(a));
 }

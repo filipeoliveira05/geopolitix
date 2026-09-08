@@ -31,7 +31,7 @@ describe("deriveAnswerRows", () => {
       correct: true,
       points: 10,
     };
-    const rows = deriveAnswerRows("geography", answered);
+    const rows = deriveAnswerRows(answered);
     expect(rows).toEqual([
       {
         category: "geography",
@@ -43,6 +43,18 @@ describe("deriveAnswerRows", () => {
         points: 10,
       },
     ]);
+  });
+
+  it("derives category from the questionType prefix, not any outer session category — a Mashups speed round mixes in questions built by other categories' own generators, so a geography.* question answered during a mashups session must still be attributed to geography", () => {
+    const answered: AnsweredMultipleChoice = {
+      format: "multiple-choice",
+      question: mcQuestion({ questionType: "sports.team_logo", subjects: [{ id: "T1", label: "Team One" }] }),
+      chosenIndex: 0,
+      correct: true,
+      points: 10,
+    };
+    const [row] = deriveAnswerRows(answered);
+    expect(row.category).toBe("sports");
   });
 
   it("derives two rows, sharing the same correct flag, for a population-comparison question", () => {
@@ -59,7 +71,7 @@ describe("deriveAnswerRows", () => {
       correct: false,
       points: 0,
     };
-    const rows = deriveAnswerRows("geography", answered);
+    const rows = deriveAnswerRows(answered);
     expect(rows).toHaveLength(2);
     expect(rows.every((r) => r.correct === false)).toBe(true);
     expect(rows.map((r) => r.subjectId)).toEqual(["TX", "WY"]);
@@ -82,7 +94,7 @@ describe("deriveAnswerRows", () => {
       correct: true,
       points: 10,
     };
-    const rows = deriveAnswerRows("geography", answered);
+    const rows = deriveAnswerRows(answered);
     expect(rows).toEqual([
       {
         category: "geography",
@@ -115,7 +127,7 @@ describe("deriveAnswerRows", () => {
       gaveUp: true,
       points: 6,
     };
-    const rows = deriveAnswerRows("geography", answered);
+    const rows = deriveAnswerRows(answered);
     expect(rows).toEqual([
       {
         category: "geography",
@@ -164,7 +176,7 @@ describe("deriveSessionAnswerRows", () => {
       correct: false,
       points: 0,
     };
-    const rows = deriveSessionAnswerRows("geography", [a, b]);
+    const rows = deriveSessionAnswerRows([a, b]);
     expect(rows).toHaveLength(2);
     expect(rows.map((r) => r.subjectId)).toEqual(["TX", "CA"]);
   });
