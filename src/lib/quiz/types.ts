@@ -37,7 +37,16 @@ export type SearchSelectEntry = {
 
 export type MultipleChoiceQuestion = {
   format: "multiple-choice";
+  // Stable id for this generator, e.g. "geography.capital", "sports.team_logo" — one per
+  // question-building function, never per generated instance. Powers the quiz history system's
+  // per-question-type accuracy tracking (docs/superpowers/specs/2026-09-08-quiz-history-design.md).
+  questionType: string;
   prompt: string;
+  // The specific entity/entities this question is about, for the history system's per-subject
+  // tracking. Length 1 for a normal question (the thing being asked about); length 2 only for the
+  // two population-comparison generators, where both compared entities count as "asked about" and
+  // share this question's correct/incorrect outcome.
+  subjects: { id: string; label: string }[];
   // Shown above the prompt when present — e.g. a state's flag, a legislator's photo. null for a
   // pure-text question (e.g. "What is the capital of Texas?").
   imageUrl: string | null;
@@ -145,6 +154,7 @@ export type MultipleChoiceQuestion = {
 
 export type MapClickQuestion = {
   format: "map-click";
+  questionType: string;
   prompt: string;
   targetStateId: string;
   targetStateName: string;
@@ -161,6 +171,7 @@ export type MapClickQuestion = {
 
 export type SearchSelectQuestion = {
   format: "search-select";
+  questionType: string;
   prompt: string;
   // The subject state's flag, always shown for this format when present — no caption below it
   // naming the state, since the prompt text already names it (e.g. "Name the top cities in
