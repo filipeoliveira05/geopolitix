@@ -24,6 +24,8 @@ const populatedPool: PopulatedItem[] = [
 describe("buildMultipleChoiceQuestion", () => {
   it("has the correct answer among the 4 options", () => {
     const q = buildMultipleChoiceQuestion(pool[0], pool, {
+      questionType: "test",
+      getSubjectId: (item) => item.id,
       getPrompt: () => "Which one is Alpha?",
       getOptionText: (item) => item.label,
     });
@@ -33,6 +35,8 @@ describe("buildMultipleChoiceQuestion", () => {
 
   it("never includes a distractor equal to the correct answer's text", () => {
     const q = buildMultipleChoiceQuestion(pool[0], pool, {
+      questionType: "test",
+      getSubjectId: (item) => item.id,
       getPrompt: () => "prompt",
       getOptionText: (item) => item.label,
     });
@@ -42,6 +46,8 @@ describe("buildMultipleChoiceQuestion", () => {
 
   it("has no duplicate option text", () => {
     const q = buildMultipleChoiceQuestion(pool[0], pool, {
+      questionType: "test",
+      getSubjectId: (item) => item.id,
       getPrompt: () => "prompt",
       getOptionText: (item) => item.label,
     });
@@ -50,6 +56,8 @@ describe("buildMultipleChoiceQuestion", () => {
 
   it("sets the prompt from getPrompt(subject)", () => {
     const q = buildMultipleChoiceQuestion(pool[1], pool, {
+      questionType: "test",
+      getSubjectId: (item) => item.id,
       getPrompt: (item) => `Guess: ${item.label}`,
       getOptionText: (item) => item.label,
     });
@@ -58,6 +66,8 @@ describe("buildMultipleChoiceQuestion", () => {
 
   it("sets imageUrl from getImageUrl when provided", () => {
     const q = buildMultipleChoiceQuestion(pool[0], pool, {
+      questionType: "test",
+      getSubjectId: (item) => item.id,
       getPrompt: () => "prompt",
       getOptionText: (item) => item.label,
       getImageUrl: () => "https://example.com/x.png",
@@ -67,6 +77,8 @@ describe("buildMultipleChoiceQuestion", () => {
 
   it("defaults imageUrl to null when getImageUrl is not provided", () => {
     const q = buildMultipleChoiceQuestion(pool[0], pool, {
+      questionType: "test",
+      getSubjectId: (item) => item.id,
       getPrompt: () => "prompt",
       getOptionText: (item) => item.label,
     });
@@ -75,6 +87,8 @@ describe("buildMultipleChoiceQuestion", () => {
 
   it("sets imageCaption/imageCaptionParty from getImageCaption/getImageCaptionParty when provided", () => {
     const q = buildMultipleChoiceQuestion(pool[0], pool, {
+      questionType: "test",
+      getSubjectId: (item) => item.id,
       getPrompt: () => "prompt",
       getOptionText: (item) => item.label,
       getImageCaption: (item) => item.label,
@@ -86,6 +100,8 @@ describe("buildMultipleChoiceQuestion", () => {
 
   it("defaults imageCaption to null and imageCaptionParty to undefined when not provided", () => {
     const q = buildMultipleChoiceQuestion(pool[0], pool, {
+      questionType: "test",
+      getSubjectId: (item) => item.id,
       getPrompt: () => "prompt",
       getOptionText: (item) => item.label,
     });
@@ -95,6 +111,8 @@ describe("buildMultipleChoiceQuestion", () => {
 
   it("sets revealImageUrl/revealCaption from getRevealImageUrl/getRevealCaption when provided", () => {
     const q = buildMultipleChoiceQuestion(pool[0], pool, {
+      questionType: "test",
+      getSubjectId: (item) => item.id,
       getPrompt: () => "prompt",
       getOptionText: (item) => item.label,
       getRevealImageUrl: () => "https://example.com/reveal.png",
@@ -106,6 +124,8 @@ describe("buildMultipleChoiceQuestion", () => {
 
   it("defaults revealImageUrl/revealCaption to null when not provided", () => {
     const q = buildMultipleChoiceQuestion(pool[0], pool, {
+      questionType: "test",
+      getSubjectId: (item) => item.id,
       getPrompt: () => "prompt",
       getOptionText: (item) => item.label,
     });
@@ -115,12 +135,16 @@ describe("buildMultipleChoiceQuestion", () => {
 
   it("sets optionsAreParties from the opt, defaulting to false", () => {
     const withoutFlag = buildMultipleChoiceQuestion(pool[0], pool, {
+      questionType: "test",
+      getSubjectId: (item) => item.id,
       getPrompt: () => "prompt",
       getOptionText: (item) => item.label,
     });
     expect(withoutFlag.optionsAreParties).toBe(false);
 
     const withFlag = buildMultipleChoiceQuestion(pool[0], pool, {
+      questionType: "test",
+      getSubjectId: (item) => item.id,
       getPrompt: () => "prompt",
       getOptionText: (item) => item.label,
       optionsAreParties: true,
@@ -135,6 +159,8 @@ describe("buildMultipleChoiceQuestion", () => {
     ];
     expect(() =>
       buildMultipleChoiceQuestion(smallPool[0], smallPool, {
+        questionType: "test",
+        getSubjectId: (item) => item.id,
         getPrompt: () => "prompt",
         getOptionText: (item) => item.label,
       }),
@@ -152,6 +178,8 @@ describe("buildMultipleChoiceQuestion", () => {
       { id: "e", label: "Delta" },
     ];
     const q = buildMultipleChoiceQuestion(poolWithDuplicateText[0], poolWithDuplicateText, {
+      questionType: "test",
+      getSubjectId: (item) => item.id,
       getPrompt: () => "prompt",
       getOptionText: (item) => item.label,
     });
@@ -164,6 +192,8 @@ describe("buildMultipleChoiceQuestion", () => {
       { id: "b", label: "Beta" },
     ];
     const q = buildMultipleChoiceQuestion(smallPool[0], smallPool, {
+      questionType: "test",
+      getSubjectId: (item) => item.id,
       getPrompt: () => "prompt",
       getOptionText: (item) => item.label,
       optionCount: 2,
@@ -174,6 +204,8 @@ describe("buildMultipleChoiceQuestion", () => {
 
   it("leaves optionPopulations undefined when getOptionPopulation is not provided", () => {
     const q = buildMultipleChoiceQuestion(pool[0], pool, {
+      questionType: "test",
+      getSubjectId: (item) => item.id,
       getPrompt: () => "prompt",
       getOptionText: (item) => item.label,
     });
@@ -182,6 +214,8 @@ describe("buildMultipleChoiceQuestion", () => {
 
   it("sets optionPopulations index-aligned with options when getOptionPopulation is provided", () => {
     const q = buildMultipleChoiceQuestion(populatedPool[0], populatedPool, {
+      questionType: "test",
+      getSubjectId: (item) => item.id,
       getPrompt: () => "prompt",
       getOptionText: (item) => item.label,
       getOptionPopulation: (item) => item.population,
@@ -197,6 +231,8 @@ describe("buildMultipleChoiceQuestion", () => {
     const onlyOne: Item[] = [{ id: "a", label: "Alpha" }];
     expect(() =>
       buildMultipleChoiceQuestion(onlyOne[0], onlyOne, {
+        questionType: "test",
+        getSubjectId: (item) => item.id,
         getPrompt: () => "prompt",
         getOptionText: (item) => item.label,
         optionCount: 2,

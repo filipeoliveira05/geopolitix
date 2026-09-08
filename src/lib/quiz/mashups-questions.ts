@@ -45,6 +45,8 @@ export function buildOddOneOutQuestions(
     const options = pickRandom(candidates.map((t) => t.name), 4);
     return {
       format: "multiple-choice",
+      questionType: "mashups.odd_one_out",
+      subjects: [{ id: oddOne.id, label: oddOne.name }],
       prompt: "Which of these teams is NOT based in the same state as the others?",
       imageUrl: null,
       // Shown immediately — a team's own logo doesn't spoil which state it's based in unless the

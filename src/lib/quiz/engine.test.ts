@@ -18,6 +18,7 @@ function makeStates(): StateFact[] {
 
 function makeCandidates(): CandidateFact[] {
   return REAL_STATE_ABBRS.map((abbr, i) => ({
+    id: `cand${i}`,
     name: `Candidate${i}`,
     party: i % 2 === 0 ? "Democrat" : "Republican",
     isIncumbent: false,

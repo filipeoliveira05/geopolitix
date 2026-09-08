@@ -85,6 +85,7 @@ describe("candidateFactsFromRaces", () => {
 });
 
 const twoPartyFacts: CandidateFact[] = Array.from({ length: 10 }, (_, i) => ({
+  id: `candidate${i}`,
   name: `Candidate${i}`,
   party: i % 2 === 0 ? "Democrat" : "Republican",
   isIncumbent: i % 3 === 0,
@@ -152,6 +153,7 @@ describe("buildIncumbencyQuestions", () => {
 
   it("names the state/office (and district, for House) in the prompt", () => {
     const senate: CandidateFact = {
+      id: "senate-inc",
       name: "Inc",
       party: "Democrat",
       isIncumbent: true,
@@ -161,6 +163,7 @@ describe("buildIncumbencyQuestions", () => {
       photoUrl: null,
     };
     const houseAtLarge: CandidateFact = {
+      id: "house-at-large-chal",
       name: "Chal",
       party: "Republican",
       isIncumbent: false,
@@ -170,6 +173,7 @@ describe("buildIncumbencyQuestions", () => {
       photoUrl: null,
     };
     const houseDistrict: CandidateFact = {
+      id: "house-district-rep",
       name: "Rep",
       party: "Democrat",
       isIncumbent: true,
@@ -188,6 +192,7 @@ describe("buildIncumbencyQuestions", () => {
 
   it("marks Yes correct for an incumbent, No correct for a non-incumbent", () => {
     const incumbent: CandidateFact = {
+      id: "inc-1",
       name: "Inc",
       party: "Democrat",
       isIncumbent: true,
@@ -197,6 +202,7 @@ describe("buildIncumbencyQuestions", () => {
       photoUrl: null,
     };
     const challenger: CandidateFact = {
+      id: "chal-1",
       name: "Chal",
       party: "Republican",
       isIncumbent: false,
@@ -213,6 +219,7 @@ describe("buildIncumbencyQuestions", () => {
 
   it("reveals every real candidate in the subject's own race, photo/name/party/incumbent status each", () => {
     const incumbent: CandidateFact = {
+      id: "inc-2",
       name: "Inc",
       party: "Democrat",
       isIncumbent: true,
@@ -222,6 +229,7 @@ describe("buildIncumbencyQuestions", () => {
       photoUrl: "https://example.com/inc.png",
     };
     const challenger: CandidateFact = {
+      id: "chal-2",
       name: "Chal",
       party: "Republican",
       isIncumbent: false,
@@ -231,6 +239,7 @@ describe("buildIncumbencyQuestions", () => {
       photoUrl: "https://example.com/chal.png",
     };
     const otherRaceCandidate: CandidateFact = {
+      id: "other-1",
       name: "Other",
       party: "Democrat",
       isIncumbent: true,
@@ -250,6 +259,7 @@ describe("buildIncumbencyQuestions", () => {
 
   it("falls back to just the subject when no race-mates are in the given pool (open race, no incumbent)", () => {
     const challenger: CandidateFact = {
+      id: "chal-3",
       name: "Chal",
       party: "Republican",
       isIncumbent: false,
@@ -266,6 +276,7 @@ describe("buildIncumbencyQuestions", () => {
 
   it("names the race above the candidate list, matching the prompt's own race label", () => {
     const senate: CandidateFact = {
+      id: "senate-2",
       name: "Sen",
       party: "Democrat",
       isIncumbent: true,
@@ -280,6 +291,7 @@ describe("buildIncumbencyQuestions", () => {
 
   it("shows the subject's photo/name/party immediately (not gated behind answering)", () => {
     const subject: CandidateFact = {
+      id: "inc-3",
       name: "Inc",
       party: "Democrat",
       isIncumbent: true,
