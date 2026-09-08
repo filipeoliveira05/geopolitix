@@ -16,6 +16,8 @@ export function buildCapitalQuestions(facts: StateFact[], count: number): Multip
   const subjects = pickRandom(facts, count);
   return subjects.map((subject) =>
     buildMultipleChoiceQuestion(subject, facts, {
+      questionType: "geography.capital",
+      getSubjectId: (s) => s.stateId,
       getPrompt: (s) => `What is the capital of ${s.stateName}?`,
       getOptionText: (f) => f.capitalName,
       getOptionStateAbbr: (f) => f.stateId,
@@ -32,6 +34,8 @@ export function buildFlagQuestions(facts: StateFact[], count: number): MultipleC
   const subjects = pickRandom(facts, count);
   return subjects.map((subject) =>
     buildMultipleChoiceQuestion(subject, facts, {
+      questionType: "geography.flag",
+      getSubjectId: (f) => f.stateId,
       getPrompt: () => "Which state does this flag belong to?",
       // "(XX)" baked directly into the option text, shown from the start — unlike
       // buildCapitalQuestions' getOptionStateAbbr, the option here already IS the state name being
@@ -60,6 +64,8 @@ export function buildStateSilhouetteQuestions(
   const subjects = pickRandom(eligible, count);
   return subjects.map((subject) =>
     buildMultipleChoiceQuestion(subject, eligible, {
+      questionType: "geography.silhouette",
+      getSubjectId: (f) => f.stateId,
       getPrompt: () => "Which state is this?",
       // Same not-a-spoiler reasoning as buildFlagQuestions above.
       getOptionText: (f) => `${f.stateName} (${f.stateId})`,
@@ -131,6 +137,8 @@ export function buildStateNonBorderQuestions(
 
     return {
       format: "multiple-choice",
+      questionType: "geography.non_border",
+      subjects: [{ id: subject.stateId, label: subject.stateName }],
       prompt: `Which of these states does NOT border ${subject.stateName}?`,
       imageUrl: null,
       silhouettePath: getStateSilhouettePath(subject.stateId) ?? undefined,
@@ -202,6 +210,7 @@ export function buildStateBorderRecallQuestions(
 
     return {
       format: "search-select",
+      questionType: "geography.border_recall",
       prompt: `Name all the states that border ${subject.stateName}.`,
       silhouettePath: getStateSilhouettePath(subject.stateId) ?? undefined,
       entityType: "state",
@@ -242,6 +251,8 @@ export function buildAbbreviationQuestions(
   return subjects.map((subject) => {
     const askForAbbreviation = Math.random() < 0.5;
     return buildMultipleChoiceQuestion(subject, facts, {
+      questionType: "geography.abbreviation",
+      getSubjectId: (s) => s.stateId,
       getPrompt: (s) =>
         askForAbbreviation
           ? `What is the 2-letter abbreviation for ${s.stateName}?`
@@ -263,6 +274,8 @@ export function buildCityStateQuestions(
   const subjects = pickRandom(cities, count);
   return subjects.map((subject) =>
     buildMultipleChoiceQuestion(subject, cities, {
+      questionType: "geography.city_state",
+      getSubjectId: (c) => c.cityId,
       getPrompt: (c) => `Which state is ${c.cityName} in?`,
       // Same not-a-spoiler reasoning as buildFlagQuestions above.
       getOptionText: (c) => `${c.stateName} (${c.stateId})`,
@@ -318,6 +331,8 @@ export function buildIsCapitalQuestions(
       : `${city.cityName} is not the capital.\nThe capital of ${city.stateName} is ${capital.cityName}.`;
     return {
       format: "multiple-choice",
+      questionType: "geography.is_capital",
+      subjects: [{ id: city.stateId, label: city.stateName }],
       prompt: `Is ${city.cityName} the capital of ${city.stateName}?`,
       imageUrl: flagByState.get(city.stateId) ?? null,
       imageCaption: null,
@@ -335,6 +350,7 @@ export function buildIsCapitalQuestions(
 type LargestCityFact = {
   cityName: string;
   stateName: string;
+  stateId: string;
   flagUrl: string;
   population: number | null;
 };
@@ -364,6 +380,7 @@ function largestCityPerState(
       fact: {
         cityName: largest.cityName,
         stateName: largest.stateName,
+        stateId,
         flagUrl,
         population: largest.population,
       },
@@ -396,6 +413,8 @@ export function buildLargestCityQuestions(
       ...otherCities.map((c) => ({ ...fact, cityName: c.cityName, population: c.population })),
     ];
     return buildMultipleChoiceQuestion(fact, pool, {
+      questionType: "geography.largest_city",
+      getSubjectId: (f) => f.stateId,
       getPrompt: (s) => `What is the largest city in ${s.stateName}?`,
       getOptionText: (f) => f.cityName,
       getImageUrl: (f) => f.flagUrl,
@@ -441,6 +460,8 @@ export function buildIsLargestCityQuestions(
       : `${city.cityName}: ${formatPopulation(city.population as number)}.\nLargest: ${largest.cityName}, ${formatPopulation(largest.population as number)}.`;
     return {
       format: "multiple-choice",
+      questionType: "geography.is_largest_city",
+      subjects: [{ id: city.stateId, label: city.stateName }],
       prompt: `Is ${city.cityName} the largest city in ${city.stateName}?`,
       imageUrl: flagUrl,
       imageCaption: null,
@@ -475,14 +496,16 @@ export function buildStatePopulationQuestions(
     const stateB = pickRandom(others, 1)[0];
     const pair = pickRandom(
       [
-        { label: stateA.stateName, population: stateA.population as number },
-        { label: stateB.stateName, population: stateB.population as number },
+        { label: stateA.stateName, id: stateA.stateId, population: stateA.population as number },
+        { label: stateB.stateName, id: stateB.stateId, population: stateB.population as number },
       ],
       2,
     );
     const correctIndex = pair[0].population > pair[1].population ? 0 : 1;
     return {
       format: "multiple-choice",
+      questionType: "geography.population_compare_state",
+      subjects: pair.map((p) => ({ id: p.id, label: p.label })),
       prompt: "Which state has a higher population?",
       imageUrl: null,
       imageCaption: null,
@@ -518,14 +541,16 @@ export function buildCityPopulationQuestions(
     const labelOf = (c: CityFact) => `${c.cityName}, ${c.stateId}`;
     const pair = pickRandom(
       [
-        { label: labelOf(cityA), population: cityA.population as number },
-        { label: labelOf(cityB), population: cityB.population as number },
+        { label: labelOf(cityA), id: cityA.cityId, population: cityA.population as number },
+        { label: labelOf(cityB), id: cityB.cityId, population: cityB.population as number },
       ],
       2,
     );
     const correctIndex = pair[0].population > pair[1].population ? 0 : 1;
     return {
       format: "multiple-choice",
+      questionType: "geography.population_compare_city",
+      subjects: pair.map((p) => ({ id: p.id, label: p.label })),
       prompt: "Which city has a higher population?",
       imageUrl: null,
       imageCaption: null,
@@ -563,6 +588,7 @@ export function buildCityRecallQuestions(
     const stateName = stateCities[0].stateName;
     return {
       format: "search-select",
+      questionType: "geography.city_recall",
       prompt: `Name the top cities in ${stateName}.`,
       imageUrl: flagByState.get(stateId) as string,
       entityType: "city",
@@ -583,6 +609,7 @@ export function buildMapClickQuestions(facts: StateFact[], count: number): MapCl
   const subjects = pickRandom(eligible, count);
   return subjects.map((s) => ({
     format: "map-click",
+    questionType: "geography.map_click",
     prompt: `Click on ${s.stateName}.`,
     targetStateId: s.stateId,
     targetStateName: s.stateName,
