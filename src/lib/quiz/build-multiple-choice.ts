@@ -11,8 +11,15 @@ export function buildMultipleChoiceQuestion<T>(
   subject: T,
   pool: T[],
   opts: {
+    // Stable id for this question-building function, e.g. "geography.capital". Not derived from
+    // anything — every generator names itself explicitly.
+    questionType: string;
     getPrompt: (subject: T) => string;
     getOptionText: (item: T) => string;
+    // The stable identity of the subject being asked about (a state abbr, a team id, a
+    // legislator id...) — separate from getOptionText, whose output is a display string that can
+    // collide across different real entities.
+    getSubjectId: (subject: T) => string;
     getImageUrl?: (subject: T) => string | null;
     // See MultipleChoiceQuestion.silhouettePath — mutually exclusive with getImageUrl, never both
     // on the same question type.
@@ -79,6 +86,8 @@ export function buildMultipleChoiceQuestion<T>(
 
   return {
     format: "multiple-choice",
+    questionType: opts.questionType,
+    subjects: [{ id: opts.getSubjectId(subject), label: correctText }],
     prompt: opts.getPrompt(subject),
     imageUrl: opts.getImageUrl ? opts.getImageUrl(subject) : null,
     silhouettePath: opts.getSilhouettePath ? (opts.getSilhouettePath(subject) ?? undefined) : undefined,
