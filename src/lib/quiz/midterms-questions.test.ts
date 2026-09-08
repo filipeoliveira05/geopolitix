@@ -41,6 +41,7 @@ describe("candidateFactsFromRaces", () => {
     const facts = candidateFactsFromRaces(races);
     expect(facts).toEqual([
       {
+        id: "c1",
         name: "Jane Smith",
         party: "Democrat",
         isIncumbent: false,

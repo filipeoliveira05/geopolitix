@@ -8,6 +8,7 @@ import { buildMultipleChoiceQuestion } from "./build-multiple-choice";
 import type { MultipleChoiceQuestion, SearchSelectQuestion } from "./types";
 
 export type CandidateFact = {
+  id: string;
   name: string;
   party: string;
   isIncumbent: boolean;
@@ -36,6 +37,7 @@ export function candidateFactsFromRaces(races: Race[]): CandidateFact[] {
     for (const candidate of race.candidates) {
       if (!candidate.party || !isRealCandidateName(candidate.name)) continue;
       facts.push({
+        id: candidate.id,
         name: candidate.name,
         party: candidate.party,
         isIncumbent: candidate.isIncumbent,
@@ -74,6 +76,8 @@ export function buildCandidatePartyQuestions(
   const subjects = pickRandom(facts, count);
   return subjects.map((subject) =>
     buildMultipleChoiceQuestion(subject, facts, {
+      questionType: "midterms.party",
+      getSubjectId: (f) => f.id,
       getPrompt: (s) =>
         `What party is ${s.name} running as in the ${raceLabel(s.stateName, s.office, s.districtNumber)} race?`,
       getOptionText: (f) => f.party,
@@ -114,6 +118,8 @@ export function buildIncumbencyQuestions(
     const raceMates = byRace.get(race) ?? [s];
     return {
       format: "multiple-choice",
+      questionType: "midterms.incumbency",
+      subjects: [{ id: s.id, label: s.name }],
       prompt: `Is ${s.name} the incumbent in the ${race} race?`,
       imageUrl: s.photoUrl,
       imageCaption: s.name,
@@ -181,6 +187,7 @@ export function buildRaceCandidateRecallQuestions(
     const officeLabel: string = race.office === "senate" ? "Senate" : "Governor";
     return {
       format: "search-select",
+      questionType: "midterms.candidate_recall",
       prompt: `Name every candidate running for ${officeLabel} in ${stateName}.`,
       imageUrl: flagByState.get(race.stateId) as string,
       entityType: "candidate",
