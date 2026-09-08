@@ -1,11 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { QuizCategoryMeta } from "@/lib/quiz/category-config";
 import type { AnsweredQuestion } from "@/lib/quiz/types";
-import { getBestScore, updateBestScoreIfHigher, type BestScore } from "@/lib/quiz/best-score";
+import { getBestSession, submitQuizSession } from "@/lib/quiz/history-data";
+import { deriveSessionAnswerRows } from "@/lib/quiz/history-derive";
 import { getStateName } from "@/lib/states";
 import { Card } from "@/components/Card";
 import { SectionHeading } from "@/components/SectionHeading";
@@ -35,21 +37,48 @@ export function QuizResultsScreen({
   const score = answers.reduce((sum, a) => sum + a.points, 0);
   const total = answers.length * 10;
   const missed = answers.filter((a) => a.points < 10);
-  // A lazy initializer, not an effect — this component only ever mounts after a full client-side
-  // quiz session (never during the app's initial SSR/hydration pass), so reading/writing
-  // localStorage here carries no hydration-mismatch risk, and avoids the extra render an
-  // effect+setState would cause. State narrowing doesn't exist yet in this plan (see Global
-  // Constraints) — every best score is recorded under stateAbbr: null ("overall"), the same key
-  // a future narrowed session would fall back to.
-  //
-  // `previousBest` is read BEFORE the update call so "New best!" can be shown only when this
-  // session actually beat a prior record, not on someone's very first-ever play (which trivially
-  // "sets" a best with nothing to have beaten).
-  const [{ best, isNewBest }] = useState<{ best: BestScore | null; isNewBest: boolean }>(() => {
-    const previousBest = getBestScore(category.id, null);
-    const updated = updateBestScoreIfHigher(category.id, null, score, total) ?? previousBest;
-    return { best: updated, isNewBest: previousBest !== null && score > previousBest.score };
+
+  const queryClient = useQueryClient();
+  const bestQuery = useQuery({
+    queryKey: ["quiz-best", category.id, "standard"],
+    queryFn: () => getBestSession(category.id, "standard"),
   });
+  const submitMutation = useMutation({
+    mutationFn: () =>
+      submitQuizSession({
+        session: {
+          id: crypto.randomUUID(),
+          category: category.id,
+          mode: "standard",
+          score,
+          total,
+          mistakes: null,
+          pairCount: null,
+        },
+        answers: deriveSessionAnswerRows(category.id, answers),
+      }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["quiz-best", category.id, "standard"] }),
+  });
+  // Submits exactly once per mount, and only after the "previous best" read has resolved — this
+  // ordering is what makes isNewBest correct: without waiting for bestQuery first, the submit
+  // could land before the read and every session would look like a "new best" against its own
+  // just-written row.
+  const submittedRef = useRef(false);
+  useEffect(() => {
+    if (!bestQuery.isSuccess || submittedRef.current) return;
+    submittedRef.current = true;
+    submitMutation.mutate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bestQuery.isSuccess]);
+
+  const previousBest = bestQuery.data ?? null;
+  const isNewBest = previousBest !== null && score > previousBest.score;
+  const displayBest = submitMutation.isSuccess
+    ? previousBest && previousBest.score >= score
+      ? previousBest
+      : { score, total }
+    : previousBest;
 
   return (
     <div className="mx-auto w-full max-w-lg">
@@ -57,9 +86,9 @@ export function QuizResultsScreen({
         <p className={`font-display text-5xl font-semibold ${scoreTierClassName(score, total)}`}>
           {score} / {total}
         </p>
-        {best && (
+        {displayBest && (
           <p className="mt-2 text-sm text-muted">
-            Best: {best.score} / {best.total}
+            Best: {displayBest.score} / {displayBest.total}
             {isNewBest && (
               <span className="ml-2 font-medium text-emerald-600 dark:text-emerald-400">
                 New best!
