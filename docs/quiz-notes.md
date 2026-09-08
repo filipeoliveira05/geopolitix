@@ -979,3 +979,77 @@ disabled (the actual CSS mechanism the browser uses to decide whether a touch ge
 natively or handed to JS) — a real finger swipe on a physical device is the only way to observe
 the scroll behavior directly, so that computed-style check stood in for it during the automated
 Playwright pass, and the user confirmed the fix on their own phone afterward.
+
+**Quiz history/record system (2026-09-08)** — replaces the old `localStorage`-only "best score"
+(`src/lib/quiz/best-score.ts`, deleted) with a full Supabase-backed history: every completed
+session recorded (`quiz_sessions`), plus per-question-type and per-subject correct/incorrect
+tracking (`quiz_answers`, one row per answered SUBJECT not per question — see below), surfaced on
+a new `/quiz/history` page. Full design in
+`docs/superpowers/specs/2026-09-08-quiz-history-design.md` and the implementation plan in
+`docs/superpowers/plans/2026-09-08-quiz-history.md` (both gitignored, local-only — read them
+directly if this summary isn't enough). This is a personal-use, no-auth app, so history is one
+global record, not scoped to any user identity.
+
+**New convention every future question generator must follow**: every `QuizQuestion` now carries
+a `questionType: string` — a stable id per generator (e.g. `"geography.capital"`,
+`"sports.team_logo"`), namespaced by its own owning category, never by the session it happens to
+be played in (see the Mashups bug below for why that distinction matters). `buildMultipleChoiceQuestion`
+(`build-multiple-choice.ts`) takes two new REQUIRED opts, `questionType` and `getSubjectId`, and
+auto-populates the new `MultipleChoiceQuestion.subjects: {id, label}[]` field from them — every
+call site across `geography-questions.ts`/`officeholders-questions.ts`/`midterms-questions.ts`/
+`sports-questions.ts` was updated to supply both. A generator that bypasses the shared helper
+(a Yes/No question, a two-way comparison, `buildOddOneOutQuestions`) sets `questionType`/`subjects`
+directly on its returned object literal instead. `MapClickQuestion` needs no `subjects` field (its
+subject is already `{targetStateId, targetStateName}`); `SearchSelectQuestion` needs none either
+(subjects come straight from its existing `targets` array). A few pool types had no stable id at
+all before this and needed one added: `OfficeholderPhotoFact` (a merged legislator/governor shape)
+gained an `id` field, legislators using their real `legislatorId` and governors synthesizing
+`gov-${stateId}` (a state has exactly one current governor, so its own id doubles as a stable
+governor id — `GovernorFact` itself still has no `id` field, same reasoning); `CandidateFact`
+gained `id` from `candidate.id` (was previously dropped by `candidateFactsFromRaces`); the two
+population-comparison generators' internal `pair` objects gained an `id` alongside their existing
+`label`; Geography's private `LargestCityFact` gained `stateId`.
+
+**Write path is a Route Handler, not a direct anon insert** — `POST /api/quiz-history`
+(`src/app/api/quiz-history/route.ts`), using a NEW service-role admin client
+(`src/lib/quiz/supabase-admin.ts`, simpler than the sync scripts' own `_supabase-admin.mjs` since
+the Next.js server runtime is Node 22+ with a native `WebSocket`, no `ws` package needed). This is
+the first time this app has ever written from a Next.js server context rather than a standalone
+sync script — deliberately NOT a client-side anon insert, to keep the existing "browser only ever
+reads" line intact. `SUPABASE_SERVICE_ROLE_KEY` had to be added to Vercel's own environment
+variables for the deployed app (it previously only existed as a GitHub Actions secret for the sync
+workflows, which run outside Vercel entirely).
+
+**Real bug caught by live testing, not by review**: `deriveAnswerRows`/`deriveSessionAnswerRows`
+(`history-derive.ts`) originally took the session's own category as a parameter and stamped every
+derived row with it — reasonable for every mode except Mashups' speed round, which mixes in
+questions built directly by Geography/Officeholders/Midterms/Sports' own generators
+(`buildSpeedRoundPool` in `engine.ts`). A `geography.capital` question answered during a mashups
+speed round was getting written with `category: "mashups"`, so the exact same `question_type`
+ended up split across two different `category` values in `quiz_answers` — confirmed live on
+`/quiz/history` as `geography.capital` literally appearing twice in the "accuracy by question
+type" table with different stats, plus a real React duplicate-key console warning naming the
+colliding string. Fixed by deriving `category` from the `questionType` string's own prefix
+(`questionType.split(".")[0]`) instead of accepting it as a parameter at all — every `questionType`
+is already namespaced by its true owning category, so this is both more correct and simpler than
+threading the right value through by hand. A regression test
+(`history-derive.test.ts`) locks in the fix by asserting a `sports.team_logo` question derives
+`category: "sports"` regardless of what it's called with.
+
+**Aggregation happens in three Postgres views, not client-side JS** —
+`quiz_question_type_stats`/`quiz_subject_stats`/`quiz_play_counts` (in the same migration as the
+two tables, `supabase/migrations/20260908120000_quiz_history.sql`), each granted `anon`/
+`authenticated` `SELECT` like every other table. Fetching raw `quiz_answers` rows and grouping them
+in JS would silently truncate past PostgREST's default 1000-row response limit as history
+accumulates — doing the `group by` in Postgres keeps every read a small, already-aggregated
+result set regardless of how much history exists. `/quiz/history`'s "weakest subjects" section
+filters to `attempts >= 3` to avoid a single lucky/unlucky guess dominating the list.
+
+Matching-pairs sessions write only a `quiz_sessions` row (`mode: 'matching'`, `mistakes`/
+`pair_count` populated instead of `score`/`total`) — no `quiz_answers` rows at all. A mismatch in
+matching is a wrong pairing between two tiles, not one subject being "gotten wrong" (either tile
+could be the mismatched one), so it's excluded from per-type/per-subject tracking entirely — same
+reasoning that already excludes `MatchingPair` from the `AnsweredQuestion` union in `types.ts`.
+`MatchingResultsScreen` needed a new `pairCount` prop threaded through from
+`QuizCategoryClient.tsx`'s `finishMatching`, which reads it off the just-finished `"matching"`
+phase's own `pairs.length` before the phase transitions away.

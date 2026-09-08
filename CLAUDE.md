@@ -272,12 +272,18 @@ step genuinely errored. **Full workflow history/design reasoning in `docs/status
   a team) gets its own abbreviation/tag baked directly into the option label, unconditionally (no
   spoiler risk); anything that would hand away the answer (a population figure, which state each
   odd-one-out option is really from) stays a reveal gated behind answering instead — picking the
-  wrong one of these two is the actual bug to avoid, not a style nit. **Full architecture, every
+  wrong one of these two is the actual bug to avoid, not a style nit. Every quiz session (standard,
+  speed-round, matching) is now recorded to Supabase (`quiz_sessions`/`quiz_answers`, added
+  2026-09-08) instead of just a `localStorage` best-score note — full play history plus
+  per-question-type and per-subject correct/incorrect tracking, surfaced on `/quiz/history`; every
+  question generator carries a stable `questionType` id and a `subjects` list for this, a
+  convention any new generator must follow (see `docs/quiz-notes.md`). **Full architecture, every
   category's question-type batch writeup, and every real bug caught building it (a Strict-Mode map
   cleanup bug, a speed-round timer/setState bug, a PostgREST ambiguous-FK bug, a search-index
   answer-spoiler bug, a population-reveal line-wrap bug, an antimeridian/Four-Corners geometry
   gotcha, a self-adjacent-polygon bug that let Oregon border itself, a `QuizMapClick`
-  mounted-already-answered race that dropped a reveal highlight silently) are in
+  mounted-already-answered race that dropped a reveal highlight silently, a Mashups speed-round
+  category-tagging bug in the history system) are in
   `docs/quiz-notes.md`** — read it before adding a new question type to any category.
 
 **Synced data**, via `npm run sync:<name>`: `states`, `legislators`/`terms`, `governors`,
