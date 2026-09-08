@@ -26,18 +26,25 @@ export function restrictToPowerConferences(
   return programs.filter((p) => p.conference !== null && powerConferences.has(p.conference));
 }
 
-type LogoSubject = { key: string; logoUrl: string; label: string };
+type LogoSubject = { key: string; logoUrl: string; label: string; league: string };
 
 function teamsToLogoSubjects(teams: SportsTeam[]): LogoSubject[] {
   return teams
     .filter((t) => t.logoUrl !== null)
-    .map((t) => ({ key: t.id, logoUrl: t.logoUrl as string, label: t.name }));
+    .map((t) => ({ key: t.id, logoUrl: t.logoUrl as string, label: t.name, league: t.league }));
 }
 
+// `conference` is guaranteed non-null here — every caller passes an already
+// restrictToPowerConferences()-filtered pool, which drops null-conference programs.
 function programsToLogoSubjects(programs: CollegeProgram[]): LogoSubject[] {
   return programs
     .filter((p) => p.logoUrl !== null)
-    .map((p) => ({ key: p.id, logoUrl: p.logoUrl as string, label: p.school }));
+    .map((p) => ({
+      key: p.id,
+      logoUrl: p.logoUrl as string,
+      label: p.school,
+      league: p.conference as string,
+    }));
 }
 
 export function buildTeamLogoQuestions(
@@ -62,7 +69,10 @@ export function buildTeamLogoQuestions(
   return subjects.map((subject) =>
     buildMultipleChoiceQuestion(subject, pool, {
       getPrompt: () => "Which team is this?",
-      getOptionText: (s) => s.label,
+      // League for pro teams, conference for college programs — not a spoiler since the
+      // team/school name is the thing being guessed, same baked-in-option convention as
+      // buildTeamStateQuestions' "(XX)" abbreviation.
+      getOptionText: (s) => `${s.label} (${s.league})`,
       getImageUrl: (s) => s.logoUrl,
     }),
   );

@@ -76,7 +76,7 @@ describe("buildTeamLogoQuestions", () => {
     for (const q of questions) {
       expect(q.imageUrl).toMatch(/^https:\/\/example\.com\/logo\d+\.png$/);
       const correctOption = q.options[q.correctIndex];
-      const matchingTeam = teams.find((t) => t.name === correctOption);
+      const matchingTeam = teams.find((t) => correctOption === `${t.name} (${t.league})`);
       expect(matchingTeam?.logoUrl).toBe(q.imageUrl);
     }
   });
