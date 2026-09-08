@@ -1,14 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef } from "react";
 import Link from "next/link";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { QuizCategoryMeta } from "@/lib/quiz/category-config";
 import type { AnsweredQuestion } from "@/lib/quiz/types";
-import {
-  getBestSpeedRound,
-  updateBestSpeedRoundIfHigher,
-  type BestScore,
-} from "@/lib/quiz/best-score";
+import { getBestSession, submitQuizSession } from "@/lib/quiz/history-data";
+import { deriveSessionAnswerRows } from "@/lib/quiz/history-derive";
 
 export function SpeedRoundResultsScreen({
   category,
@@ -21,12 +19,43 @@ export function SpeedRoundResultsScreen({
 }) {
   const score = answers.filter((a) => a.points === 10).length;
   const total = answers.length;
-  // Lazy initializer, not an effect — same reasoning every other results screen in this app
-  // already established: this component only ever mounts after a full client-side round, never
-  // during initial SSR/hydration.
-  const [best] = useState<BestScore | null>(
-    () => updateBestSpeedRoundIfHigher(category.id, score, total) ?? getBestSpeedRound(category.id),
-  );
+
+  const queryClient = useQueryClient();
+  const bestQuery = useQuery({
+    queryKey: ["quiz-best", category.id, "speed_round"],
+    queryFn: () => getBestSession(category.id, "speed_round"),
+  });
+  const submitMutation = useMutation({
+    mutationFn: () =>
+      submitQuizSession({
+        session: {
+          id: crypto.randomUUID(),
+          category: category.id,
+          mode: "speed_round",
+          score,
+          total,
+          mistakes: null,
+          pairCount: null,
+        },
+        answers: deriveSessionAnswerRows(category.id, answers),
+      }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["quiz-best", category.id, "speed_round"] }),
+  });
+  const submittedRef = useRef(false);
+  useEffect(() => {
+    if (!bestQuery.isSuccess || submittedRef.current) return;
+    submittedRef.current = true;
+    submitMutation.mutate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bestQuery.isSuccess]);
+
+  const previousBest = bestQuery.data ?? null;
+  const displayBest = submitMutation.isSuccess
+    ? previousBest && previousBest.score >= score
+      ? previousBest
+      : { score, total }
+    : previousBest;
 
   return (
     <div className="mx-auto w-full max-w-lg">
@@ -34,9 +63,9 @@ export function SpeedRoundResultsScreen({
         {score} / {total}
       </h1>
       <p className="mt-1 text-sm text-muted">Answered in 60 seconds.</p>
-      {best && (
+      {displayBest && (
         <p className="mt-1 text-sm text-muted">
-          Best: {best.score} / {best.total}
+          Best: {displayBest.score} / {displayBest.total}
         </p>
       )}
       <div className="mt-6 flex gap-3">
