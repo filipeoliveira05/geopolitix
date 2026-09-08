@@ -16,6 +16,8 @@ export function buildGovernorQuestions(
   const subjects = pickRandom(facts, count);
   return subjects.map((subject) =>
     buildMultipleChoiceQuestion(subject, facts, {
+      questionType: "officeholders.governor",
+      getSubjectId: (f) => `gov-${f.stateId}`,
       getPrompt: (s) => `Who is the current governor of ${s.stateName}?`,
       getOptionText: (f) => f.governorName,
       getOptionParty: (f) => f.party,
@@ -28,6 +30,7 @@ export function buildGovernorQuestions(
 }
 
 type OfficeholderPhotoFact = {
+  id: string;
   name: string;
   party: string | null;
   roleLabel: "senator" | "representative" | "governor";
@@ -38,6 +41,7 @@ type OfficeholderPhotoFact = {
 
 function legislatorToPhotoFact(f: LegislatorStateFact): OfficeholderPhotoFact {
   return {
+    id: f.legislatorId,
     name: f.legislatorName,
     party: f.party,
     roleLabel: f.chamber === "senate" ? "senator" : "representative",
@@ -50,6 +54,7 @@ function legislatorToPhotoFact(f: LegislatorStateFact): OfficeholderPhotoFact {
 function governorToPhotoFact(f: GovernorFact): OfficeholderPhotoFact | null {
   if (!f.photoUrl) return null;
   return {
+    id: `gov-${f.stateId}`,
     name: f.governorName,
     party: f.party,
     roleLabel: "governor",
@@ -90,6 +95,8 @@ export function buildOfficeholderPhotoQuestions(
   const subjects = pickRandom(pool, count);
   return subjects.map((subject) =>
     buildMultipleChoiceQuestion(subject, pool, {
+      questionType: "officeholders.photo_state",
+      getSubjectId: (f) => f.id,
       getPrompt: (s) => `Which state is this ${s.roleLabel} from?`,
       // "(XX)" baked directly into the option text, shown from the start — same not-a-spoiler
       // reasoning as Geography's flag/silhouette/city-state questions: the option here already IS
@@ -126,6 +133,8 @@ export function buildOfficeholderPartyQuestions(
   const subjects = pickRandom(pool, count);
   return subjects.map((subject) =>
     buildMultipleChoiceQuestion(subject, pool, {
+      questionType: "officeholders.party",
+      getSubjectId: (f) => f.id,
       getPrompt: (s) => `What party is ${officeholderLabel(s)}?`,
       getOptionText: (f) => f.party as string,
       // Shown immediately — the name/state are already in the prompt, so there's nothing left
@@ -182,6 +191,8 @@ export function buildOfficeholderNameQuestions(
     const distractorPool =
       distinctSameStateNames >= SAME_STATE_DISTRACTOR_MINIMUM ? [subject, ...sameState] : pool;
     return buildMultipleChoiceQuestion(subject, distractorPool, {
+      questionType: "officeholders.name_guess",
+      getSubjectId: (f) => f.id,
       getPrompt: nameCluePrompt,
       getOptionText: (f) => f.name,
       getOptionParty: (f) => f.party,
@@ -204,6 +215,8 @@ export function buildChamberQuestions(
   const subjects = pickRandom(facts, count);
   return subjects.map((subject) =>
     buildMultipleChoiceQuestion(subject, facts, {
+      questionType: "officeholders.chamber",
+      getSubjectId: (f) => f.legislatorId,
       getPrompt: () => "Which chamber of Congress does this legislator serve in?",
       getOptionText: (f) => (f.chamber === "senate" ? "U.S. Senate" : "U.S. House of Representatives"),
       getImageUrl: (f) => f.photoUrl,
@@ -228,6 +241,8 @@ export function buildHouseSeatCountQuestions(
   const subjects = pickRandom(facts, count);
   return subjects.map((subject) =>
     buildMultipleChoiceQuestion(subject, facts, {
+      questionType: "officeholders.house_seat_count",
+      getSubjectId: (f) => f.stateId,
       getPrompt: (s) => `How many U.S. House seats does ${s.stateName} have?`,
       getOptionText: (f) => String(f.seatCount),
     }),
@@ -259,6 +274,7 @@ export function buildSenatorRecallQuestions(
     );
     return {
       format: "search-select",
+      questionType: "officeholders.senator_recall",
       prompt: `Name ${stateName}'s current U.S. Senators.`,
       imageUrl: flagByState.get(stateId) as string,
       entityType: "senator",
