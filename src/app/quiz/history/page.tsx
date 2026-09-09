@@ -14,6 +14,7 @@ import { questionTypeLabel } from "@/lib/quiz/question-type-labels";
 
 const RECENT_SESSIONS_LIMIT = 20;
 const WEAKEST_SUBJECTS_LIMIT = 15;
+const MIN_ATTEMPTS_FOR_ACCURACY = 3;
 
 function categoryLabel(id: string): string {
   return QUIZ_CATEGORIES.find((c) => c.id === id)?.label ?? id;
@@ -90,6 +91,9 @@ export default async function QuizHistoryPage() {
 
       <Card className="mt-4">
         <SectionHeading>Accuracy by question type</SectionHeading>
+        <p className="mt-1 text-xs text-muted">
+          Accuracy shown after {MIN_ATTEMPTS_FOR_ACCURACY} attempts.
+        </p>
         {typeStats.length === 0 ? (
           <p className="mt-2 text-sm text-muted">No answers recorded yet.</p>
         ) : (
@@ -105,7 +109,9 @@ export default async function QuizHistoryPage() {
                     <tr key={s.questionType} className="border-t border-rule">
                       <td className="py-1.5 text-ink">{questionTypeLabel(s.questionType)}</td>
                       <td className="py-1.5 text-right font-mono text-muted">
-                        {s.correctCount}/{s.attempts} ({s.accuracyPct}%)
+                        {s.attempts < MIN_ATTEMPTS_FOR_ACCURACY
+                          ? `${s.attempts} attempt${s.attempts === 1 ? "" : "s"}`
+                          : `${s.correctCount}/${s.attempts} (${s.accuracyPct}%)`}
                       </td>
                     </tr>
                   ))}
