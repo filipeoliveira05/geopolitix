@@ -12,6 +12,11 @@ import {
 import { CategoryIcon } from "@/components/quiz/category-icons";
 import { questionTypeLabel } from "@/lib/quiz/question-type-labels";
 
+// No dynamic route params here, so Next would otherwise prerender this once at build time and
+// serve stale history on every request — same fix as /midterms-2026, force it to read fresh from
+// Supabase each time.
+export const dynamic = "force-dynamic";
+
 const RECENT_SESSIONS_LIMIT = 20;
 const WEAKEST_SUBJECTS_LIMIT = 15;
 const MIN_ATTEMPTS_FOR_ACCURACY = 3;
