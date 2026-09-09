@@ -150,28 +150,28 @@ export default async function QuizHistoryPage() {
         {recentSessions.length === 0 ? (
           <p className="mt-2 text-sm text-muted">No sessions played yet.</p>
         ) : (
-          <table className="mt-2 w-full text-sm">
-            <tbody>
-              {recentSessions.map((s) => (
-                <tr key={s.id} className="border-t border-rule">
-                  <td className="py-1.5 text-ink">
+          <div className="mt-2 text-sm">
+            {recentSessions.map((s) => (
+              <div key={s.id} className="border-t border-rule py-1.5">
+                <div className="flex items-baseline justify-between gap-3">
+                  <span className="text-ink">
                     {categoryLabel(s.category)} — {modeLabel(s.mode)}
-                  </td>
-                  <td className="py-1.5 text-right font-mono text-muted">
+                  </span>
+                  <span className="shrink-0 font-mono text-muted">
                     {s.mode === "matching"
                       ? `${s.mistakes} mistake${s.mistakes === 1 ? "" : "s"}`
                       : `${s.score}/${s.total}`}
-                  </td>
-                  <td className="py-1.5 text-right font-mono text-xs text-muted">
-                    {new Date(s.playedAt).toLocaleString(undefined, {
-                      dateStyle: "short",
-                      timeStyle: "short",
-                    })}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  </span>
+                </div>
+                <div className="text-right font-mono text-xs text-muted">
+                  {new Date(s.playedAt).toLocaleString(undefined, {
+                    dateStyle: "short",
+                    timeStyle: "short",
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
         )}
       </Card>
     </div>
