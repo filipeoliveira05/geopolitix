@@ -39,10 +39,31 @@ export default async function QuizHistoryPage() {
     getRecentSessions(RECENT_SESSIONS_LIMIT),
   ]);
 
+  const totalSessions = playCounts.reduce((sum, p) => sum + p.sessionCount, 0);
+  const totalAttempts = typeStats.reduce((sum, s) => sum + s.attempts, 0);
+  const totalCorrect = typeStats.reduce((sum, s) => sum + s.correctCount, 0);
+  const overallAccuracyPct =
+    totalAttempts > 0 ? Math.round((totalCorrect / totalAttempts) * 1000) / 10 : null;
+
   return (
     <div className="mx-auto w-full max-w-2xl">
       <BackToMapLink />
       <h1 className="mt-4 font-display text-3xl font-semibold text-ink">Quiz History</h1>
+
+      {totalSessions > 0 && (
+        <Card className="mt-4">
+          <SectionHeading>Overview</SectionHeading>
+          <p className="mt-2 text-sm text-ink">
+            {totalSessions} session{totalSessions === 1 ? "" : "s"} played
+            {overallAccuracyPct !== null && (
+              <>
+                {" "}
+                · <span className="font-mono">{overallAccuracyPct}%</span> overall accuracy
+              </>
+            )}
+          </p>
+        </Card>
+      )}
 
       <Card className="mt-4">
         <SectionHeading>Times played</SectionHeading>
