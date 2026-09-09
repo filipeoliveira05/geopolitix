@@ -131,7 +131,10 @@ export default async function QuizHistoryPage() {
                       : `${s.score}/${s.total}`}
                   </td>
                   <td className="py-1.5 text-right font-mono text-xs text-muted">
-                    {new Date(s.playedAt).toLocaleDateString()}
+                    {new Date(s.playedAt).toLocaleString(undefined, {
+                      dateStyle: "short",
+                      timeStyle: "short",
+                    })}
                   </td>
                 </tr>
               ))}
