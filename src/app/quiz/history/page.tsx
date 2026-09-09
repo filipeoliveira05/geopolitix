@@ -102,7 +102,15 @@ export default async function QuizHistoryPage() {
             <tbody>
               {weakestSubjects.map((s) => (
                 <tr key={`${s.category}-${s.subjectId}`} className="border-t border-rule">
-                  <td className="py-1.5 text-ink">{s.subjectLabel}</td>
+                  <td className="py-1.5 text-ink">
+                    <span className="inline-flex items-center gap-1.5">
+                      <CategoryIcon
+                        category={s.category}
+                        className="h-3.5 w-3.5 shrink-0 text-muted"
+                      />
+                      {s.subjectLabel}
+                    </span>
+                  </td>
                   <td className="py-1.5 text-right font-mono text-muted">
                     {s.correctCount}/{s.attempts} ({s.accuracyPct}%)
                   </td>
