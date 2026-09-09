@@ -1,13 +1,15 @@
 import { Card } from "@/components/Card";
 import { SectionHeading } from "@/components/SectionHeading";
 import { BackToMapLink } from "@/components/BackToMapLink";
-import { QUIZ_CATEGORIES } from "@/lib/quiz/category-config";
+import { QUIZ_CATEGORIES, type QuizCategoryId } from "@/lib/quiz/category-config";
 import {
   getPlayCounts,
   getQuestionTypeStats,
   getWeakestSubjects,
   getRecentSessions,
+  type QuestionTypeStat,
 } from "@/lib/quiz/history-data";
+import { CategoryIcon } from "@/components/quiz/category-icons";
 
 const RECENT_SESSIONS_LIMIT = 20;
 const WEAKEST_SUBJECTS_LIMIT = 15;
@@ -20,6 +22,13 @@ function modeLabel(mode: string): string {
   if (mode === "standard") return "Quiz";
   if (mode === "speed_round") return "Speed Round";
   return "Matching";
+}
+
+function groupByCategory(stats: QuestionTypeStat[]): { category: QuizCategoryId; rows: QuestionTypeStat[] }[] {
+  return QUIZ_CATEGORIES.map((c) => ({
+    category: c.id,
+    rows: stats.filter((s) => s.category === c.id),
+  })).filter((g) => g.rows.length > 0);
 }
 
 export default async function QuizHistoryPage() {
@@ -60,18 +69,26 @@ export default async function QuizHistoryPage() {
         {typeStats.length === 0 ? (
           <p className="mt-2 text-sm text-muted">No answers recorded yet.</p>
         ) : (
-          <table className="mt-2 w-full text-sm">
-            <tbody>
-              {typeStats.map((s) => (
-                <tr key={`${s.category}-${s.questionType}`} className="border-t border-rule">
-                  <td className="py-1.5 text-ink">{s.questionType}</td>
-                  <td className="py-1.5 text-right font-mono text-muted">
-                    {s.correctCount}/{s.attempts} ({s.accuracyPct}%)
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          groupByCategory(typeStats).map((group) => (
+            <div key={group.category} className="mt-3 first:mt-2">
+              <p className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted">
+                <CategoryIcon category={group.category} className="h-3.5 w-3.5" />
+                {categoryLabel(group.category)}
+              </p>
+              <table className="mt-1 w-full text-sm">
+                <tbody>
+                  {group.rows.map((s) => (
+                    <tr key={s.questionType} className="border-t border-rule">
+                      <td className="py-1.5 text-ink">{s.questionType}</td>
+                      <td className="py-1.5 text-right font-mono text-muted">
+                        {s.correctCount}/{s.attempts} ({s.accuracyPct}%)
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ))
         )}
       </Card>
 
