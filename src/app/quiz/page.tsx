@@ -9,7 +9,12 @@ export default function QuizHubPage() {
   return (
     <div className="mx-auto w-full max-w-3xl flex-1 animate-fade-in p-6 sm:p-10">
       <BackToMapLink />
-      <h1 className="mt-2 font-display text-3xl font-semibold text-ink">Quiz</h1>
+      <div className="mt-2 flex items-baseline justify-between">
+        <h1 className="font-display text-3xl font-semibold text-ink">Quiz</h1>
+        <Link href="/quiz/history" className="link-accent text-sm">
+          History
+        </Link>
+      </div>
       <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
         {QUIZ_CATEGORIES.map((category) =>
           category.enabled ? (
