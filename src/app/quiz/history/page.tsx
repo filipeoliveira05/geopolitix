@@ -1,6 +1,6 @@
+import Link from "next/link";
 import { Card } from "@/components/Card";
 import { SectionHeading } from "@/components/SectionHeading";
-import { BackToMapLink } from "@/components/BackToMapLink";
 import { QUIZ_CATEGORIES, type QuizCategoryId } from "@/lib/quiz/category-config";
 import {
   getPlayCounts,
@@ -48,7 +48,9 @@ export default async function QuizHistoryPage() {
 
   return (
     <div className="mx-auto w-full max-w-2xl">
-      <BackToMapLink />
+      <Link href="/quiz" className="text-sm text-muted hover:text-ink">
+        ← Back to quiz
+      </Link>
       <h1 className="mt-4 font-display text-3xl font-semibold text-ink">Quiz History</h1>
 
       {totalSessions > 0 && (
