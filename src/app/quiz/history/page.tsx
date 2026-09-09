@@ -10,6 +10,7 @@ import {
   type QuestionTypeStat,
 } from "@/lib/quiz/history-data";
 import { CategoryIcon } from "@/components/quiz/category-icons";
+import { questionTypeLabel } from "@/lib/quiz/question-type-labels";
 
 const RECENT_SESSIONS_LIMIT = 20;
 const WEAKEST_SUBJECTS_LIMIT = 15;
@@ -100,7 +101,7 @@ export default async function QuizHistoryPage() {
                 <tbody>
                   {group.rows.map((s) => (
                     <tr key={s.questionType} className="border-t border-rule">
-                      <td className="py-1.5 text-ink">{s.questionType}</td>
+                      <td className="py-1.5 text-ink">{questionTypeLabel(s.questionType)}</td>
                       <td className="py-1.5 text-right font-mono text-muted">
                         {s.correctCount}/{s.attempts} ({s.accuracyPct}%)
                       </td>
