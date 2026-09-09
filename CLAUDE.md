@@ -87,6 +87,17 @@ Build order: **Phase 1 politics → Phase 2 geography → Phase 3 quiz.** Don't 
   - **`src/lib/pending-primary-states.ts` is a small, self-expiring hardcoded list** of states
     with a known-pending 2026 primary — check it's still accurate (or trim expired entries) when
     touching anything primary/race-related.
+  - **A page with no dynamic route params that reads live Supabase data needs
+    `export const dynamic = "force-dynamic"`**, or Next.js prerenders it once at build time and
+    every visitor gets that frozen snapshot forever (the app's Supabase client wraps `fetch` with
+    no cache override, so Next.js's default static-render behavior applies silently, with zero
+    build warning). Hit twice now — `/midterms-2026` originally, `/quiz/history` on 2026-09-09
+    (diagnosed when deleted history kept reappearing on a phone after the DB was already empty).
+  - **A new Postgres aggregate view (`GROUP BY`, used for stats/rollups) needs
+    `security_invoker = on`** — Supabase's security advisor flags the Postgres default
+    (`SECURITY DEFINER`, running as the view's creator rather than the querying user) even when
+    current RLS is fully open and there's nothing to actually bypass yet; cheap to set right the
+    first time. See the quiz history stats views (`docs/quiz-notes.md`'s 2026-09-09 entry).
 - Derived/joined geometry (`src/lib/*-geo.ts`) is computed at read time and memoized, not
   precomputed by a sync script. `src/lib/us-insets.ts` repositions Alaska/Hawaii into fixed insets
   south of California (CNN-style, not geographically real); `senate-split-geo.ts`/
@@ -284,7 +295,13 @@ step genuinely errored. **Full workflow history/design reasoning in `docs/status
   gotcha, a self-adjacent-polygon bug that let Oregon border itself, a `QuizMapClick`
   mounted-already-answered race that dropped a reveal highlight silently, a Mashups speed-round
   category-tagging bug in the history system) are in
-  `docs/quiz-notes.md`** — read it before adding a new question type to any category.
+  `docs/quiz-notes.md`** — read it before adding a new question type to any category. `/quiz/history`
+  itself got a full readability/mobile pass on 2026-09-09 (grouped by category with icons,
+  human-readable question-type labels, an overview card, a low-attempt threshold so a single guess
+  doesn't render as a misleading 0%/100%, mobile-friendly spacing) plus two real bugs fixed
+  (missing `force-dynamic` was serving a frozen build-time snapshot forever; the three stats views
+  needed `security_invoker = on` per Supabase's advisor) — see `docs/quiz-notes.md`'s 2026-09-09
+  entry, not this summary, before touching that page again.
 
 **Synced data**, via `npm run sync:<name>`: `states`, `legislators`/`terms`, `governors`,
 `governor_terms`, `races_2026`/`race_candidates`, `candidates`, `districts` (+ Storage geometry

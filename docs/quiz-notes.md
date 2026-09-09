@@ -1053,3 +1053,84 @@ reasoning that already excludes `MatchingPair` from the `AnsweredQuestion` union
 `MatchingResultsScreen` needed a new `pairCount` prop threaded through from
 `QuizCategoryClient.tsx`'s `finishMatching`, which reads it off the just-finished `"matching"`
 phase's own `pairs.length` before the phase transitions away.
+
+**`/quiz/history` readability/mobile pass + two real bugs (2026-09-09)** — the user's first live
+look at the page (shipped 2026-09-08) after playtesting with real sessions. All UI-only changes,
+9 separate commits, each independently verified live (desktop + the project's standard mobile
+viewport) with lint/typecheck/no-console-errors before committing:
+- **No way to reach the page at all** — `/quiz` (the hub) had no link to it anywhere (not the hub
+  page, not `GlobalHeader`, not `QuizStartScreen`). Fixed with a small "History" text link next to
+  the "Quiz" `<h1>` on the hub page only (deliberately not `GlobalHeader`, which is global nav
+  across the whole app — felt like the wrong scope for a quiz-only page).
+- **"Accuracy by question type" was one long flat ~25-row list, no per-category grouping** — now
+  grouped by category (fixed `QUIZ_CATEGORIES` order, categories with no data simply omitted),
+  each group's own mini-table still sorted worst-accuracy-first within itself. Category headers
+  reuse the same `CategoryIcon` component `QuizStartScreen` already uses (one glyph per category),
+  applied identically as a small per-row badge on "Weakest subjects" too (a flat cross-category
+  ranking, not grouped, so a badge-per-row made more sense there than subheadings).
+- **Raw `questionType` strings shown as-is** (`geography.largest_city`, `officeholders.photo_state`)
+  — added `src/lib/quiz/question-type-labels.ts`, a static `Record<string, string>` translating
+  every one of the ~30 stable `questionType` ids (see this doc's 2026-09-08 entry for where those
+  come from) to a short human label ("Largest city in a state", "Officeholder photo → state").
+  Falls back to the raw id for anything not yet in the map, so a future generator that forgets to
+  add a label can't break the page, just look slightly less polished until someone adds one.
+- **Recent sessions only showed a bare date** (`toLocaleDateString()`), which collides once
+  multiple sessions land on the same day — switched to `toLocaleString` with `dateStyle: "short",
+  timeStyle: "short"`. Safe to do date/time formatting here specifically because this page is an
+  async Server Component with no `"use client"` — the formatting runs server-side only, so there's
+  no SSR/client locale hydration mismatch risk (unlike the earlier real bug of that shape
+  documented in `docs/ui-notes.md`).
+- **No overall/lifetime summary** — added a small "Overview" card at the very top (total sessions
+  played, overall accuracy) computed server-side from data already being fetched for the other
+  cards (`playCounts`/`typeStats` summed), no new query needed. Hidden entirely when there's no
+  history yet (`totalSessions > 0` gate), rather than showing "0 sessions played."
+- **Back link went to the map (`BackToMapLink`), not back to the quiz hub** — swapped for a
+  same-styled inline `Link` to `/quiz`, since landing on the map after checking quiz history is a
+  worse default than landing back on the quiz picker.
+- **Not mobile-friendly** — the page's outer wrapper had no padding at all (`mx-auto w-full
+  max-w-2xl`, no `p-*`), unlike every other page in the app (`/quiz/[category]`, `/legislator/[id]`,
+  etc. all use `flex-1 animate-fade-in p-6 sm:p-10`) — content ran edge-to-edge on a phone. Fixed by
+  matching that exact standard pattern. Separately, "Recent sessions" used a 3-column `<table>` row
+  (category/mode, score, timestamp) that wrapped awkwardly at narrow widths once each cell ran out
+  of room — replaced with a non-table two-line block per session (title + score on line one,
+  timestamp right-aligned on line two below), which doesn't collide at any width rather than being
+  a mobile-only patch.
+- **A single lucky/unlucky guess rendered as a misleading 0%/100%** — e.g. "State silhouettes: 0/1
+  (0%)" reads as a real weakness after exactly one wrong answer. Added the same "minimum 3
+  attempts" convention `getWeakestSubjects` already used server-side, but applied client-side to
+  the accuracy-by-question-type table instead of filtering rows out entirely: below the threshold,
+  the row still shows (so a freshly-tried question type doesn't just vanish) but displays
+  `"{attempts} attempt(s)"` instead of a percentage. A one-line note under the section heading
+  states the threshold.
+
+**Commit history note**: the first attempt at splitting these into single-purpose commits produced
+two commits that bundled unrelated changes (a "back to quiz" commit that also carried the
+recent-sessions table→block rewrite, and a same-titled-but-wrong padding commit). The user asked
+for a proper single-focus rewrite; since none of the 9 commits were pushed yet, fixed via
+`git reset --soft` to the pre-session commit and rebuilding each commit from scratch against clean
+intermediate file states (not `git rebase -i`, which needs interactive input this environment
+doesn't support) — ended up as a clean fast-forward push, no force-push needed since the rewritten
+history was still strictly ahead of `origin/main`.
+
+**Two real bugs found after this shipped, not part of the original playtesting list**:
+- **Supabase's security advisor flagged all three stats views
+  (`quiz_question_type_stats`/`quiz_subject_stats`/`quiz_play_counts`) as `SECURITY DEFINER`** —
+  Postgres's default for views, meaning a view runs with its creator's permissions/RLS bypass
+  rather than the querying user's. Not an active risk today, since `quiz_sessions`/`quiz_answers`'s
+  only RLS policy is `using (true)` (unconditional public read already) — nothing to actually
+  bypass yet. Fixed anyway as cheap defense in depth (`security_invoker = on` on all three, new
+  migration `20260909071240_quiz_history_views_security_invoker.sql`), since if that RLS is ever
+  tightened later (e.g. per-user rows if real auth ever gets added), these views would otherwise
+  silently keep leaking full data past the tightened policy rather than respecting it.
+- **The user deleted the two test/script-inserted sessions (134 `quiz_answers` rows total — real
+  play data from playtesting new game-mode improvements, not the user's own actual quiz plays) via
+  a one-off admin script using `scripts/sync/_supabase-admin.mjs`'s `supabaseAdmin()` client
+  (deleting `quiz_sessions` cascades to `quiz_answers` via the FK's `ON DELETE CASCADE`), confirmed
+  0/0 rows after — but the deployed app kept showing the old data on the user's phone.** Root cause:
+  `/quiz/history` had no `export const dynamic = "force-dynamic"`, and — like `/midterms-2026`
+  before this same fix was applied there — has no dynamic route params, so Next.js prerendered it
+  once at build/deploy time and served that frozen HTML from Vercel's CDN to every visitor
+  regardless of live DB state. Fixed by adding the same `force-dynamic` export `/midterms-2026`
+  already uses, with a comment cross-referencing that precedent. This class of bug (a page reading
+  live Supabase data with no dynamic segment, silently getting statically prerendered with no
+  build warning) has now bitten this app twice — see the new standing-rule bullet in CLAUDE.md.

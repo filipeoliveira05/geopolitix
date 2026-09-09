@@ -370,8 +370,14 @@ theme-aware SVG computed client-side from the same real `us-atlas` polygon geome
 interactive map itself uses, not a synced image. Regular rounds are 10 questions, scored 0-100
 points (10/question, partial credit for search-and-select) with immediate per-question feedback
 and a start-screen format picker; matching and speed-round are separate, parallel session types
-with their own results screen and their own `localStorage` best-score key (no accounts/auth — see
-§9's Open Decisions). Full architecture, every category's question-type batch writeup, and the
+with their own results screen. Every completed session (standard, speed-round, matching) is recorded
+to Supabase (`quiz_sessions`/`quiz_answers`, added 2026-09-08 — replaced the original per-browser
+`localStorage` best-score note) with full per-question-type and per-subject correct/incorrect
+tracking, surfaced on a dedicated **`/quiz/history`** page (times played, accuracy by question type
+grouped by category, weakest subjects, recent sessions, an overall-accuracy summary — polished for
+readability/mobile on 2026-09-09). This is still one single global record, not scoped to any user
+identity (no accounts/auth — see §9's Open Decisions). Full architecture, every category's
+question-type batch writeup, and the
 real bugs caught building all of it (a Strict-Mode map cleanup bug, a speed-round timer/setState
 bug, a PostgREST ambiguous-FK bug on the cities/states embed, an antimeridian/Four-Corners
 geometry gotcha, a self-adjacent-polygon bug that let Oregon border itself) are documented in
@@ -477,9 +483,11 @@ Getting from "JSON stand-in" to the real infrastructure. Current progress is tra
 
 - ~~`races_2026` source~~ — **resolved**, see §3.
 - ~~User authentication~~ — **resolved**: no app-level auth; the deployment itself is gated by
-  Vercel Authentication instead (§7 step 8). Quiz best-scores (shipped 2026-09-03) ended up
-  needing no accounts after all — they're plain per-browser `localStorage`, not a Supabase table,
-  so this decision still stands unrevisited.
+  Vercel Authentication instead (§7 step 8). Quiz history (originally shipped 2026-09-03 as a
+  plain per-browser `localStorage` best-score note, replaced 2026-09-08 by a full Supabase-backed
+  `quiz_sessions`/`quiz_answers` history) still needed no per-user accounts — it's one single
+  global record rather than scoped to any identity, so this decision still stands unrevisited even
+  though the storage backend changed.
 - **Open:** MapLibre vs. Mapbox (recommendation: MapLibre, already in use, no reason to switch).
 - **Open:** Congress history depth in the UI — full depth is the data default (matches Senate's
   existing history view); capping is a UI task (collapse/paginate) once House/Governors history
