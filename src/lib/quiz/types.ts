@@ -118,6 +118,12 @@ export type MultipleChoiceQuestion = {
   // which real state they mixed the capital up with. Index-aligned with `options`; undefined means
   // this question type has no per-option state to reveal.
   optionStateAbbrs?: (string | null)[];
+  // When true, optionStateAbbrs renders as "(XX)" instead of ", XX" — for a question type where
+  // the abbreviation IS an attribute of the option itself (e.g. "Which state has the abbreviation
+  // Y?" revealing each option's own postal code), matching the parenthesized convention
+  // getOptionText already bakes in unconditionally elsewhere (buildFlagQuestions et al.), rather
+  // than the ", XX" reading that only makes sense for a city/capital naming its owning state.
+  optionStateAbbrsAsParens?: boolean;
   // Renders a party badge next to revealCaption, same imageCaptionParty convention. Undefined
   // means no badge; a question type with no party concept simply never sets it.
   revealCaptionParty?: string | null;

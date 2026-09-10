@@ -258,6 +258,13 @@ export function buildAbbreviationQuestions(
           ? `What is the 2-letter abbreviation for ${s.stateName}?`
           : `Which state has the abbreviation "${s.stateId}"?`,
       getOptionText: (f) => (askForAbbreviation ? f.stateId : f.stateName),
+      // Only for the "which state has abbreviation X?" direction — the options are state names
+      // there, so revealing each one's own postal abbreviation after answering (not before, since
+      // it'd hand away the match against the prompt's own quoted abbreviation) shows a wrong guess
+      // exactly what it was mixed up with. The reverse direction's options already ARE
+      // abbreviations, so there's nothing extra to reveal.
+      getOptionStateAbbr: askForAbbreviation ? undefined : (f) => f.stateId,
+      optionStateAbbrsAsParens: true,
     });
   });
 }

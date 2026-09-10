@@ -52,6 +52,8 @@ export function buildMultipleChoiceQuestion<T>(
     // question type whose options are cities/entities worth naming the real owning state for
     // (e.g. "what is the capital of X?").
     getOptionStateAbbr?: (item: T) => string | null;
+    // See MultipleChoiceQuestion.optionStateAbbrsAsParens.
+    optionStateAbbrsAsParens?: boolean;
     // Shown after answering (MultipleChoiceQuestion.revealStateAbbr) — for a question type whose
     // subject IS a state, so the reveal can highlight it directly on a real interactive US map.
     getRevealStateAbbr?: (subject: T) => string | null;
@@ -126,6 +128,7 @@ export function buildMultipleChoiceQuestion<T>(
           return item ? (opts.getOptionStateAbbr as (item: T) => string | null)(item) : null;
         })
       : undefined,
+    optionStateAbbrsAsParens: opts.optionStateAbbrsAsParens,
     options,
     correctIndex: options.indexOf(correctText),
   };

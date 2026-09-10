@@ -160,6 +160,22 @@ describe("buildAbbreviationQuestions", () => {
     const [q] = buildAbbreviationQuestions(makeFacts(10), 1);
     expect(q.imageUrl).toBeNull();
   });
+
+  it("reveals each option's own abbreviation in parens for the abbreviation-to-name direction only", () => {
+    const facts = makeFacts(20);
+    const questions = buildAbbreviationQuestions(facts, 20);
+    for (const q of questions) {
+      if (q.prompt.startsWith("Which state has the abbreviation")) {
+        expect(q.optionStateAbbrsAsParens).toBe(true);
+        expect(q.optionStateAbbrs).toHaveLength(q.options.length);
+        q.options.forEach((option, i) => {
+          expect(q.optionStateAbbrs?.[i]).toBe(option.replace("State", "S"));
+        });
+      } else {
+        expect(q.optionStateAbbrs).toBeUndefined();
+      }
+    }
+  });
 });
 
 describe("buildCityStateQuestions", () => {

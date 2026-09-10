@@ -227,6 +227,34 @@ describe("buildMultipleChoiceQuestion", () => {
     });
   });
 
+  it("leaves optionStateAbbrs/optionStateAbbrsAsParens undefined when getOptionStateAbbr is not provided", () => {
+    const q = buildMultipleChoiceQuestion(pool[0], pool, {
+      questionType: "test",
+      getSubjectId: (item) => item.id,
+      getPrompt: () => "prompt",
+      getOptionText: (item) => item.label,
+    });
+    expect(q.optionStateAbbrs).toBeUndefined();
+    expect(q.optionStateAbbrsAsParens).toBeUndefined();
+  });
+
+  it("sets optionStateAbbrs index-aligned with options, and passes through optionStateAbbrsAsParens", () => {
+    const q = buildMultipleChoiceQuestion(pool[0], pool, {
+      questionType: "test",
+      getSubjectId: (item) => item.id,
+      getPrompt: () => "prompt",
+      getOptionText: (item) => item.label,
+      getOptionStateAbbr: (item) => item.id.toUpperCase(),
+      optionStateAbbrsAsParens: true,
+    });
+    expect(q.optionStateAbbrsAsParens).toBe(true);
+    expect(q.optionStateAbbrs).toHaveLength(q.options.length);
+    q.options.forEach((option, i) => {
+      const matching = pool.find((item) => item.label === option);
+      expect(q.optionStateAbbrs?.[i]).toBe(matching?.id.toUpperCase());
+    });
+  });
+
   it("still throws when the pool has fewer distinct texts than the requested optionCount", () => {
     const onlyOne: Item[] = [{ id: "a", label: "Alpha" }];
     expect(() =>

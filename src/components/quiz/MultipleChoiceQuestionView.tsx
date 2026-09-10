@@ -88,7 +88,11 @@ export function MultipleChoiceQuestionView({
                 <span>
                   {option}
                   {question.optionStateAbbrs && answered && question.optionStateAbbrs[i] && (
-                    <span className="opacity-80">, {question.optionStateAbbrs[i]}</span>
+                    <span className="opacity-80">
+                      {question.optionStateAbbrsAsParens
+                        ? ` (${question.optionStateAbbrs[i]})`
+                        : `, ${question.optionStateAbbrs[i]}`}
+                    </span>
                   )}
                   {question.optionsAreParties && (
                     // Inherits the button's own white text once highlighted, rather than the
