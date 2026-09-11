@@ -353,11 +353,16 @@ search-and-select), **Officeholders** (6 question types plus a senator-recall se
 current governor, officeholder-photo-to-state (senators/reps/governors combined), officeholder
 party, combined photo+state name-guess, legislator chamber (Senate vs. House), and House seat
 count per state), **2026 Midterms** (candidate party, incumbency, plus a race-candidate-recall
-search-and-select), **Sports** (9 question types plus a state-team-recall search-and-select —
-team logo (pro teams plus power-conference college programs), team-to-state, team-to-league,
-team-to-city, team-by-city/team-by-state (reverse direction), school-from-nickname and
-college-conference (power-conference programs only), and pro-team-count per state, plus a
-matching-pairs mode), **Mashups** (odd-one-out — "which of these teams is NOT based in the same
+search-and-select), **Sports** (13 question types as of a 2026-09-11 follow-up, plus a
+state-team-recall search-and-select — team logo (pro teams plus power-conference college
+programs), team-to-state, team-to-league, team-to-city, team-by-city/team-by-state (reverse
+direction), school-from-nickname, college-conference, college-to-city, college-by-city/
+college-by-state (the college-programs mirror of team-by-city/team-by-state), pro-team-count per
+state, and a Power-4-program-count per state (its own bucketed 0/1/2/3+ question, separate from
+pro-team-count since a state's college and pro totals are independent facts) — plus a
+matching-pairs mode; every question type naming a college program in its options/reveal bakes in
+its nickname too ("Iowa Hawkeyes", not just "Iowa"), except school-from-nickname, whose prompt
+already states the nickname as the clue), **Mashups** (odd-one-out — "which of these teams is NOT based in the same
 state as the others?" — plus a 60-second speed round mixing every other category's
 multiple-choice question types together). Three question formats: multiple choice, map-click, and
 search-and-select (a type-and-pick-from-live-search format scored by partial credit, added

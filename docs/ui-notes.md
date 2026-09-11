@@ -49,7 +49,10 @@ touching the design system, map, tables, or the freshness/search/header componen
   uppercase-tracked eyebrow label prefixed with a `§` mark in `--seal` — deliberately reconsidered
   against alternatives (a seal-colored accent bar, a pilcrow, no mark at all) and kept as-is, don't
   re-litigate), `BackToMapLink` (`src/components/BackToMapLink.tsx`, the "← Back to map" link
-  every non-home page uses). The `.link-accent` utility class (also in `globals.css`) replaces
+  most non-home pages use — takes optional `href`/`children` overrides, added 2026-09-11 so
+  `QuizStartScreen` can point back to `/quiz` ("← Back to quizzes") instead of the map; `/quiz/history`
+  uses a plain `Link` with the same copy rather than this component, since it isn't wrapped in the
+  same top-of-page position). The `.link-accent` utility class (also in `globals.css`) replaces
   bare `hover:underline` on in-content text links — transparent underline at rest, `--seal`-colored
   on hover/focus. `.animate-fade-in` gives each top-level page's outer container a brief mount
   fade (respects `prefers-reduced-motion`) — applied once per page, not per-element. Full design

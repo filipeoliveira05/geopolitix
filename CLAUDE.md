@@ -301,7 +301,15 @@ step genuinely errored. **Full workflow history/design reasoning in `docs/status
   doesn't render as a misleading 0%/100%, mobile-friendly spacing) plus two real bugs fixed
   (missing `force-dynamic` was serving a frozen build-time snapshot forever; the three stats views
   needed `security_invoker = on` per Supabase's advisor) — see `docs/quiz-notes.md`'s 2026-09-09
-  entry, not this summary, before touching that page again.
+  entry, not this summary, before touching that page again. **Sports gained four more college-
+  programs question types on 2026-09-11** (city, by-city, by-state, Power-4 program count) —
+  Sports was previously noted as "closed" after 2026-09-08, but that only covered the three
+  originally-deferred ideas the user explicitly declined; college programs' city/state/count
+  coverage was a separate, genuinely open gap. Every college generator that names a school in its
+  options/reveal now bakes in its nickname too (`buildSchoolFromNicknameQuestions` is the one
+  deliberate exception — its prompt already states the nickname as the clue). See
+  `docs/quiz-notes.md`'s 2026-09-11 entry for the full batch, including a real duplicate-reveal-row
+  bug (same school, different sport) caught and fixed along the way.
 
 **Synced data**, via `npm run sync:<name>`: `states`, `legislators`/`terms`, `governors`,
 `governor_terms`, `races_2026`/`race_candidates`, `candidates`, `districts` (+ Storage geometry

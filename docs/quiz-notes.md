@@ -1134,3 +1134,86 @@ history was still strictly ahead of `origin/main`.
   already uses, with a comment cross-referencing that precedent. This class of bug (a page reading
   live Supabase data with no dynamic segment, silently getting statically prerendered with no
   build warning) has now bitten this app twice — see the new standing-rule bullet in CLAUDE.md.
+
+**City-recall search disambiguation, 2026-09-11** — the user hit a real usability gap playing
+Geography's `buildCityRecallQuestions` ("Name the top cities in {state}"): several city names
+repeat across states (multiple "Jackson"s, "Portland"s), and the search dropdown's suggestions
+were labeled by plain city name only (`search-select-index.ts`'s `buildCityEntries`), so typing
+"Jackson" while playing e.g. Mississippi showed four indistinguishable "Jackson" rows with no way
+to tell which one to pick.
+- **First fix**: suffixed the suggestion label "CityName, ST" (`buildCityPopulationQuestions`'
+  existing convention) — safe from a spoiler standpoint because this question's prompt/flag
+  already reveal the target state, so the state was never the secret this question type hides.
+- **That fix introduced its own bug**, caught by the user immediately: since Fuse indexed the same
+  `label` field the suffix lived in, typing a state's own abbreviation (e.g. "MS") now matched
+  every city in that state via the ", MS" suffix — letting a player browse the whole target list
+  as a shortcut around actually recalling names, the opposite of what this question is trying to
+  test. Fixed with a new `SearchSelectEntry.matchText` field: Fuse now indexes `matchText` (via a
+  custom `getFn`, falling back to `label` when unset) instead of `label` directly, and only
+  `buildCityEntries` sets `matchText` to the bare city name — every other entry builder
+  (senator/team/state) is unaffected since it never diverges from `label`. A regression test
+  (`search-select-index.test.ts`) locks in that a state-abbreviation query returns zero results.
+
+**Sports college-programs expansion, 2026-09-11 — reopens a project the 2026-09-08 memory/plan
+notes had marked "CLOSED".** The user explicitly declined re-litigating Sports' three originally-
+deferred ideas (team-count comparison, match-to-conference, match-nickname-to-school) earlier that
+session, but this was a *different* angle: pro teams had full city/state coverage in both
+directions (`buildTeamCityQuestions`/`buildTeamByCityQuestions`/`buildTeamByStateQuestions`) plus
+`buildProTeamCountQuestions`, while college football/basketball programs — despite carrying the
+same `city_name`/`state_id`/nickname fields — never got the reverse-direction or count-style
+treatment. Four new generators shipped in `sports-questions.ts`, one at a time, each verified live
+before moving on:
+- **`buildCollegeCityQuestions`** — "Which city are the {School} {Nickname} based in?" (reverse of
+  the existing nickname/conference questions), options "CityName, ST". Filters to `nickname !==
+  null` (same eligibility filter `buildSchoolFromNicknameQuestions` already uses) so the prompt
+  reads as a real team, not a bare school name.
+- **`buildCollegeByCityQuestions`** / **`buildCollegeByStateQuestions`** — the college-programs
+  mirror of `buildTeamByCityQuestions`/`buildTeamByStateQuestions`: same same-place distractor
+  exclusion (a handful of cities/states host more than one synced power-conference program), same
+  post-answer logo+name reveal timing.
+- **`buildCollegeProgramCountQuestions`** — the college-programs mirror of
+  `buildProTeamCountQuestions`: "How many Power-4 college football/basketball programs does
+  {state} have?", bucketed 0/1/2/3+, drawn from all 51 states so a genuine 0-program state is a
+  real answer. **Deliberately does NOT filter by `nickname !== null`** the way every other college
+  generator in this file does — that filter protects prompt/option readability, but here it would
+  silently *undercount* a state with a real program that has no synced nickname, so the reveal
+  list just degrades to the bare school name for that one row instead.
+- All four wired into both `buildCategorySession` and `buildSpeedRoundPool` (Mashups' speed
+  round). Wiring the count question into the speed round surfaced a **pre-existing bound bug** in
+  the already-shipped `buildCollegeCityQuestions` speed-round call: its `Math.min` bound used the
+  raw power-conference program count, not accounting for that generator's own internal
+  nickname-filter, risking a `pickRandom` over-request crash. Fixed alongside, then the fix was
+  generalized: every nickname-filtered college generator's speed-round bound is now computed once
+  as a shared `powerConferenceProgramsWithNickname` local, rather than five near-identical
+  filter-chain repetitions (the exact class of mismatch bug already caught twice).
+- **Separately, the user asked to add every college generator's nickname into its options/reveal
+  too**, not just `buildCollegeCityQuestions`' prompt — `buildTeamLogoQuestions` (college portion),
+  `buildCollegeConferenceQuestions`, `buildCollegeByCityQuestions`, `buildCollegeByStateQuestions`
+  all now show "School Nickname" instead of a bare school name. **`buildSchoolFromNicknameQuestions`
+  was deliberately left unchanged** — flagged to the user before touching it: its prompt already
+  states the nickname as the clue ("Which school's team is called the {nickname}?"), so baking the
+  same nickname into every option would let a player instantly text-match the correct answer
+  against the prompt, trivializing the question rather than just being "redundant."
+- **Real bug caught during live verification, not part of the plan**: a school with both a
+  football AND basketball Power-4 program (e.g. real Boston College Eagles, Cal Golden Bears — ACC
+  in both sports) makes `buildCollegeProgramCountQuestions`' reveal list produce two rows with
+  byte-identical text — first surfaced as a React "duplicate key" console warning (the view keyed
+  `revealTeams` rows on `team.name` alone), then, after a quick key-only fix, flagged again by the
+  user as a genuine *display* ambiguity (two indistinguishable-looking rows for two different real
+  programs) even once the console warning was gone. Fixed properly by tagging each program with
+  its own sport before merging the football/basketball pools, rendered as "Conference · Sport" —
+  always baked in unconditionally (not just when a collision actually happens), same
+  always-on-disambiguation convention this file already uses for every other tag. Needed a new
+  `MultipleChoiceQuestion.revealTeamsEmptyText` field too, since the count question's own empty
+  state ("No Power-4 college program in this state.") would otherwise show the pro-team question's
+  wrong copy ("No pro sports team...").
+- Confirmed live (not just via unit tests) with a real screenshot of California's four schools
+  (Cal/Stanford/UCLA/USC) each correctly showing both their football and basketball program,
+  clearly disambiguated.
+
+**Quiz start-screen / history back-link consistency, 2026-09-11** — `QuizStartScreen` (every
+`/quiz/[category]` start screen) used `BackToMapLink` unmodified, sending the player back to the
+map instead of the quiz hub; `/quiz/history` separately said "← Back to quiz" (singular) while
+everywhere else says "quizzes." `BackToMapLink` gained optional `href`/`children` props (default
+`"/"`/"← Back to map" unchanged for every other page); `QuizStartScreen` now passes
+`href="/quiz"` with "← Back to quizzes," and `/quiz/history`'s copy was aligned to match.
