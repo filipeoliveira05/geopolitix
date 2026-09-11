@@ -1,9 +1,15 @@
 import Link from "next/link";
 
-export function BackToMapLink() {
+export function BackToMapLink({
+  href = "/",
+  children = "← Back to map",
+}: {
+  href?: string;
+  children?: React.ReactNode;
+}) {
   return (
-    <Link href="/" className="text-sm text-muted hover:text-ink">
-      ← Back to map
+    <Link href={href} className="text-sm text-muted hover:text-ink">
+      {children}
     </Link>
   );
 }

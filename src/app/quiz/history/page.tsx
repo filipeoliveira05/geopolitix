@@ -55,7 +55,7 @@ export default async function QuizHistoryPage() {
   return (
     <div className="mx-auto w-full max-w-2xl flex-1 animate-fade-in p-6 sm:p-10">
       <Link href="/quiz" className="text-sm text-muted hover:text-ink">
-        ← Back to quiz
+        ← Back to quizzes
       </Link>
       <h1 className="mt-4 font-display text-3xl font-semibold text-ink">Quiz History</h1>
 

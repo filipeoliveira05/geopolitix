@@ -92,7 +92,7 @@ export function QuizStartScreen({
 
   return (
     <div className="mx-auto w-full max-w-lg text-center">
-      <BackToMapLink />
+      <BackToMapLink href="/quiz">← Back to quizzes</BackToMapLink>
       <Card className="mt-4">
         <CategoryIcon category={category.id} className="mx-auto h-10 w-10 text-seal" />
         <h1 className="mt-3 font-display text-3xl font-semibold text-ink">{category.label}</h1>
