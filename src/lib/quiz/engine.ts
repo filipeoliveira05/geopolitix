@@ -448,6 +448,8 @@ export function buildSpeedRoundPool(pool: unknown): MultipleChoiceQuestion[] {
     ),
     ...buildStatePopulationQuestions(geography.states, Math.min(n, geography.states.length)),
     ...buildCityPopulationQuestions(geography.cities, Math.min(n, geography.cities.length)),
+    ...buildStateSilhouetteQuestions(geography.states, Math.min(n, geography.states.length)),
+    ...buildStateNonBorderQuestions(geography.states, Math.min(n, geography.states.length)),
     ...buildGovernorQuestions(officeholders.governors, Math.min(n, officeholders.governors.length)),
     ...buildOfficeholderPhotoQuestions(
       officeholders.legislatorsWithPhoto,
