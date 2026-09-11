@@ -6,17 +6,18 @@ import type { SearchSelectEntry } from "./types";
 const FUSE_OPTIONS = { keys: ["label"], threshold: 0.35, ignoreLocation: true };
 
 /**
- * Labeled by plain city name only — deliberately NOT suffixed with the state (unlike
- * buildCityPopulationQuestions' "CityName, StateId" convention elsewhere in this app), since this
- * index powers the "name cities in {state}" search-select question: showing the state right in
- * the autocomplete suggestion would hand the player the answer before they even click it. Several
- * city names do repeat across different states in the synced pool (multiple "Portland"s) — two
- * suggestions can render identically here, which is an acceptable ambiguity (matching still works
- * correctly via each entry's own `id`), not a bug, since telling them apart by name alone is
- * exactly the kind of thing a real player wouldn't be told either.
+ * Suggestion labels are suffixed "CityName, ST" (buildCityPopulationQuestions' convention
+ * elsewhere in this app) so a repeated city name (several "Jackson"s, "Portland"s, etc. exist
+ * across the synced pool) is distinguishable in the autocomplete dropdown. This is safe from a
+ * spoiler standpoint specifically because this index's only consumer, the "name cities in
+ * {state}" search-select question, already tells the player which state they're naming cities
+ * for right in the prompt (plus shows its flag) — the state was never the secret here, so
+ * revealing it a second time in the suggestion list gives nothing away. If a future question ever
+ * reuses this shared "city" search index for something where the state IS the answer, this
+ * suffix would need to move to a per-question opt-in instead of being baked in here.
  */
 export function buildCityEntries(cities: CityFact[]): SearchSelectEntry[] {
-  return cities.map((c) => ({ id: c.cityId, label: c.cityName }));
+  return cities.map((c) => ({ id: c.cityId, label: `${c.cityName}, ${c.stateId}` }));
 }
 
 export function fullLegislatorName(legislator: { firstName: string | null; lastName: string | null }): string {
