@@ -33,6 +33,13 @@ export type SearchSelectEntry = {
   // simply not relevant there rather than a spoiler) — a small "(Incumbent)" tag shown next to a
   // found/revealed target's name.
   isIncumbent?: boolean;
+  // What createEntitySearch's Fuse index actually matches a query against, when it differs from
+  // `label`. Only set on city entries, whose `label` is "CityName, ST" (to disambiguate same-named
+  // cities in the dropdown) but whose ST suffix must NOT be searchable — the city-recall question
+  // this powers reveals its target state up front, so typing the state's own abbreviation must not
+  // let a player browse every city in that state as a shortcut around actually recalling names.
+  // Undefined everywhere else, where `label` alone is exactly what should be matched.
+  matchText?: string;
 };
 
 export type MultipleChoiceQuestion = {

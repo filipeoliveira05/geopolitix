@@ -15,9 +15,22 @@ describe("buildCityEntries", () => {
       { cityId: "c2", cityName: "Portland", stateId: "ME", stateName: "Maine", population: 1, isCapital: false },
     ];
     expect(buildCityEntries(cities)).toEqual([
-      { id: "c1", label: "Portland, OR" },
-      { id: "c2", label: "Portland, ME" },
+      { id: "c1", label: "Portland, OR", matchText: "Portland" },
+      { id: "c2", label: "Portland, ME", matchText: "Portland" },
     ]);
+  });
+
+  it("does not let a query match on the state abbreviation baked into the label", () => {
+    const cities: CityFact[] = [
+      { cityId: "c1", cityName: "Jackson", stateId: "MS", stateName: "Mississippi", population: 1, isCapital: true },
+      { cityId: "c2", cityName: "Biloxi", stateId: "MS", stateName: "Mississippi", population: 1, isCapital: false },
+      { cityId: "c3", cityName: "Portland", stateId: "OR", stateName: "Oregon", population: 1, isCapital: false },
+    ];
+    const search = createEntitySearch(buildCityEntries(cities));
+    // Typing the state abbreviation itself must not surface every city in that state — only a
+    // real city-name match should, otherwise a player could browse a whole state's cities as a
+    // shortcut around actually recalling their names.
+    expect(search("MS").map((e) => e.id)).toEqual([]);
   });
 });
 

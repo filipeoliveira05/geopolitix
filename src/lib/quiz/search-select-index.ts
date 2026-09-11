@@ -3,21 +3,33 @@ import type { CityFact, SportsTeam, StateFact } from "@/lib/geography-data";
 import type { TermWithLegislator } from "@/lib/legislators-data";
 import type { SearchSelectEntry } from "./types";
 
-const FUSE_OPTIONS = { keys: ["label"], threshold: 0.35, ignoreLocation: true };
+// `matchText` falls back to `label` via getFn rather than every entry builder redundantly setting
+// matchText: label — only buildCityEntries below ever needs the two to diverge.
+const FUSE_OPTIONS = {
+  keys: [{ name: "matchText", getFn: (entry: SearchSelectEntry) => entry.matchText ?? entry.label }],
+  threshold: 0.35,
+  ignoreLocation: true,
+};
 
 /**
  * Suggestion labels are suffixed "CityName, ST" (buildCityPopulationQuestions' convention
  * elsewhere in this app) so a repeated city name (several "Jackson"s, "Portland"s, etc. exist
- * across the synced pool) is distinguishable in the autocomplete dropdown. This is safe from a
- * spoiler standpoint specifically because this index's only consumer, the "name cities in
- * {state}" search-select question, already tells the player which state they're naming cities
- * for right in the prompt (plus shows its flag) — the state was never the secret here, so
- * revealing it a second time in the suggestion list gives nothing away. If a future question ever
- * reuses this shared "city" search index for something where the state IS the answer, this
- * suffix would need to move to a per-question opt-in instead of being baked in here.
+ * across the synced pool) is distinguishable in the autocomplete dropdown. Revealing the state in
+ * the suggestion TEXT is safe — the "name cities in {state}" question this powers already tells
+ * the player their target state in the prompt/flag, so the state was never the secret here — but
+ * the state abbreviation must stay out of what's actually SEARCHABLE: `matchText` is the plain
+ * city name only, so typing "MS" can't be used to browse every Mississippi city as a shortcut
+ * around actually recalling their names (Fuse indexes `matchText`, not `label` — see
+ * FUSE_OPTIONS above). If a future question ever reuses this shared "city" index for something
+ * where the state IS the answer, the `label` suffix itself would need to move to a per-question
+ * opt-in instead of being baked in here.
  */
 export function buildCityEntries(cities: CityFact[]): SearchSelectEntry[] {
-  return cities.map((c) => ({ id: c.cityId, label: `${c.cityName}, ${c.stateId}` }));
+  return cities.map((c) => ({
+    id: c.cityId,
+    label: `${c.cityName}, ${c.stateId}`,
+    matchText: c.cityName,
+  }));
 }
 
 export function fullLegislatorName(legislator: { firstName: string | null; lastName: string | null }): string {
