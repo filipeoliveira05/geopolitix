@@ -35,14 +35,18 @@ function teamsToLogoSubjects(teams: SportsTeam[]): LogoSubject[] {
 }
 
 // `conference` is guaranteed non-null here — every caller passes an already
-// restrictToPowerConferences()-filtered pool, which drops null-conference programs.
+// restrictToPowerConferences()-filtered pool, which drops null-conference programs. Also
+// requires a nickname (same eligibility filter buildSchoolFromNicknameQuestions/
+// buildCollegeCityQuestions already apply) so the option reads as a real team ("Iowa Hawkeyes"),
+// not just a bare school name — safe here since the prompt ("Which team is this?") never states
+// the nickname itself, unlike buildSchoolFromNicknameQuestions.
 function programsToLogoSubjects(programs: CollegeProgram[]): LogoSubject[] {
   return programs
-    .filter((p) => p.logoUrl !== null)
+    .filter((p) => p.logoUrl !== null && p.nickname !== null)
     .map((p) => ({
       key: p.id,
       logoUrl: p.logoUrl as string,
-      label: p.school,
+      label: `${p.school} ${p.nickname}`,
       league: p.conference as string,
     }));
 }
@@ -275,10 +279,13 @@ export function buildCollegeByCityQuestions(
   collegeBasketball: CollegeProgram[],
   count: number,
 ): MultipleChoiceQuestion[] {
+  // Nickname-qualified, same eligibility filter buildSchoolFromNicknameQuestions/
+  // buildCollegeCityQuestions already apply — no spoiler risk here, the nickname has nothing to
+  // do with which city a program is based in.
   const pool = [
     ...restrictToPowerConferences(collegeFootball, COLLEGE_FOOTBALL_POWER_CONFERENCES),
     ...restrictToPowerConferences(collegeBasketball, COLLEGE_BASKETBALL_POWER_CONFERENCES),
-  ];
+  ].filter((p) => p.nickname !== null);
   const subjects = pickRandom(pool, count);
   return subjects.map((subject) => {
     // Excludes every OTHER program based in the same city from the distractor pool — same
@@ -291,14 +298,14 @@ export function buildCollegeByCityQuestions(
       questionType: "sports.college_by_city",
       getSubjectId: (p) => p.id,
       getPrompt: (p) => `Which of these college programs is based in ${p.cityName}?`,
-      // "(Conference)" baked into each option, shown from the start — same not-a-spoiler
-      // reasoning as buildTeamByCityQuestions' "(League)": which conference a program plays in
-      // doesn't hint at which one is actually based in the asked-about city.
-      getOptionText: (p) => `${p.school} (${p.conference})`,
+      // "Nickname (Conference)" baked into each option, shown from the start — same not-a-spoiler
+      // reasoning as buildTeamByCityQuestions' "(League)": which conference/nickname a program
+      // has doesn't hint at which one is actually based in the asked-about city.
+      getOptionText: (p) => `${p.school} ${p.nickname} (${p.conference})`,
       // Shown only after answering, same reveal timing as buildTeamByCityQuestions — the correct
       // program's logo can't be shown up front here without giving away the school itself.
       getRevealImageUrl: (p) => p.logoUrl,
-      getRevealCaption: (p) => p.school,
+      getRevealCaption: (p) => `${p.school} ${p.nickname}`,
     });
   });
 }
@@ -308,10 +315,11 @@ export function buildCollegeByStateQuestions(
   collegeBasketball: CollegeProgram[],
   count: number,
 ): MultipleChoiceQuestion[] {
+  // Nickname-qualified, same eligibility filter buildCollegeByCityQuestions above applies.
   const pool = [
     ...restrictToPowerConferences(collegeFootball, COLLEGE_FOOTBALL_POWER_CONFERENCES),
     ...restrictToPowerConferences(collegeBasketball, COLLEGE_BASKETBALL_POWER_CONFERENCES),
-  ];
+  ].filter((p) => p.nickname !== null);
   const facts = pool
     .map((p) => {
       const stateName = getStateName(p.stateId);
@@ -330,10 +338,10 @@ export function buildCollegeByStateQuestions(
       getSubjectId: (p) => p.id,
       getPrompt: (p) => `Which of these college programs is based in ${p.stateName}?`,
       // Same not-a-spoiler reasoning as buildCollegeByCityQuestions above.
-      getOptionText: (p) => `${p.school} (${p.conference})`,
+      getOptionText: (p) => `${p.school} ${p.nickname} (${p.conference})`,
       // Same reveal-timing reasoning as buildCollegeByCityQuestions.
       getRevealImageUrl: (p) => p.logoUrl,
-      getRevealCaption: (p) => p.school,
+      getRevealCaption: (p) => `${p.school} ${p.nickname}`,
     });
   });
 }
@@ -343,16 +351,19 @@ export function buildCollegeConferenceQuestions(
   collegeBasketball: CollegeProgram[],
   count: number,
 ): MultipleChoiceQuestion[] {
+  // Nickname-qualified, same eligibility filter buildSchoolFromNicknameQuestions/
+  // buildCollegeCityQuestions already apply — no spoiler risk here, the nickname has nothing to
+  // do with which conference a school plays in.
   const pool = [
     ...restrictToPowerConferences(collegeFootball, COLLEGE_FOOTBALL_POWER_CONFERENCES),
     ...restrictToPowerConferences(collegeBasketball, COLLEGE_BASKETBALL_POWER_CONFERENCES),
-  ];
+  ].filter((p) => p.nickname !== null);
   const subjects = pickRandom(pool, count);
   return subjects.map((subject) =>
     buildMultipleChoiceQuestion(subject, pool, {
       questionType: "sports.college_conference",
       getSubjectId: (p) => p.id,
-      getPrompt: (p) => `Which conference does ${p.school} play in?`,
+      getPrompt: (p) => `Which conference do the ${p.school} ${p.nickname} play in?`,
       getOptionText: (p) => p.conference as string,
       // School is already named in the prompt, so showing the logo doesn't spoil the conference
       // answer — same reasoning as buildLeagueQuestions.

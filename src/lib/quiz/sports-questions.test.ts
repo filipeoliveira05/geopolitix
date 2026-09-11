@@ -9,6 +9,7 @@ import {
   buildCollegeCityQuestions,
   buildCollegeByCityQuestions,
   buildCollegeByStateQuestions,
+  buildCollegeConferenceQuestions,
   buildMatchingPairs,
   buildProTeamCountQuestions,
   buildStateTeamRecallQuestions,
@@ -54,7 +55,7 @@ describe("buildTeamLogoQuestions", () => {
     expect(buildTeamLogoQuestions(makeTeams(10), [], [], 5)).toHaveLength(5);
   });
 
-  it("includes power-conference college programs (by school name) alongside pro teams", () => {
+  it("includes power-conference college programs (by school name + nickname) alongside pro teams", () => {
     const teams = makeTeams(3);
     const football = makeCollegePrograms(5, "Big Ten");
     const questions = buildTeamLogoQuestions(teams, football, [], 8);
@@ -62,6 +63,19 @@ describe("buildTeamLogoQuestions", () => {
       q.options[q.correctIndex].startsWith("SchoolBig Ten"),
     );
     expect(schoolAnswers.length).toBeGreaterThan(0);
+    for (const q of schoolAnswers) {
+      expect(q.options[q.correctIndex]).toMatch(/^SchoolBig Ten\d+ Nickname\d+ \(Big Ten\)$/);
+    }
+  });
+
+  it("excludes a college program with no nickname", () => {
+    const teams = makeTeams(3);
+    const football = makeCollegePrograms(5, "Big Ten");
+    football[0] = { ...football[0], nickname: null };
+    const questions = buildTeamLogoQuestions(teams, football, [], 7);
+    for (const q of questions) {
+      expect(q.options[q.correctIndex]).not.toMatch(/^SchoolBig Ten0 /);
+    }
   });
 
   it("excludes non-power-conference college programs", () => {
@@ -199,6 +213,44 @@ describe("buildSchoolFromNicknameQuestions", () => {
   });
 });
 
+describe("buildCollegeConferenceQuestions", () => {
+  // Option text is the bare conference name, so a single-conference fixture has zero distinct
+  // distractors to draw from (every option would dedupe to the same text) — mix several real
+  // power conferences, same as production's actual pool shape.
+  function makeMixedConferencePrograms(): CollegeProgram[] {
+    return [
+      ...makeCollegePrograms(3, "SEC"),
+      ...makeCollegePrograms(3, "Big Ten"),
+      ...makeCollegePrograms(3, "ACC"),
+      ...makeCollegePrograms(3, "Big 12"),
+    ];
+  }
+
+  it("names the school AND its nickname in the prompt, not just the school", () => {
+    const [q] = buildCollegeConferenceQuestions(makeMixedConferencePrograms(), [], 1);
+    expect(q.prompt).toMatch(/^Which conference do the School.+ Nickname\d+ play in\?$/);
+  });
+
+  it("has the subject's own conference as the correct answer", () => {
+    const programs = makeMixedConferencePrograms();
+    const questions = buildCollegeConferenceQuestions(programs, [], 5);
+    for (const q of questions) {
+      const subjectName = q.prompt.match(/^Which conference do the (.+) Nickname\d+ play in\?$/)?.[1];
+      const subject = programs.find((p) => p.school === subjectName);
+      expect(q.options[q.correctIndex]).toBe(subject?.conference);
+    }
+  });
+
+  it("excludes a program with no nickname", () => {
+    const programs = makeMixedConferencePrograms();
+    programs[0] = { ...programs[0], nickname: null };
+    const questions = buildCollegeConferenceQuestions(programs, [], 11);
+    for (const q of questions) {
+      expect(q.prompt).not.toContain("SchoolSEC0 ");
+    }
+  });
+});
+
 describe("buildCollegeCityQuestions", () => {
   it("builds the requested number of questions", () => {
     const programs = makeCollegePrograms(10, "SEC");
@@ -262,25 +314,37 @@ describe("buildCollegeCityQuestions", () => {
 });
 
 describe("buildCollegeByCityQuestions", () => {
-  it("shows every option as \"School (Conference)\" from the start (not a spoiler)", () => {
+  it("shows every option as \"School Nickname (Conference)\" from the start (not a spoiler)", () => {
     const programs = makeCollegePrograms(10, "SEC");
     const questions = buildCollegeByCityQuestions(programs, [], 5);
     for (const q of questions) {
       for (const option of q.options) {
-        expect(option).toMatch(/^SchoolSEC\d+ \(SEC\)$/);
+        expect(option).toMatch(/^SchoolSEC\d+ Nickname\d+ \(SEC\)$/);
       }
     }
   });
 
-  it("has the subject's own school as the correct answer, revealed with its logo", () => {
+  it("has the subject's own school+nickname as the correct answer, revealed with its logo", () => {
     const programs = makeCollegePrograms(10, "SEC");
     const questions = buildCollegeByCityQuestions(programs, [], 5);
     for (const q of questions) {
       const cityName = q.prompt.match(/^Which of these college programs is based in (.+)\?$/)?.[1];
       const subject = programs.find((p) => p.cityName === cityName);
-      expect(q.options[q.correctIndex]).toBe(`${subject?.school} (${subject?.conference})`);
-      expect(q.revealCaption).toBe(subject?.school);
+      expect(q.options[q.correctIndex]).toBe(
+        `${subject?.school} ${subject?.nickname} (${subject?.conference})`,
+      );
+      expect(q.revealCaption).toBe(`${subject?.school} ${subject?.nickname}`);
       expect(q.revealImageUrl).toBe(subject?.logoUrl);
+    }
+  });
+
+  it("excludes a program with no nickname", () => {
+    const programs = makeCollegePrograms(10, "SEC");
+    programs[0] = { ...programs[0], nickname: null };
+    const questions = buildCollegeByCityQuestions(programs, [], 9);
+    for (const q of questions) {
+      expect(q.prompt).not.toContain("City0");
+      expect(q.options.some((o) => o.startsWith("SchoolSEC0 "))).toBe(false);
     }
   });
 
@@ -295,8 +359,9 @@ describe("buildCollegeByCityQuestions", () => {
     const questions = buildCollegeByCityQuestions(pool, [], pool.length);
     const sharedviewQuestion = questions.find((q) => q.prompt.includes("Sharedville"));
     expect(sharedviewQuestion).toBeDefined();
-    const otherSharedSchool = shared.find((p) => p.school !== sharedviewQuestion?.revealCaption)
-      ?.school;
+    const otherSharedSchool = shared.find(
+      (p) => `${p.school} ${p.nickname}` !== sharedviewQuestion?.revealCaption,
+    )?.school;
     expect(sharedviewQuestion?.options.some((o) => o.startsWith(`${otherSharedSchool} `))).toBe(
       false,
     );
@@ -313,23 +378,32 @@ describe("buildCollegeByCityQuestions", () => {
 });
 
 describe("buildCollegeByStateQuestions", () => {
-  it("shows every option as \"School (Conference)\" from the start (not a spoiler)", () => {
+  it("shows every option as \"School Nickname (Conference)\" from the start (not a spoiler)", () => {
     const programs = makeCollegePrograms(10, "SEC");
     const questions = buildCollegeByStateQuestions(programs, [], 5);
     for (const q of questions) {
       for (const option of q.options) {
-        expect(option).toMatch(/^SchoolSEC\d+ \(SEC\)$/);
+        expect(option).toMatch(/^SchoolSEC\d+ Nickname\d+ \(SEC\)$/);
       }
     }
   });
 
-  it("has the subject's own school as the correct answer, revealed with its logo", () => {
+  it("has the subject's own school+nickname as the correct answer, revealed with its logo", () => {
     const programs = makeCollegePrograms(10, "SEC");
     const questions = buildCollegeByStateQuestions(programs, [], 5);
     for (const q of questions) {
       expect(q.revealCaption).toBe(q.options[q.correctIndex].split(" (")[0]);
-      const subject = programs.find((p) => p.school === q.revealCaption);
+      const subject = programs.find((p) => `${p.school} ${p.nickname}` === q.revealCaption);
       expect(q.revealImageUrl).toBe(subject?.logoUrl);
+    }
+  });
+
+  it("excludes a program with no nickname", () => {
+    const programs = makeCollegePrograms(10, "SEC");
+    programs[0] = { ...programs[0], nickname: null };
+    const questions = buildCollegeByStateQuestions(programs, [], 9);
+    for (const q of questions) {
+      expect(q.options.some((o) => o.startsWith("SchoolSEC0 "))).toBe(false);
     }
   });
 
@@ -347,8 +421,9 @@ describe("buildCollegeByStateQuestions", () => {
     const questions = buildCollegeByStateQuestions(pool, [], pool.length);
     const alabamaQuestion = questions.find((q) => q.prompt.includes("Alabama"));
     expect(alabamaQuestion).toBeDefined();
-    const otherAlabamaSchool = alabama.find((p) => p.school !== alabamaQuestion?.revealCaption)
-      ?.school;
+    const otherAlabamaSchool = alabama.find(
+      (p) => `${p.school} ${p.nickname}` !== alabamaQuestion?.revealCaption,
+    )?.school;
     expect(alabamaQuestion?.options.some((o) => o.startsWith(`${otherAlabamaSchool} `))).toBe(
       false,
     );

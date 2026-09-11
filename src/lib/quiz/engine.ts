@@ -438,6 +438,19 @@ export function categoryHasSpeedRoundMode(category: QuizCategoryId): boolean {
 export function buildSpeedRoundPool(pool: unknown): MultipleChoiceQuestion[] {
   const { geography, officeholders, midterms, sports } = pool as MashupsPool;
   const n = SPEED_ROUND_PER_GENERATOR;
+  // Every college generator below now bakes a program's nickname into its option/prompt text
+  // (buildTeamLogoQuestions, buildSchoolFromNicknameQuestions, buildCollegeConferenceQuestions,
+  // buildCollegeCityQuestions, buildCollegeByCityQuestions, buildCollegeByStateQuestions all
+  // filter to nickname !== null internally), so every one of their Math.min bounds below must be
+  // measured against this same nickname-filtered count, not the raw power-conference count —
+  // bounding by the wrong (larger) count risks requesting more subjects than the generator's own
+  // eligible pool actually has, which throws. Computed once here rather than repeating the same
+  // filter chain at every call site, the way it used to be (a mismatch here is exactly the class
+  // of bug already caught twice — see buildCollegeCityQuestions' own bound history).
+  const powerConferenceProgramsWithNickname = [
+    ...restrictToPowerConferences(sports.collegeFootball, COLLEGE_FOOTBALL_POWER_CONFERENCES),
+    ...restrictToPowerConferences(sports.collegeBasketball, COLLEGE_BASKETBALL_POWER_CONFERENCES),
+  ].filter((p) => p.nickname !== null);
   const combined: MultipleChoiceQuestion[] = [
     ...buildCapitalQuestions(geography.states, Math.min(n, geography.states.length)),
     ...buildFlagQuestions(geography.states, Math.min(n, geography.states.length)),
@@ -495,10 +508,7 @@ export function buildSpeedRoundPool(pool: unknown): MultipleChoiceQuestion[] {
       Math.min(
         n,
         sports.teams.filter((t) => t.logoUrl !== null).length +
-          restrictToPowerConferences(sports.collegeFootball, COLLEGE_FOOTBALL_POWER_CONFERENCES)
-            .filter((p) => p.logoUrl !== null).length +
-          restrictToPowerConferences(sports.collegeBasketball, COLLEGE_BASKETBALL_POWER_CONFERENCES)
-            .filter((p) => p.logoUrl !== null).length,
+          powerConferenceProgramsWithNickname.filter((p) => p.logoUrl !== null).length,
       ),
     ),
     ...buildTeamStateQuestions(sports.teams, Math.min(n, sports.teams.length)),
@@ -509,61 +519,27 @@ export function buildSpeedRoundPool(pool: unknown): MultipleChoiceQuestion[] {
     ...buildSchoolFromNicknameQuestions(
       sports.collegeFootball,
       sports.collegeBasketball,
-      Math.min(
-        n,
-        [
-          ...restrictToPowerConferences(sports.collegeFootball, COLLEGE_FOOTBALL_POWER_CONFERENCES),
-          ...restrictToPowerConferences(sports.collegeBasketball, COLLEGE_BASKETBALL_POWER_CONFERENCES),
-        ].filter((p) => p.nickname !== null).length,
-      ),
+      Math.min(n, powerConferenceProgramsWithNickname.length),
     ),
     ...buildCollegeConferenceQuestions(
       sports.collegeFootball,
       sports.collegeBasketball,
-      Math.min(
-        n,
-        restrictToPowerConferences(sports.collegeFootball, COLLEGE_FOOTBALL_POWER_CONFERENCES)
-          .length +
-          restrictToPowerConferences(sports.collegeBasketball, COLLEGE_BASKETBALL_POWER_CONFERENCES)
-            .length,
-      ),
+      Math.min(n, powerConferenceProgramsWithNickname.length),
     ),
     ...buildCollegeCityQuestions(
       sports.collegeFootball,
       sports.collegeBasketball,
-      // Bounded by the nickname-filtered count, same as buildSchoolFromNicknameQuestions above —
-      // buildCollegeCityQuestions filters out nickname-less programs internally too, so bounding
-      // this by the raw power-conference count (without that filter) risks requesting more
-      // subjects than the function's own eligible pool actually has.
-      Math.min(
-        n,
-        [
-          ...restrictToPowerConferences(sports.collegeFootball, COLLEGE_FOOTBALL_POWER_CONFERENCES),
-          ...restrictToPowerConferences(sports.collegeBasketball, COLLEGE_BASKETBALL_POWER_CONFERENCES),
-        ].filter((p) => p.nickname !== null).length,
-      ),
+      Math.min(n, powerConferenceProgramsWithNickname.length),
     ),
     ...buildCollegeByCityQuestions(
       sports.collegeFootball,
       sports.collegeBasketball,
-      Math.min(
-        n,
-        restrictToPowerConferences(sports.collegeFootball, COLLEGE_FOOTBALL_POWER_CONFERENCES)
-          .length +
-          restrictToPowerConferences(sports.collegeBasketball, COLLEGE_BASKETBALL_POWER_CONFERENCES)
-            .length,
-      ),
+      Math.min(n, powerConferenceProgramsWithNickname.length),
     ),
     ...buildCollegeByStateQuestions(
       sports.collegeFootball,
       sports.collegeBasketball,
-      Math.min(
-        n,
-        restrictToPowerConferences(sports.collegeFootball, COLLEGE_FOOTBALL_POWER_CONFERENCES)
-          .length +
-          restrictToPowerConferences(sports.collegeBasketball, COLLEGE_BASKETBALL_POWER_CONFERENCES)
-            .length,
-      ),
+      Math.min(n, powerConferenceProgramsWithNickname.length),
     ),
     ...buildProTeamCountQuestions(sports.teams, n),
   ];
