@@ -434,11 +434,21 @@ export function buildCollegeProgramCountQuestions(
   collegeBasketball: CollegeProgram[],
   count: number,
 ): MultipleChoiceQuestion[] {
-  const programs = [
-    ...restrictToPowerConferences(collegeFootball, COLLEGE_FOOTBALL_POWER_CONFERENCES),
-    ...restrictToPowerConferences(collegeBasketball, COLLEGE_BASKETBALL_POWER_CONFERENCES),
+  // Tagged with its own sport before merging — a school playing both (e.g. Boston College Eagles,
+  // ACC in both) would otherwise reveal two rows with byte-identical text, real distinct programs
+  // rendered as unexplained duplicates. Always shown, not just when a collision actually happens,
+  // same "bake it in unconditionally" convention every other disambiguating tag in this file
+  // already uses (the "(League)"/"(XX)" conventions).
+  const programs: (CollegeProgram & { sport: "Football" | "Basketball" })[] = [
+    ...restrictToPowerConferences(collegeFootball, COLLEGE_FOOTBALL_POWER_CONFERENCES).map((p) => ({
+      ...p,
+      sport: "Football" as const,
+    })),
+    ...restrictToPowerConferences(collegeBasketball, COLLEGE_BASKETBALL_POWER_CONFERENCES).map(
+      (p) => ({ ...p, sport: "Basketball" as const }),
+    ),
   ];
-  const programsByState = new Map<string, CollegeProgram[]>();
+  const programsByState = new Map<string, (CollegeProgram & { sport: "Football" | "Basketball" })[]>();
   for (const p of programs) {
     const list = programsByState.get(p.stateId);
     if (list) list.push(p);
@@ -466,7 +476,7 @@ export function buildCollegeProgramCountQuestions(
       // for a genuine 0-program state, handled by the view.
       revealTeams: statePrograms.map((p) => ({
         name: p.nickname ? `${p.school} ${p.nickname}` : p.school,
-        league: p.conference as string,
+        league: `${p.conference} · ${p.sport}`,
         logoUrl: p.logoUrl,
       })),
       revealTeamsEmptyText: "No Power-4 college program in this state.",

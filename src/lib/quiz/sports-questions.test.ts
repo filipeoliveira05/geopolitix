@@ -554,13 +554,29 @@ describe("buildCollegeProgramCountQuestions", () => {
     expect(alabama.revealTeams?.some((t) => t.name === "AL School0")).toBe(true);
   });
 
-  it("reveals each program's school+nickname, conference, and logo", () => {
+  it("reveals each program's school+nickname, conference+sport, and logo", () => {
     const football = programsForState("AL", 1, "SEC");
     const questions = buildCollegeProgramCountQuestions(football, [], 51);
     const alabama = questions.find((q) => q.prompt.includes("Alabama"))!;
     expect(alabama.revealTeams).toEqual([
-      { name: "AL School0 Nickname0", league: "SEC", logoUrl: "https://example.com/AL-logo0.png" },
+      {
+        name: "AL School0 Nickname0",
+        league: "SEC · Football",
+        logoUrl: "https://example.com/AL-logo0.png",
+      },
     ]);
+  });
+
+  it("tags each row with its own sport, so a school with both a football and basketball program doesn't reveal two identical-looking rows", () => {
+    // Same school name/nickname/conference in both sports (e.g. real Boston College Eagles, ACC
+    // in both) — without the sport tag these would render byte-identical text.
+    const football = [{ ...programsForState("AL", 1, "SEC")[0], school: "Shared School" }];
+    const basketball = [{ ...programsForState("AL", 1, "SEC")[0], school: "Shared School" }];
+    const questions = buildCollegeProgramCountQuestions(football, basketball, 51);
+    const alabama = questions.find((q) => q.prompt.includes("Alabama"))!;
+    expect(alabama.revealTeams).toHaveLength(2);
+    const leagues = alabama.revealTeams?.map((t) => t.league).sort();
+    expect(leagues).toEqual(["SEC · Basketball", "SEC · Football"]);
   });
 });
 
