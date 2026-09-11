@@ -37,6 +37,7 @@ const QUESTION_TYPE_LABELS: Record<string, string> = {
   "sports.team_by_state": "Which team is based in this state?",
   "sports.school_nickname": "School nicknames",
   "sports.college_conference": "College conferences",
+  "sports.college_city": "Which city is this college in?",
   "sports.pro_team_count": "Pro teams per state",
   "sports.state_team_recall": "Name a state's teams",
 

@@ -6,6 +6,7 @@ import {
   buildTeamByCityQuestions,
   buildTeamByStateQuestions,
   buildSchoolFromNicknameQuestions,
+  buildCollegeCityQuestions,
   buildMatchingPairs,
   buildProTeamCountQuestions,
   buildStateTeamRecallQuestions,
@@ -192,6 +193,68 @@ describe("buildSchoolFromNicknameQuestions", () => {
       for (const option of q.options) {
         expect(option).toMatch(/^SchoolSEC\d+ \(SEC\)$/);
       }
+    }
+  });
+});
+
+describe("buildCollegeCityQuestions", () => {
+  it("builds the requested number of questions", () => {
+    const programs = makeCollegePrograms(10, "SEC");
+    expect(buildCollegeCityQuestions(programs, [], 5)).toHaveLength(5);
+  });
+
+  it("shows every option as \"CityName, XX\" from the start (disambiguates repeated city names)", () => {
+    const programs = makeCollegePrograms(10, "SEC");
+    const questions = buildCollegeCityQuestions(programs, [], 5);
+    for (const q of questions) {
+      for (const option of q.options) {
+        expect(option).toMatch(/^City\d+, \w{2}$/);
+      }
+    }
+  });
+
+  it("names the school AND its nickname in the prompt, not just the school", () => {
+    const programs = makeCollegePrograms(10, "SEC");
+    const [q] = buildCollegeCityQuestions(programs, [], 1);
+    expect(q.prompt).toMatch(/^Which city are the SchoolSEC\d+ Nickname\d+ based in\?$/);
+  });
+
+  it("has the subject's own city/state as the correct answer", () => {
+    const programs = makeCollegePrograms(10, "SEC");
+    const questions = buildCollegeCityQuestions(programs, [], 5);
+    for (const q of questions) {
+      const subjectName = q.prompt.match(/^Which city are the (.+) Nickname\d+ based in\?$/)?.[1];
+      const subject = programs.find((p) => p.school === subjectName);
+      expect(q.options[q.correctIndex]).toBe(`${subject?.cityName}, ${subject?.stateId}`);
+    }
+  });
+
+  it("includes both football and basketball power-conference programs", () => {
+    const football = makeCollegePrograms(5, "Big Ten");
+    const basketball = makeCollegePrograms(5, "Big East");
+    const questions = buildCollegeCityQuestions(football, basketball, 8);
+    const schools = questions.map(
+      (q) => q.prompt.match(/^Which city are the (.+) Nickname\d+ based in\?$/)?.[1],
+    );
+    expect(schools.some((s) => s?.startsWith("SchoolBig Ten"))).toBe(true);
+    expect(schools.some((s) => s?.startsWith("SchoolBig East"))).toBe(true);
+  });
+
+  it("excludes a program with no nickname", () => {
+    const programs = makeCollegePrograms(10, "SEC");
+    programs[0] = { ...programs[0], nickname: null };
+    const questions = buildCollegeCityQuestions(programs, [], 9);
+    for (const q of questions) {
+      expect(q.prompt).not.toContain("SchoolSEC0 ");
+    }
+  });
+
+  it("excludes non-power-conference programs", () => {
+    const power = makeCollegePrograms(5, "Big Ten");
+    const nonPower = makeCollegePrograms(20, "Sun Belt");
+    const questions = buildCollegeCityQuestions([...power, ...nonPower], [], 5);
+    for (const q of questions) {
+      expect(q.prompt).not.toContain("SchoolSun Belt");
     }
   });
 });

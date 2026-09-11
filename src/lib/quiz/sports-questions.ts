@@ -240,6 +240,36 @@ export function buildSchoolFromNicknameQuestions(
   );
 }
 
+export function buildCollegeCityQuestions(
+  collegeFootball: CollegeProgram[],
+  collegeBasketball: CollegeProgram[],
+  count: number,
+): MultipleChoiceQuestion[] {
+  // Nickname-qualified, same eligibility filter buildSchoolFromNicknameQuestions already applies
+  // — "the Iowa Hawkeyes" reads as a real team, not just a school name.
+  const pool = [
+    ...restrictToPowerConferences(collegeFootball, COLLEGE_FOOTBALL_POWER_CONFERENCES),
+    ...restrictToPowerConferences(collegeBasketball, COLLEGE_BASKETBALL_POWER_CONFERENCES),
+  ].filter((p) => p.nickname !== null);
+  const subjects = pickRandom(pool, count);
+  return subjects.map((subject) =>
+    buildMultipleChoiceQuestion(subject, pool, {
+      questionType: "sports.college_city",
+      getSubjectId: (p) => p.id,
+      getPrompt: (p) => `Which city are the ${p.school} ${p.nickname} based in?`,
+      // "CityName, XX" — same disambiguation convention buildTeamCityQuestions' own options
+      // already use, since several city names repeat across the synced pool. Shown from the
+      // start: the school is already named in the prompt, so this doesn't spoil which option is
+      // correct.
+      getOptionText: (p) => `${p.cityName}, ${p.stateId}`,
+      // Same reasoning as buildCollegeConferenceQuestions: school is already named in the prompt,
+      // so showing the logo doesn't spoil the city answer, and no caption is needed since the
+      // name would just repeat the prompt text.
+      getImageUrl: (p) => p.logoUrl,
+    }),
+  );
+}
+
 export function buildCollegeConferenceQuestions(
   collegeFootball: CollegeProgram[],
   collegeBasketball: CollegeProgram[],
