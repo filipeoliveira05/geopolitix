@@ -7,6 +7,8 @@ import {
   buildTeamByStateQuestions,
   buildSchoolFromNicknameQuestions,
   buildCollegeCityQuestions,
+  buildCollegeByCityQuestions,
+  buildCollegeByStateQuestions,
   buildMatchingPairs,
   buildProTeamCountQuestions,
   buildStateTeamRecallQuestions,
@@ -256,6 +258,100 @@ describe("buildCollegeCityQuestions", () => {
     for (const q of questions) {
       expect(q.prompt).not.toContain("SchoolSun Belt");
     }
+  });
+});
+
+describe("buildCollegeByCityQuestions", () => {
+  it("shows every option as \"School (Conference)\" from the start (not a spoiler)", () => {
+    const programs = makeCollegePrograms(10, "SEC");
+    const questions = buildCollegeByCityQuestions(programs, [], 5);
+    for (const q of questions) {
+      for (const option of q.options) {
+        expect(option).toMatch(/^SchoolSEC\d+ \(SEC\)$/);
+      }
+    }
+  });
+
+  it("has the subject's own school as the correct answer, revealed with its logo", () => {
+    const programs = makeCollegePrograms(10, "SEC");
+    const questions = buildCollegeByCityQuestions(programs, [], 5);
+    for (const q of questions) {
+      const cityName = q.prompt.match(/^Which of these college programs is based in (.+)\?$/)?.[1];
+      const subject = programs.find((p) => p.cityName === cityName);
+      expect(q.options[q.correctIndex]).toBe(`${subject?.school} (${subject?.conference})`);
+      expect(q.revealCaption).toBe(subject?.school);
+      expect(q.revealImageUrl).toBe(subject?.logoUrl);
+    }
+  });
+
+  it("excludes every other program sharing the same city from the distractor pool", () => {
+    // Two power-conference programs deliberately placed in the same city ("Sharedville") —
+    // whichever one is asked about, the other must never appear as a distractor, since it would
+    // also be a genuinely correct answer. Plus enough distinct-city programs for the question to
+    // still find 4 real options after excluding both Sharedville rows.
+    const shared = makeCollegePrograms(2, "Big Ten").map((p) => ({ ...p, cityName: "Sharedville" }));
+    const distinctCityPrograms = makeCollegePrograms(4, "SEC");
+    const pool = [...shared, ...distinctCityPrograms];
+    const questions = buildCollegeByCityQuestions(pool, [], pool.length);
+    const sharedviewQuestion = questions.find((q) => q.prompt.includes("Sharedville"));
+    expect(sharedviewQuestion).toBeDefined();
+    const otherSharedSchool = shared.find((p) => p.school !== sharedviewQuestion?.revealCaption)
+      ?.school;
+    expect(sharedviewQuestion?.options.some((o) => o.startsWith(`${otherSharedSchool} `))).toBe(
+      false,
+    );
+  });
+
+  it("includes both football and basketball power-conference programs", () => {
+    const football = makeCollegePrograms(5, "Big Ten");
+    const basketball = makeCollegePrograms(5, "Big East");
+    const questions = buildCollegeByCityQuestions(football, basketball, 8);
+    const conferences = questions.map((q) => q.revealCaption && q.options[q.correctIndex]);
+    expect(conferences.some((o) => o?.includes("(Big Ten)"))).toBe(true);
+    expect(conferences.some((o) => o?.includes("(Big East)"))).toBe(true);
+  });
+});
+
+describe("buildCollegeByStateQuestions", () => {
+  it("shows every option as \"School (Conference)\" from the start (not a spoiler)", () => {
+    const programs = makeCollegePrograms(10, "SEC");
+    const questions = buildCollegeByStateQuestions(programs, [], 5);
+    for (const q of questions) {
+      for (const option of q.options) {
+        expect(option).toMatch(/^SchoolSEC\d+ \(SEC\)$/);
+      }
+    }
+  });
+
+  it("has the subject's own school as the correct answer, revealed with its logo", () => {
+    const programs = makeCollegePrograms(10, "SEC");
+    const questions = buildCollegeByStateQuestions(programs, [], 5);
+    for (const q of questions) {
+      expect(q.revealCaption).toBe(q.options[q.correctIndex].split(" (")[0]);
+      const subject = programs.find((p) => p.school === q.revealCaption);
+      expect(q.revealImageUrl).toBe(subject?.logoUrl);
+    }
+  });
+
+  it("excludes every other program sharing the same state from the distractor pool", () => {
+    // Two placed in the same real state (Alabama) — whichever is asked about, the other must
+    // never appear as a distractor, since it would also be a genuinely correct answer. Plus
+    // enough distinct-state programs for the question to still find 4 real options after
+    // excluding both Alabama rows.
+    const alabama = makeCollegePrograms(2, "SEC").map((p) => ({ ...p, stateId: "AL" }));
+    const distinctStatePrograms = makeCollegePrograms(4, "Big Ten").map((p, i) => ({
+      ...p,
+      stateId: ["OH", "MI", "WI", "IN"][i],
+    }));
+    const pool = [...alabama, ...distinctStatePrograms];
+    const questions = buildCollegeByStateQuestions(pool, [], pool.length);
+    const alabamaQuestion = questions.find((q) => q.prompt.includes("Alabama"));
+    expect(alabamaQuestion).toBeDefined();
+    const otherAlabamaSchool = alabama.find((p) => p.school !== alabamaQuestion?.revealCaption)
+      ?.school;
+    expect(alabamaQuestion?.options.some((o) => o.startsWith(`${otherAlabamaSchool} `))).toBe(
+      false,
+    );
   });
 });
 

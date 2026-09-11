@@ -270,6 +270,74 @@ export function buildCollegeCityQuestions(
   );
 }
 
+export function buildCollegeByCityQuestions(
+  collegeFootball: CollegeProgram[],
+  collegeBasketball: CollegeProgram[],
+  count: number,
+): MultipleChoiceQuestion[] {
+  const pool = [
+    ...restrictToPowerConferences(collegeFootball, COLLEGE_FOOTBALL_POWER_CONFERENCES),
+    ...restrictToPowerConferences(collegeBasketball, COLLEGE_BASKETBALL_POWER_CONFERENCES),
+  ];
+  const subjects = pickRandom(pool, count);
+  return subjects.map((subject) => {
+    // Excludes every OTHER program based in the same city from the distractor pool — same
+    // dedup reasoning as buildTeamByCityQuestions: a handful of cities (e.g. University Park,
+    // TX/PA — SMU and Penn State both call a "University Park" home) host more than one synced
+    // power-conference program, and an unexcluded same-city distractor would also be genuinely
+    // correct.
+    const otherCitiesPool = pool.filter((p) => p.cityName !== subject.cityName);
+    return buildMultipleChoiceQuestion(subject, [subject, ...otherCitiesPool], {
+      questionType: "sports.college_by_city",
+      getSubjectId: (p) => p.id,
+      getPrompt: (p) => `Which of these college programs is based in ${p.cityName}?`,
+      // "(Conference)" baked into each option, shown from the start — same not-a-spoiler
+      // reasoning as buildTeamByCityQuestions' "(League)": which conference a program plays in
+      // doesn't hint at which one is actually based in the asked-about city.
+      getOptionText: (p) => `${p.school} (${p.conference})`,
+      // Shown only after answering, same reveal timing as buildTeamByCityQuestions — the correct
+      // program's logo can't be shown up front here without giving away the school itself.
+      getRevealImageUrl: (p) => p.logoUrl,
+      getRevealCaption: (p) => p.school,
+    });
+  });
+}
+
+export function buildCollegeByStateQuestions(
+  collegeFootball: CollegeProgram[],
+  collegeBasketball: CollegeProgram[],
+  count: number,
+): MultipleChoiceQuestion[] {
+  const pool = [
+    ...restrictToPowerConferences(collegeFootball, COLLEGE_FOOTBALL_POWER_CONFERENCES),
+    ...restrictToPowerConferences(collegeBasketball, COLLEGE_BASKETBALL_POWER_CONFERENCES),
+  ];
+  const facts = pool
+    .map((p) => {
+      const stateName = getStateName(p.stateId);
+      return stateName ? { ...p, stateName } : null;
+    })
+    .filter((p): p is CollegeProgram & { stateName: string } => p !== null);
+  const subjects = pickRandom(facts, count);
+  return subjects.map((subject) => {
+    // Same dedup reasoning as buildCollegeByCityQuestions, one level up: most power-conference
+    // states host several synced programs (football AND basketball), so any other program from
+    // the same state has to be excluded from the distractor pool or it'd also be a genuinely
+    // correct answer.
+    const otherStatesPool = facts.filter((p) => p.stateId !== subject.stateId);
+    return buildMultipleChoiceQuestion(subject, [subject, ...otherStatesPool], {
+      questionType: "sports.college_by_state",
+      getSubjectId: (p) => p.id,
+      getPrompt: (p) => `Which of these college programs is based in ${p.stateName}?`,
+      // Same not-a-spoiler reasoning as buildCollegeByCityQuestions above.
+      getOptionText: (p) => `${p.school} (${p.conference})`,
+      // Same reveal-timing reasoning as buildCollegeByCityQuestions.
+      getRevealImageUrl: (p) => p.logoUrl,
+      getRevealCaption: (p) => p.school,
+    });
+  });
+}
+
 export function buildCollegeConferenceQuestions(
   collegeFootball: CollegeProgram[],
   collegeBasketball: CollegeProgram[],

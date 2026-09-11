@@ -62,6 +62,8 @@ import {
   buildSchoolFromNicknameQuestions,
   buildCollegeConferenceQuestions,
   buildCollegeCityQuestions,
+  buildCollegeByCityQuestions,
+  buildCollegeByStateQuestions,
   buildProTeamCountQuestions,
   buildStateTeamRecallQuestions,
   buildMatchingPairs,
@@ -341,6 +343,14 @@ export function buildCategorySession(
           (n) => buildCollegeConferenceQuestions(collegeFootball, collegeBasketball, n),
         ],
         ["multiple-choice", (n) => buildCollegeCityQuestions(collegeFootball, collegeBasketball, n)],
+        [
+          "multiple-choice",
+          (n) => buildCollegeByCityQuestions(collegeFootball, collegeBasketball, n),
+        ],
+        [
+          "multiple-choice",
+          (n) => buildCollegeByStateQuestions(collegeFootball, collegeBasketball, n),
+        ],
         ["multiple-choice", (n) => buildProTeamCountQuestions(teams, n)],
         ["search-select", (n) => buildStateTeamRecallQuestions(teams, states, n)],
       ];
@@ -519,6 +529,32 @@ export function buildSpeedRoundPool(pool: unknown): MultipleChoiceQuestion[] {
       ),
     ),
     ...buildCollegeCityQuestions(
+      sports.collegeFootball,
+      sports.collegeBasketball,
+      // Bounded by the nickname-filtered count, same as buildSchoolFromNicknameQuestions above —
+      // buildCollegeCityQuestions filters out nickname-less programs internally too, so bounding
+      // this by the raw power-conference count (without that filter) risks requesting more
+      // subjects than the function's own eligible pool actually has.
+      Math.min(
+        n,
+        [
+          ...restrictToPowerConferences(sports.collegeFootball, COLLEGE_FOOTBALL_POWER_CONFERENCES),
+          ...restrictToPowerConferences(sports.collegeBasketball, COLLEGE_BASKETBALL_POWER_CONFERENCES),
+        ].filter((p) => p.nickname !== null).length,
+      ),
+    ),
+    ...buildCollegeByCityQuestions(
+      sports.collegeFootball,
+      sports.collegeBasketball,
+      Math.min(
+        n,
+        restrictToPowerConferences(sports.collegeFootball, COLLEGE_FOOTBALL_POWER_CONFERENCES)
+          .length +
+          restrictToPowerConferences(sports.collegeBasketball, COLLEGE_BASKETBALL_POWER_CONFERENCES)
+            .length,
+      ),
+    ),
+    ...buildCollegeByStateQuestions(
       sports.collegeFootball,
       sports.collegeBasketball,
       Math.min(
