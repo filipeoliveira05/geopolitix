@@ -188,10 +188,15 @@ export function MultipleChoiceQuestionView({
       {answered && question.revealTeams && (
         <div className="mt-4 flex flex-col gap-2">
           {question.revealTeams.length === 0 ? (
-            <p className="text-sm text-muted">No pro sports team in this state.</p>
+            <p className="text-sm text-muted">
+              {question.revealTeamsEmptyText ?? "No pro sports team in this state."}
+            </p>
           ) : (
-            question.revealTeams.map((team) => (
-              <div key={team.name} className="flex items-center gap-3">
+            // Keyed on name+index, not name alone — a school with both a football AND
+            // basketball Power-4 program (buildCollegeProgramCountQuestions) reveals two rows
+            // with the identical name, which a name-only key would collide on.
+            question.revealTeams.map((team, i) => (
+              <div key={`${team.name}-${i}`} className="flex items-center gap-3">
                 <div className="relative h-10 w-10 shrink-0">
                   {team.logoUrl && (
                     <Image src={team.logoUrl} alt="" fill unoptimized className="object-contain" />

@@ -64,6 +64,7 @@ import {
   buildCollegeCityQuestions,
   buildCollegeByCityQuestions,
   buildCollegeByStateQuestions,
+  buildCollegeProgramCountQuestions,
   buildProTeamCountQuestions,
   buildStateTeamRecallQuestions,
   buildMatchingPairs,
@@ -352,6 +353,10 @@ export function buildCategorySession(
           (n) => buildCollegeByStateQuestions(collegeFootball, collegeBasketball, n),
         ],
         ["multiple-choice", (n) => buildProTeamCountQuestions(teams, n)],
+        [
+          "multiple-choice",
+          (n) => buildCollegeProgramCountQuestions(collegeFootball, collegeBasketball, n),
+        ],
         ["search-select", (n) => buildStateTeamRecallQuestions(teams, states, n)],
       ];
       const active = generators.filter(([format]) => enabledFormats.includes(format));
@@ -542,6 +547,7 @@ export function buildSpeedRoundPool(pool: unknown): MultipleChoiceQuestion[] {
       Math.min(n, powerConferenceProgramsWithNickname.length),
     ),
     ...buildProTeamCountQuestions(sports.teams, n),
+    ...buildCollegeProgramCountQuestions(sports.collegeFootball, sports.collegeBasketball, n),
   ];
   return pickRandom(combined, combined.length);
 }

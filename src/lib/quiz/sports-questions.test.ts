@@ -10,6 +10,7 @@ import {
   buildCollegeByCityQuestions,
   buildCollegeByStateQuestions,
   buildCollegeConferenceQuestions,
+  buildCollegeProgramCountQuestions,
   buildMatchingPairs,
   buildProTeamCountQuestions,
   buildStateTeamRecallQuestions,
@@ -472,6 +473,94 @@ describe("buildProTeamCountQuestions", () => {
     const colorado = byStateName("Colorado")!;
     expect(colorado.options[colorado.correctIndex]).toBe("0");
     expect(colorado.revealTeams).toHaveLength(0);
+  });
+});
+
+describe("buildCollegeProgramCountQuestions", () => {
+  function programsForState(stateId: string, n: number, conference: string): CollegeProgram[] {
+    return Array.from({ length: n }, (_, i) => ({
+      id: `${stateId}-${conference}-${i}`,
+      school: `${stateId} School${i}`,
+      nickname: `Nickname${i}`,
+      cityName: "SomeCity",
+      stateId,
+      conference,
+      wikipediaTitle: null,
+      logoUrl: `https://example.com/${stateId}-logo${i}.png`,
+      bioSummary: null,
+      lastSyncedAt: null,
+    }));
+  }
+
+  it("builds the requested number of questions, covering every 51 states with no crash", () => {
+    const football = [...programsForState("AL", 1, "SEC"), ...programsForState("AZ", 4, "Big 12")];
+    const questions = buildCollegeProgramCountQuestions(football, [], 51);
+    expect(questions).toHaveLength(51);
+    expect(questions.every((q) => q.options.join(",") === "0,1,2,3+")).toBe(true);
+  });
+
+  it("buckets 0/1/2 exactly and 3+ for anything higher, revealing the real programs", () => {
+    const football = [
+      ...programsForState("AL", 1, "SEC"),
+      ...programsForState("AK", 2, "Big Ten"),
+      ...programsForState("AZ", 4, "Big 12"),
+    ];
+    const questions = buildCollegeProgramCountQuestions(football, [], 51);
+    const byStateName = (name: string) => questions.find((q) => q.prompt.includes(name));
+
+    const alabama = byStateName("Alabama")!;
+    expect(alabama.options[alabama.correctIndex]).toBe("1");
+    expect(alabama.revealTeams).toHaveLength(1);
+
+    const alaska = byStateName("Alaska")!;
+    expect(alaska.options[alaska.correctIndex]).toBe("2");
+    expect(alaska.revealTeams).toHaveLength(2);
+
+    const arizona = byStateName("Arizona")!;
+    expect(arizona.options[arizona.correctIndex]).toBe("3+");
+    expect(arizona.revealTeams).toHaveLength(4);
+
+    const colorado = byStateName("Colorado")!;
+    expect(colorado.options[colorado.correctIndex]).toBe("0");
+    expect(colorado.revealTeams).toHaveLength(0);
+    expect(colorado.revealTeamsEmptyText).toBe("No Power-4 college program in this state.");
+  });
+
+  it("counts football AND basketball programs together", () => {
+    const football = programsForState("AL", 1, "SEC");
+    const basketball = programsForState("AL", 2, "Big East");
+    const questions = buildCollegeProgramCountQuestions(football, basketball, 51);
+    const alabama = questions.find((q) => q.prompt.includes("Alabama"))!;
+    expect(alabama.options[alabama.correctIndex]).toBe("3+");
+    expect(alabama.revealTeams).toHaveLength(3);
+  });
+
+  it("excludes non-power-conference programs from the count", () => {
+    const nonPower = programsForState("AL", 5, "Sun Belt");
+    const questions = buildCollegeProgramCountQuestions(nonPower, [], 51);
+    const alabama = questions.find((q) => q.prompt.includes("Alabama"))!;
+    expect(alabama.options[alabama.correctIndex]).toBe("0");
+  });
+
+  it("does NOT require a nickname to count a program (undercounting would give a wrong answer)", () => {
+    const football = programsForState("AL", 2, "SEC").map((p, i) =>
+      i === 0 ? { ...p, nickname: null } : p,
+    );
+    const questions = buildCollegeProgramCountQuestions(football, [], 51);
+    const alabama = questions.find((q) => q.prompt.includes("Alabama"))!;
+    expect(alabama.options[alabama.correctIndex]).toBe("2");
+    expect(alabama.revealTeams).toHaveLength(2);
+    // The nickname-less program still gets revealed, just degraded to the bare school name.
+    expect(alabama.revealTeams?.some((t) => t.name === "AL School0")).toBe(true);
+  });
+
+  it("reveals each program's school+nickname, conference, and logo", () => {
+    const football = programsForState("AL", 1, "SEC");
+    const questions = buildCollegeProgramCountQuestions(football, [], 51);
+    const alabama = questions.find((q) => q.prompt.includes("Alabama"))!;
+    expect(alabama.revealTeams).toEqual([
+      { name: "AL School0 Nickname0", league: "SEC", logoUrl: "https://example.com/AL-logo0.png" },
+    ]);
   });
 });
 

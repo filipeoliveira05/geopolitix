@@ -418,6 +418,62 @@ export function buildProTeamCountQuestions(
   });
 }
 
+/**
+ * College-programs analog of buildProTeamCountQuestions above — same 0/1/2/3+ bucketing, same
+ * "draw from ALL 51 states via getAllStates(), not just states with a synced program" reasoning
+ * (a genuine 0-program state is a real, correctly-labeled answer). Deliberately does NOT filter
+ * by nickname !== null the way every other college generator in this file does: that filter
+ * exists to keep prompt/option TEXT readable ("the Iowa Hawkeyes"), but here it would silently
+ * undercount a state that has a real Power-4 program with no synced nickname — the numeric answer
+ * has to reflect every real program, so the reveal list below just degrades to the bare school
+ * name for a program with no nickname, same graceful-degradation pattern
+ * buildTeamStateQuestions' logo-optional image already uses.
+ */
+export function buildCollegeProgramCountQuestions(
+  collegeFootball: CollegeProgram[],
+  collegeBasketball: CollegeProgram[],
+  count: number,
+): MultipleChoiceQuestion[] {
+  const programs = [
+    ...restrictToPowerConferences(collegeFootball, COLLEGE_FOOTBALL_POWER_CONFERENCES),
+    ...restrictToPowerConferences(collegeBasketball, COLLEGE_BASKETBALL_POWER_CONFERENCES),
+  ];
+  const programsByState = new Map<string, CollegeProgram[]>();
+  for (const p of programs) {
+    const list = programsByState.get(p.stateId);
+    if (list) list.push(p);
+    else programsByState.set(p.stateId, [p]);
+  }
+
+  const subjects = pickRandom(getAllStates(), count);
+  return subjects.map((state) => {
+    const statePrograms = programsByState.get(state.abbr) ?? [];
+    const correctBucket = bucketForTeamCount(statePrograms.length);
+    return {
+      format: "multiple-choice",
+      questionType: "sports.college_program_count",
+      subjects: [{ id: state.abbr, label: state.name }],
+      prompt: `How many Power-4 college football/basketball programs does ${state.name} have?`,
+      imageUrl: null,
+      imageCaption: null,
+      imageCaptionParty: undefined,
+      revealImageUrl: null,
+      revealCaption: null,
+      optionsAreParties: false,
+      options: TEAM_COUNT_BUCKETS,
+      correctIndex: TEAM_COUNT_BUCKETS.indexOf(correctBucket),
+      // Shown after answering regardless of the bucket size — including an explicit empty list
+      // for a genuine 0-program state, handled by the view.
+      revealTeams: statePrograms.map((p) => ({
+        name: p.nickname ? `${p.school} ${p.nickname}` : p.school,
+        league: p.conference as string,
+        logoUrl: p.logoUrl,
+      })),
+      revealTeamsEmptyText: "No Power-4 college program in this state.",
+    };
+  });
+}
+
 export function buildMatchingPairs(teams: SportsTeam[], count: number): MatchingPair[] {
   const withLogo = teams.filter((t) => t.logoUrl !== null);
   const subjects = pickRandom(withLogo, count);

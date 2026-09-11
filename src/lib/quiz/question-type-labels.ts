@@ -41,6 +41,7 @@ const QUESTION_TYPE_LABELS: Record<string, string> = {
   "sports.college_by_city": "Which college is based in this city?",
   "sports.college_by_state": "Which college is based in this state?",
   "sports.pro_team_count": "Pro teams per state",
+  "sports.college_program_count": "Power-4 programs per state",
   "sports.state_team_recall": "Name a state's teams",
 
   "mashups.odd_one_out": "Odd one out",

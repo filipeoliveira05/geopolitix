@@ -141,6 +141,11 @@ export type MultipleChoiceQuestion = {
   // real, distinct state — the subject genuinely has zero synced teams — and the view renders an
   // explicit "no teams" message for it rather than nothing.
   revealTeams?: { name: string; league: string; logoUrl: string | null }[];
+  // Overrides the empty-state copy shown when revealTeams is an empty array — defaults to "No pro
+  // sports team in this state." (the pro-team-count question's own wording) when unset. The
+  // college-program-count question sets its own text here, since "pro sports team" would be
+  // factually wrong copy for a question about college programs.
+  revealTeamsEmptyText?: string;
   // Only populated for the incumbency question — every real candidate in the subject's own race
   // (photo/name/party/incumbent status each), shown after answering so a wrong "No" guess (or a
   // right one) still teaches the race's full lineup, not just a one-line fact. Same reveal-timing
