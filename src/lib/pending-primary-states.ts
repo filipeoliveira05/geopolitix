@@ -13,10 +13,9 @@
 // races-data.ts) stops flagging that state automatically — delete the
 // entry (or the whole file, once all have passed) rather than leaving it
 // around as dead code. MA already removed; NH/RI removed 2026-09-11 after
-// their primaries resolved and the results were synced in.
-export const PENDING_PRIMARIES: Record<string, { label: string; cutoff: string }> = {
-  DE: { label: "Sep 15, 2026", cutoff: "2026-09-16" },
-};
+// their primaries resolved and the results were synced in; DE removed
+// 2026-09-17 after its primary resolved.
+export const PENDING_PRIMARIES: Record<string, { label: string; cutoff: string }> = {};
 
 export function knownPendingPrimaryLabel(stateId: string): string | null {
   const entry = PENDING_PRIMARIES[stateId];
