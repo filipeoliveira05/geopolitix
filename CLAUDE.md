@@ -271,9 +271,13 @@ step genuinely errored. **Full workflow history/design reasoning in `docs/status
   for Sports and Mashups, an extra matching-pairs/speed-round session type. Search-and-select
   (added 2026-09-05) is a type-and-pick-from-live-search format — Geography (cities, and now also
   state borders), Officeholders (senators), Midterms (candidates), Sports (teams) — scored by
-  partial credit; every session is now scored 0-100 points (10/question, shown via an animated
-  segmented progress header, not a plain "Question X of 10 — Score: Y" caption) rather than a
-  plain right-count, and a start-screen format picker lets the player choose which formats appear.
+  partial credit; every session is scored 10 points/question (shown via an animated segmented
+  progress header, not a plain "Question X of N — Score: Y" caption) rather than a plain
+  right-count, and a start-screen format picker lets the player choose which formats appear. A
+  standard round's length (`SESSION_LENGTH`/`SESSION_LENGTH_OPTIONS` in `engine.ts`) is a
+  start-screen preset picker (10/15/20/25, added 2026-09-18) rather than a fixed 10 — default
+  stays 10, not persisted across visits, matching/speed-round modes unaffected — so total score is
+  no longer always out of 100.
   Geography also has two shape-guessing multiple-choice types (state-silhouette, state-border)
   rendered as an inline theme-aware SVG computed from the same real `us-atlas` polygon geometry the
   interactive map itself uses — no new synced image or table. The state-silhouette question's reveal

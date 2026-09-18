@@ -21,8 +21,10 @@ added in the 2026-09-04 pass below) and `MapClickQuestion` (prompt/target state,
 Plan 3) — plus a parallel `AnsweredQuestion` union recording what was actually clicked. A
 category's full data pool is fetched once per page visit (`fetchCategoryPool()` in
 `src/lib/quiz/engine.ts`, cached by TanStack Query's own `["quiz-pool", categoryId]` key) and
-turned into a 10-question session (`SESSION_LENGTH`) by `buildCategorySession()` — a plain switch
-dispatching to each category's own generators in `src/lib/quiz/*-questions.ts`.
+turned into a session by `buildCategorySession()` — a plain switch dispatching to each category's
+own generators in `src/lib/quiz/*-questions.ts`. Standard-round length defaults to 10
+(`SESSION_LENGTH`) but is player-selectable via a start-screen preset picker
+(`SESSION_LENGTH_OPTIONS`, added 2026-09-18 — see that section below).
 `QuizCategoryClient.tsx` is the one state machine every category's start/session/results (and,
 where applicable, matching/speed-round) phases flow through — a `Phase` discriminated union
 switched in one component, not a router-per-phase design, since every phase is client-only
@@ -1217,3 +1219,21 @@ map instead of the quiz hub; `/quiz/history` separately said "← Back to quiz" 
 everywhere else says "quizzes." `BackToMapLink` gained optional `href`/`children` props (default
 `"/"`/"← Back to map" unchanged for every other page); `QuizStartScreen` now passes
 `href="/quiz"` with "← Back to quizzes," and `/quiz/history`'s copy was aligned to match.
+
+**Selectable question count, 2026-09-18** — standard-mode rounds were a hardcoded
+`SESSION_LENGTH = 10` (`engine.ts`); added a preset picker (10/15/20/25, `SESSION_LENGTH_OPTIONS`
+in `engine.ts`) on `QuizStartScreen`, default still 10, no persistence across visits (a deliberate
+scope call — matching/speed-round modes were explicitly left untouched, each keeps its own fixed
+constant, `MATCHING_PAIR_COUNT`/`SPEED_ROUND_PER_GENERATOR`). Turned out to be low-effort because
+the surrounding plumbing was already count-agnostic: every generator already takes a `count`
+param (`buildXQuestions(pool, count)`), `QuizProgressHeader` already renders
+`Array.from({length: total})` off the real question array's length rather than a hardcoded 10,
+scoring is `answers.length * 10` rather than a fixed 100, and `quiz_sessions.total` is a plain
+unconstrained `int` column — none of those needed to change. The only real design decision:
+`buildCategorySession` gained an optional `sessionLength` param (default `SESSION_LENGTH`), and
+the caller (`QuizCategoryClient.start`) clamps the picked value to `getCategoryPoolSize(...)`
+before passing it down, since a generator's own `pickRandom` throws rather than truncates when
+asked for more than its pool has — `QuizStartScreen` also hides (not disables) any preset above
+the category's pool size so the row never offers a value that would throw. Verified live: a
+25-question Sports round renders all 25 progress segments correctly and plays through with zero
+console errors.

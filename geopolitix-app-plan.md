@@ -372,10 +372,12 @@ two-way comparison question (e.g. "which state has a higher population?") asks w
 entities themselves as the options rather than going through the usual subject+distractor-pool
 shape. The two state-shape question types (silhouette guess, border guess) render an inline
 theme-aware SVG computed client-side from the same real `us-atlas` polygon geometry the
-interactive map itself uses, not a synced image. Regular rounds are 10 questions, scored 0-100
-points (10/question, partial credit for search-and-select) with immediate per-question feedback
-and a start-screen format picker; matching and speed-round are separate, parallel session types
-with their own results screen. Every completed session (standard, speed-round, matching) is recorded
+interactive map itself uses, not a synced image. Regular rounds default to 10 questions but the
+player can pick a longer round (10/15/20/25 presets, added 2026-09-18, not persisted across
+visits) via a start-screen picker, scored 10 points/question (partial credit for search-and-select)
+with immediate per-question feedback and a start-screen format picker; matching and speed-round
+are separate, parallel session types with their own results screen and are unaffected by the
+question-count picker. Every completed session (standard, speed-round, matching) is recorded
 to Supabase (`quiz_sessions`/`quiz_answers`, added 2026-09-08 — replaced the original per-browser
 `localStorage` best-score note) with full per-question-type and per-subject correct/incorrect
 tracking, surfaced on a dedicated **`/quiz/history`** page (times played, accuracy by question type
