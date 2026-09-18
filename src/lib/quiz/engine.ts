@@ -92,6 +92,10 @@ import type {
 } from "./types";
 
 export const SESSION_LENGTH = 10;
+// Selectable question counts for a standard round's start-screen picker — SESSION_LENGTH (10)
+// stays the default. Matching/speed-round modes are unaffected (see MATCHING_PAIR_COUNT/
+// SPEED_ROUND_PER_GENERATOR below) and have no equivalent picker.
+export const SESSION_LENGTH_OPTIONS = [10, 15, 20, 25] as const;
 export const MATCHING_PAIR_COUNT = 6;
 const SPEED_ROUND_PER_GENERATOR = 5;
 
@@ -270,11 +274,16 @@ export function getCategoryPoolSize(category: QuizCategoryId, pool: unknown): nu
  * slot (a generator can land on 0, up to the full session length) — see random.ts's own doc
  * comment. The combined result is shuffled (`pickRandom(qs, qs.length)`) so type order is random
  * too. `pool` must be exactly what `fetchCategoryPool` returned for this same category.
+ * `sessionLength` defaults to SESSION_LENGTH (10) but the caller (QuizStartScreen's question-count
+ * picker) may request a larger value from SESSION_LENGTH_OPTIONS — the caller is responsible for
+ * clamping it to the category's actual pool size first (see QuizCategoryClient.start), since a
+ * generator's own pickRandom throws rather than truncates when asked for more than its pool has.
  */
 export function buildCategorySession(
   category: QuizCategoryId,
   pool: unknown,
   enabledFormats: QuestionFormat[],
+  sessionLength: number = SESSION_LENGTH,
 ): QuizQuestion[] {
   switch (category) {
     case "geography": {
@@ -296,7 +305,7 @@ export function buildCategorySession(
         ["search-select", (n) => buildStateBorderRecallQuestions(facts, n)],
       ];
       const active = generators.filter(([format]) => enabledFormats.includes(format));
-      const counts = randomWeightedSplit(SESSION_LENGTH, active.length);
+      const counts = randomWeightedSplit(sessionLength, active.length);
       const questions = active.flatMap(([, build], i) => build(counts[i]));
       return pickRandom(questions, questions.length);
     }
@@ -313,7 +322,7 @@ export function buildCategorySession(
         ["search-select", (n) => buildSenatorRecallQuestions(senatorsByState, states, n)],
       ];
       const active = generators.filter(([format]) => enabledFormats.includes(format));
-      const counts = randomWeightedSplit(SESSION_LENGTH, active.length);
+      const counts = randomWeightedSplit(sessionLength, active.length);
       const questions = active.flatMap(([, build], i) => build(counts[i]));
       return pickRandom(questions, questions.length);
     }
@@ -325,7 +334,7 @@ export function buildCategorySession(
         ["search-select", (n) => buildRaceCandidateRecallQuestions(races, states, n)],
       ];
       const active = generators.filter(([format]) => enabledFormats.includes(format));
-      const counts = randomWeightedSplit(SESSION_LENGTH, active.length);
+      const counts = randomWeightedSplit(sessionLength, active.length);
       const questions = active.flatMap(([, build], i) => build(counts[i]));
       return pickRandom(questions, questions.length);
     }
@@ -360,13 +369,13 @@ export function buildCategorySession(
         ["search-select", (n) => buildStateTeamRecallQuestions(teams, states, n)],
       ];
       const active = generators.filter(([format]) => enabledFormats.includes(format));
-      const counts = randomWeightedSplit(SESSION_LENGTH, active.length);
+      const counts = randomWeightedSplit(sessionLength, active.length);
       const questions = active.flatMap(([, build], i) => build(counts[i]));
       return pickRandom(questions, questions.length);
     }
     case "mashups": {
       const { sports } = pool as MashupsPool;
-      return buildOddOneOutQuestions(sports.teams, SESSION_LENGTH);
+      return buildOddOneOutQuestions(sports.teams, sessionLength);
     }
     default:
       throw new Error(`No quiz engine registered for category "${category}"`);

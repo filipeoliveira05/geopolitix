@@ -6,6 +6,7 @@ import type { QuizCategoryMeta } from "@/lib/quiz/category-config";
 import { getBestSession } from "@/lib/quiz/history-data";
 import type { QuestionFormat } from "@/lib/quiz/types";
 import { getEnabledFormats, setEnabledFormats } from "@/lib/quiz/format-picker-storage";
+import { SESSION_LENGTH, SESSION_LENGTH_OPTIONS } from "@/lib/quiz/engine";
 import { BackToMapLink } from "@/components/BackToMapLink";
 import { Card } from "@/components/Card";
 import { CategoryIcon } from "./category-icons";
@@ -36,13 +37,19 @@ export function QuizStartScreen({
   category: QuizCategoryMeta;
   poolSize: number;
   isLoading: boolean;
-  onStart: (enabledFormats: QuestionFormat[]) => void;
+  onStart: (enabledFormats: QuestionFormat[], sessionLength: number) => void;
   hasMatchingMode: boolean;
   onStartMatching: () => void;
   hasSpeedRoundMode: boolean;
   onStartSpeedRound: () => void;
 }) {
   const canStart = !isLoading && poolSize >= MIN_POOL_SIZE;
+  const [sessionLength, setSessionLength] = useState<number>(SESSION_LENGTH);
+  // A larger option is only offered once the category's pool can actually support it — options
+  // above the pool size are hidden rather than shown disabled.
+  const availableLengthOptions = SESSION_LENGTH_OPTIONS.filter(
+    (n) => n <= poolSize || n === SESSION_LENGTH,
+  );
   // A useQuery-sourced value has no SSR-hydration-mismatch risk the way a direct localStorage read
   // would (its data is undefined on both the server and the initial client render alike, so
   // there's nothing to reconcile) — unlike enabledFormats below, which still needs the
@@ -114,9 +121,30 @@ export function QuizStartScreen({
               onToggle={toggleFormat}
             />
           )}
+          {availableLengthOptions.length > 1 && (
+            <div className="flex flex-col items-center gap-2">
+              <span className="text-sm text-muted">Questions</span>
+              <div className="flex flex-wrap justify-center gap-2">
+                {availableLengthOptions.map((n) => (
+                  <button
+                    key={n}
+                    onClick={() => setSessionLength(n)}
+                    aria-pressed={sessionLength === n}
+                    className={`rounded border px-3 py-1.5 text-sm ${
+                      sessionLength === n
+                        ? "border-seal bg-seal text-white"
+                        : "border-rule text-ink"
+                    }`}
+                  >
+                    {n}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="flex flex-wrap justify-center gap-3">
             <button
-              onClick={() => onStart(enabledFormats)}
+              onClick={() => onStart(enabledFormats, sessionLength)}
               className="rounded bg-seal px-6 py-3 text-sm font-medium text-white"
             >
               Start Quiz

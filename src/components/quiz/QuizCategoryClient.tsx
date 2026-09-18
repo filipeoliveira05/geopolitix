@@ -49,9 +49,15 @@ export function QuizCategoryClient({ category }: { category: QuizCategoryMeta })
     [category.id, pool],
   );
 
-  function start(enabledFormats: QuestionFormat[]) {
+  function start(enabledFormats: QuestionFormat[], sessionLength: number) {
     if (!pool) return;
-    const questions = buildCategorySession(category.id, pool, enabledFormats);
+    const poolSize = getCategoryPoolSize(category.id, pool);
+    const questions = buildCategorySession(
+      category.id,
+      pool,
+      enabledFormats,
+      Math.min(sessionLength, poolSize),
+    );
     setPhase({ name: "session", questions });
   }
 
