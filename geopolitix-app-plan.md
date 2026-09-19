@@ -374,10 +374,13 @@ shape. The two state-shape question types (silhouette guess, border guess) rende
 theme-aware SVG computed client-side from the same real `us-atlas` polygon geometry the
 interactive map itself uses, not a synced image. Regular rounds default to 10 questions but the
 player can pick a longer round (10/15/20/25 presets, added 2026-09-18, not persisted across
-visits) via a start-screen picker, scored 10 points/question (partial credit for search-and-select)
-with immediate per-question feedback and a start-screen format picker; matching and speed-round
-are separate, parallel session types with their own results screen and are unaffected by the
-question-count picker. Every completed session (standard, speed-round, matching) is recorded
+visits) via a start-screen picker, scored 10 points/question (partial credit for search-and-select),
+normalized to a fixed `/100` regardless of round length (added 2026-09-19, `normalizeQuizScore()`
+— a 25-question round's raw max of 250 is scaled back to 100 so it's comparable to the default
+10-question round, both live during the round and at the results screen) with immediate
+per-question feedback and a start-screen format picker; matching and speed-round are separate,
+parallel session types with their own results screen and are unaffected by the question-count
+picker or its normalization. Every completed session (standard, speed-round, matching) is recorded
 to Supabase (`quiz_sessions`/`quiz_answers`, added 2026-09-08 — replaced the original per-browser
 `localStorage` best-score note) with full per-question-type and per-subject correct/incorrect
 tracking, surfaced on a dedicated **`/quiz/history`** page (times played, accuracy by question type

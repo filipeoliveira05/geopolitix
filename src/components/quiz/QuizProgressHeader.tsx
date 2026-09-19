@@ -12,7 +12,8 @@ const COUNT_UP_MS = 500;
  * pulsing outline (same `animate-pulse` convention this app already uses for every other
  * "in-progress" indicator), everything after it stays a plain empty slot. The score pill counts up
  * from its old value over COUNT_UP_MS via requestAnimationFrame rather than jumping straight to
- * the new value, so a 10-point gain reads as a small celebratory tick-up.
+ * the new value, so a gain reads as a small celebratory tick-up. `score` is already normalized
+ * to /100 by the caller (see `normalizeQuizScore`) so it never jumps at the results screen.
  */
 export function QuizProgressHeader({
   total,
@@ -70,7 +71,7 @@ export function QuizProgressHeader({
         })}
       </div>
       <span className="shrink-0 rounded bg-seal-soft px-2 py-1 font-mono text-xs font-medium text-seal">
-        {displayedScore} pts
+        {displayedScore} / 100
       </span>
     </div>
   );

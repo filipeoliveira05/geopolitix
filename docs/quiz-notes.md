@@ -1237,3 +1237,22 @@ asked for more than its pool has — `QuizStartScreen` also hides (not disables)
 the category's pool size so the row never offers a value that would throw. Verified live: a
 25-question Sports round renders all 25 progress segments correctly and plays through with zero
 console errors.
+
+**Correction, 2026-09-19 — score normalized to a fixed /100:** the line above ("scoring is
+`answers.length * 10` rather than a fixed 100 ... none of those needed to change") turned out to
+be a real bug, not a benign detail — a 25-question round's max score is `25 * 10 = 250`, so
+`QuizResultsScreen` displayed e.g. "213 / 250" instead of something comparable to a default
+10-question round's "X / 100," and `QuizProgressHeader`'s live score pill counted straight past
+100 mid-round (visibly reaching ~210) before "snapping" down to the normalized value at the
+results screen. Fixed by adding `normalizeQuizScore(rawScore, questionCount)`
+(`src/lib/quiz/score.ts`): `round(rawScore / (questionCount * 10) * 100)`, a single shared helper
+used both by `QuizResultsScreen` (score/total, the Supabase `quiz_sessions` write, and the
+"new best" comparison) and by `QuestionSession` when it passes `score` down to
+`QuizProgressHeader`, so the live pill now counts up toward 100 the whole round instead of
+jumping at the end — its label changed from `{score} pts` to `{score} / 100` to match. Matching
+and speed-round remain untouched (they were never affected — see their own fixed-constant scoring
+above). One pre-fix `quiz_sessions` row (a 25-question Geography round, raw `213/250`) had already
+been written to Supabase before this fix shipped and was inflating that category's "Best" — fixed
+with a one-off script that renormalized it in place (`score = round(score/total*100), total =
+100`) rather than deleting it, so it stays in `/quiz/history`. Checked for and found no other
+affected rows.

@@ -7,6 +7,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { QuizCategoryMeta } from "@/lib/quiz/category-config";
 import type { AnsweredQuestion } from "@/lib/quiz/types";
 import { getBestSession, submitQuizSession } from "@/lib/quiz/history-data";
+import { normalizeQuizScore } from "@/lib/quiz/score";
 import { deriveSessionAnswerRows } from "@/lib/quiz/history-derive";
 import { getStateName } from "@/lib/states";
 import { Card } from "@/components/Card";
@@ -34,8 +35,13 @@ export function QuizResultsScreen({
   answers: AnsweredQuestion[];
   onPlayAgain: () => void;
 }) {
-  const score = answers.reduce((sum, a) => sum + a.points, 0);
-  const total = answers.length * 10;
+  const rawScore = answers.reduce((sum, a) => sum + a.points, 0);
+  // Normalized to a fixed /100 regardless of the session-length picker (10/15/20/25 questions),
+  // so a longer round's score stays comparable to the default 10-question round instead of
+  // scaling up with question count. QuizProgressHeader normalizes the same way mid-round so the
+  // number doesn't jump when this screen appears.
+  const score = normalizeQuizScore(rawScore, answers.length);
+  const total = 100;
   const missed = answers.filter((a) => a.points < 10);
 
   const queryClient = useQueryClient();

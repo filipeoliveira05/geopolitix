@@ -276,8 +276,14 @@ step genuinely errored. **Full workflow history/design reasoning in `docs/status
   right-count, and a start-screen format picker lets the player choose which formats appear. A
   standard round's length (`SESSION_LENGTH`/`SESSION_LENGTH_OPTIONS` in `engine.ts`) is a
   start-screen preset picker (10/15/20/25, added 2026-09-18) rather than a fixed 10 — default
-  stays 10, not persisted across visits, matching/speed-round modes unaffected — so total score is
-  no longer always out of 100.
+  stays 10, not persisted across visits, matching/speed-round modes unaffected. Raw points are
+  still 10/question (`questionCount * 10` max), but the displayed/stored score is normalized to a
+  fixed `/100` via `normalizeQuizScore()` (`src/lib/quiz/score.ts`, added 2026-09-19) regardless of
+  session length, so a 25-question round's score stays comparable to the default 10-question one —
+  applied both at the results screen and to the live in-round score pill (`QuizProgressHeader`),
+  which would otherwise visibly count past 100 mid-round and then jump down at the end. A one-off
+  migration fixed the single pre-fix `quiz_sessions` row this shipped with a raw (non-normalized)
+  score.
   Geography also has two shape-guessing multiple-choice types (state-silhouette, state-border)
   rendered as an inline theme-aware SVG computed from the same real `us-atlas` polygon geometry the
   interactive map itself uses — no new synced image or table. The state-silhouette question's reveal

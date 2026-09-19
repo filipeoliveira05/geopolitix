@@ -9,6 +9,7 @@ import type {
   SearchSelectQuestion,
 } from "@/lib/quiz/types";
 import { createEntitySearch } from "@/lib/quiz/search-select-index";
+import { normalizeQuizScore } from "@/lib/quiz/score";
 import { MultipleChoiceQuestionView } from "./MultipleChoiceQuestionView";
 import { MapClickQuestionView } from "./MapClickQuestionView";
 import { SearchSelectQuestionView } from "./SearchSelectQuestionView";
@@ -47,7 +48,7 @@ export function QuestionSession({
         total={session.total}
         currentIndex={session.index}
         answeredCount={session.answers.length}
-        score={session.score}
+        score={normalizeQuizScore(session.score, session.total)}
       />
       <div key={session.index} className="animate-fade-in">
         {question.format === "multiple-choice" ? (
