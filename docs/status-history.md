@@ -18,7 +18,9 @@ several real live-discovered gotchas. A follow-on pass (2026-09-02) added team/p
 bios plus individual `/team/[id]`/`/college-football/[id]`/`/college-basketball/[id]` pages on
 top of the already-complete Phase 2 tables — see the `logo_url`/`bio_summary` entry in
 `docs/data-sync-notes.md` for the full writeup (several real reliability bugs caught and fixed
-along the way, not just the feature itself). **Phase 3 (quiz) is also complete**, shipped
+along the way, not just the feature itself). A second follow-on (2026-09-19) added individual
+city pages (`/city/[state]/[slug]`) on top of the same tables — no schema migration and no sync
+change, see its own entry below. **Phase 3 (quiz) is also complete**, shipped
 2026-09-03 across 5 incremental plans — see `docs/quiz-notes.md` for the full writeup
 (architecture, all 5 categories, and the real bugs caught building map-click and speed-round
 specifically). This closes out the build order from "What this app is" above — every
@@ -296,7 +298,48 @@ pattern `RepresentativesList.tsx` already uses for `/legislator/[id]` over a dir
 link. Each page's footer shows that exact row's own `last_synced_at` (added 2026-09-03, via
 `TeamProfile`'s `lastSyncedAt` field on `TeamProfileData`) — see the Data-freshness indicators
 entry in `docs/ui-notes.md` for the full per-row-vs-per-job writeup and the `GlobalFooter` design this
-replaced.
+replaced. **As of 2026-09-19 the home city splits into two links** (city → `/city/[state]/[slug]`,
+state → `/state/[abbr]`) when that city has a page, falling back to the original single state-wide
+link over the whole "Foxborough, Massachusetts" phrase when it doesn't. That made `TeamProfile` an
+`async` server component — the check is a Supabase lookup, and doing it there once beats
+duplicating it across all three route files.
+
+**`/city/[state]/[slug]`** (added 2026-09-19): one page per *synced* city — exactly the `cities`
+table's ~510 rows (each state's top 10 most populous + its capital), nothing more. Name +
+`Capital` badge, an Overview stat row (population, state), that city's pro teams and college
+programs grouped by league/division, and a `This city's info was synced Y ago` note. Shipped with
+**no schema migration and no sync-script change**, which was the main design constraint:
+
+- **The route key is `(state, slug-of-name)`, not `cities.id`.** `geography.mjs` fully deletes and
+  reinserts a state's rows every run, so every uuid is regenerated on every sync and a
+  `/city/<uuid>` link would rot after the next one — bookmarks, shared links and the search index
+  alike. `(state_id, name)` already carries a UNIQUE constraint, so the slug is unique per state
+  with no new column; a lookup resolves against that state's ~11 rows client-of-Postgres-side.
+  Verified live across all 510 rows: zero slug collisions.
+- **Teams match by normalized name, since the `sports_teams` → `cities` FK is gone** (dropped
+  2026-09-01, see `docs/data-sync-notes.md`). Both sides run through the same `citySlug()`, which
+  also folds `Saint `→`St. ` — that alone recovered 6 real rows (Saint Paul, Saint Louis, Saint
+  George, Saint Charles) with no collision. A separate `src/lib/city-aliases.ts` handles the rows
+  Wikipedia locates by borough or Chicago side; without it New York City's page listed exactly one
+  team (Columbia) and Chicago's was missing the Cubs and White Sox. Per an explicit user call,
+  an aliased team still shows its **real** sub-place in parentheses — "New York Yankees (The
+  Bronx)", "Chicago White Sox (South Side)" — so folding a borough into New York never hides where
+  the team actually plays. `New York City FC` and any team whose `city_name` genuinely is the
+  page's city correctly show no parenthetical.
+- **Teams in genuine suburbs get no page and no link** — Foxborough, East Rutherford, Inglewood,
+  Santa Clara, Arlington TX, Elmont and ~30 others aren't top-10 cities and aren't aliased. Every
+  city reference in the app routes through a guard that degrades to plain text rather than
+  emitting a link to a 404.
+- **Five ways in:** the state page's Overview capital, its "Most populous cities" table, every
+  `(City)` label in its sports/college lists, a team/program profile, and global search (a new
+  `"city"` entry type, which also needed a non-person fallback glyph in `SearchOverlay` — see
+  `docs/ui-notes.md`).
+
+The page went through several rounds of user-driven subtraction after the first version (the state
+flag removed entirely including from capitals, the state moved from a subtitle into an Overview
+cell, the freshness note reduced from a four-job row to one possessive line). **All of those are
+settled calls — `docs/ui-notes.md`'s city-page entry lists each one and why; don't re-add them
+without asking.**
 
 **Synced data**, via `npm run sync:<name>`:
 - `states` — minimal id/name seed (`us-atlas` + `fips-to-abbr.json`), 50 states + DC.

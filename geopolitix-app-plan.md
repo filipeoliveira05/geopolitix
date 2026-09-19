@@ -265,7 +265,10 @@ involved).
   state's real top 10 most populous cities + its capital (2026-09-01 revamp: no coordinates — never
   rendered anywhere, confirmed via a full `src/` grep — and no `sports_teams` FK to accommodate, see
   below) — `geography.mjs` deletes and reinserts a state's rows fresh on every run rather than
-  diffing/preserving anything across runs.
+  diffing/preserving anything across runs. **That delete-and-reinsert is why `/city/[state]/[slug]`
+  (added 2026-09-19) keys off `(state_id, name)` and not `id`** — every uuid here is regenerated on
+  every sync, so no external reference to one can survive. `(state_id, name)` carries a UNIQUE
+  constraint, which makes the slug unique per state with no extra column needed.
 
 ### `sports_teams`
 - `id` (PK) · `name` · `league` (text, no enum constraint — currently NFL/NBA/MLB/NHL/MLS/WNBA/NWSL)
@@ -278,9 +281,16 @@ involved).
   upsert every sync, not a partial one). Stores its own home city/state directly rather than
   joining through `cities` (that FK was dropped in the same 2026-09-01 revamp — its only actual use
   was rendering plain text like "New England Patriots (Foxborough)" next to a team's name; no
-  `/city/[id]` page exists or was ever planned, so a `cities` join — and everything needed to keep a
+  `/city/[id]` page existed at the time, so a `cities` join — and everything needed to keep a
   non-top-10 home city's row alive for it without polluting the "most populous cities" ranking —
-  was solving a problem plain text already solved).
+  was solving a problem plain text already solved). **A city page did eventually arrive
+  (`/city/[state]/[slug]`, 2026-09-19), and dropping that FK was still right**: the page matches
+  teams to cities by normalized name at read time, and a team in a genuine suburb (Foxborough,
+  East Rutherford, Inglewood, Arlington TX) simply has no city page to link to — exactly the
+  outcome the `is_support_row` machinery had been built to avoid, achieved by not storing those
+  suburbs at all. The one thing name-matching does need is `src/lib/city-aliases.ts`, a short
+  exception list for the rows Wikipedia locates by borough ("Bronx", "Queens") or Chicago side
+  ("North Side Chicago") rather than by city.
 
 ### `college_football_programs`
 - `id` (PK) · `school` (unique) · `nickname` · `city_name` (text) · `state_id` (FK) · `conference`
@@ -335,9 +345,26 @@ Photo, bio, current party, term history.
 Same shape, adapted to the state executive office.
 
 ### `/team/[id]`, `/college-football/[id]`, `/college-basketball/[id]` — Team/Program Profile (added 2026-09-02)
-Logo, name (plus nickname/conference for the college pages), home city (linked to `/state/[abbr]`),
-and a Wikipedia-sourced bio for one `sports_teams`/`college_football_programs`/
-`college_basketball_programs` row. Linked from the state page's Sports teams section.
+Logo, name (plus nickname/conference for the college pages), home city, and a Wikipedia-sourced
+bio for one `sports_teams`/`college_football_programs`/`college_basketball_programs` row. Linked
+from the state page's Sports teams section. The home city splits into separate city and state
+links when that city has a `/city/[state]/[slug]` page (2026-09-19), and stays a single
+state-wide link over the whole "Foxborough, Massachusetts" phrase when it doesn't.
+
+### `/city/[state]/[slug]` — City Page (added 2026-09-19)
+One page per *synced* city — exactly the `cities` table's contents (each state's top 10 most
+populous + its capital, ~510 rows), no more. Shows the city name with a `Capital` badge where it
+applies, an Overview stat row (population, state), and every pro team / college program based
+there grouped by league and division, plus a per-entity freshness note. Deliberately **not** a
+tabbed page like `/state/[abbr]` — there's one entity's worth of content here.
+
+The route key is a `(state, slug-of-name)` pair rather than `cities.id`, because `geography.mjs`
+deletes and reinserts a state's rows on every run and every uuid is therefore regenerated each
+sync; `(state_id, name)` is already UNIQUE, so this needed no slug column, no migration and no
+sync-script change. Teams are matched by name (the `sports_teams` → `cities` FK is gone, see §4),
+normalized through the same slug function on both sides, plus a small alias table
+(`src/lib/city-aliases.ts`) for the sports data's borough/Chicago-side locations. A team whose
+home city isn't a synced city gets no page and renders as plain text.
 
 ### `/midterms-2026` — 2026 Midterms Preview
 Scoreboard (confirmed vs. contested, by House/Senate/Governors), list/map of featured races.
@@ -484,7 +511,8 @@ Getting from "JSON stand-in" to the real infrastructure. Current progress is tra
 2. **Phase 1 — Politics:** `legislators`/`terms` + `governors` sync; map with per-state side
    panel; state/legislator/governor pages; `races_2026` (Senate + Governors) + `/midterms-2026`.
 3. **Phase 2 — Geography:** `cities`/`states` (population, capitals) + `sports_teams` sync; a
-   "Geography" tab on state pages.
+   "Geography" tab on state pages. (Extended past this line since: team/program profile pages
+   2026-09-02, individual city pages 2026-09-19 — both on the same tables, no new sync jobs.)
 4. **Phase 3 — Active learning:** `/quiz` reusing existing data.
 
 ---

@@ -270,3 +270,65 @@ touching the design system, map, tables, or the freshness/search/header componen
   Review URL pattern `geography.mjs` already constructs (`.../state-flags/w1280/<abbr>.png`), so
   `buildStateEntries()` builds it directly from `s.abbr`. Verified live: searching a state name
   now shows its real flag thumbnail, not the generic placeholder.
+
+- **`/city/[state]/[slug]` page layout (added 2026-09-19, several rounds of user-driven
+  simplification — read this before re-adding anything to it):** the page settled on a very small
+  shape — name + `Capital` badge → `§ OVERVIEW` (population, state) → `§ SPORTS TEAMS` grouped by
+  league/division → a `This city's info was synced Y ago` note — and most of that is subtraction
+  from a first version. **Each of the following was removed on an explicit user call; none should
+  be re-added without asking:**
+  - **No state flag, on any city page including capitals.** The first version showed it top-right
+    on capitals only ("this is the seat of that state" rather than decoration). The user asked to
+    drop it everywhere — it's the *state's* emblem on a *city's* page, and it already lives on
+    `/state/[abbr]`'s own Overview. Removing it also deleted the page's only conditional query
+    (`getStateGeography()` ran solely to source `flag_url`), so every city page now runs the same
+    three team queries with no capital special case, and the header collapsed from a
+    `flex justify-between` two-column layout to a plain block. The `Capital` badge is now the sole
+    marker of a seat of state government.
+  - **No population rank, share-of-state, or "other cities in this state" list.** All three were
+    offered and declined at design time; all three would have been free (the state's full city
+    list is already fetched to resolve the slug). The page is deliberately thin.
+  - **The state is a stat cell in Overview, not a subtitle under the `<h1>`.** It moved twice: it
+    started as both (a linked subtitle *and* an Overview cell), which read as stuttering — most
+    visibly on `/city/NY/new-york`, where "New York" appeared three times above the fold. The
+    Overview cell was dropped first, then after the flag removal left the header bare, the
+    subtitle was dropped instead and the cell restored. Net effect: exactly one `/state/...` link
+    per city page.
+  - **Flat league groups, not `CollapsibleGroup`.** The state page collapses its sports lists
+    because a state hosts dozens of teams across seven leagues; a single city hosts a handful, so
+    collapsing there would hide every row behind a click for no gain. `Section`/`TeamGroup`/
+    `TeamRow` are local to the page file rather than shared with `StateTabs` — that file is
+    `"use client"` and this page is a pure server component with no other reason to pull a client
+    boundary in.
+  - **A per-entity freshness note (`This city's info was synced Y ago`), not a per-job row.** It
+    follows `TeamProfile`'s possessive one-liner, per CLAUDE.md's "per-row on individual entity
+    pages" convention, rather than `/state/[abbr]`'s multi-job `SyncFreshnessRow`. An intermediate
+    version listed geography + sports + both college jobs (conditionally, only the ones that
+    rendered something), which tripped `SyncFreshnessRow`'s `COLLAPSE_THRESHOLD` and turned into a
+    collapsed "Data freshness" toggle on any city with teams. The single line reads the geography
+    job — the one that actually produced this city's name/population/capital; each team listed
+    below carries its own freshness on its own page. Dropping the other three also removed three
+    `sync_logs` round trips per render.
+  - **Where city links appear:** the state page's Overview capital, its "Most populous cities"
+    table, every `(City)` label in its sports/college lists, `TeamProfile`'s subtitle, and global
+    search. All of them route through one guard (`StateTabs`' local `CityLabel`, or
+    `getCityBySlug` on the team page) so a city with no `cities` row degrades to plain text rather
+    than linking to a 404 — most pro venues are in suburbs that have no row. `.link-accent` makes
+    these look like plain text until hover, which is the established convention, not a bug.
+- **`SearchOverlay` per-type fallback glyph + placeholder width (2026-09-19):** `ResultAvatar`'s
+  no-photo fallback used to be an unconditional person silhouette, which was fine while only
+  people could reach it — adding ~510 cities to the index made every one of them render as a
+  person. It now switches on `entry.type` (a stroked two-tower skyline for `city`, the person
+  glyph as the default, since the only other types that can reach the fallback are actual people).
+  **Adding a new non-person entry type means adding its glyph too.** Checked live at the time:
+  `sports_teams`/`college_football_programs`/`college_basketball_programs` have zero null
+  `logo_url` rows, so teams don't currently reach this fallback at all — if a future sync leaves
+  one without a logo it would show a person. The glyph is stroked rather than filled (same
+  treatment as the `CollapsibleGroup`/`SyncFreshnessNote` chevrons): a filled skyline at 16px
+  collapses into an unreadable blob, and cutting windows out of a filled path would need a
+  hardcoded background color that can't follow the theme tokens. **The input's placeholder is
+  width-constrained** — adding "cities" to the full enumeration pushed it to 524px against a 510px
+  input, so it truncated mid-word and swallowed its own ellipsis ("…college prog"). Measured the
+  alternatives directly in the browser rather than guessing; "college programs" was dropped from
+  the end (406px, fits desktop; still truncates on mobile's 359px exactly as the old string
+  already did). College programs remain indexed and searchable, just not advertised there.

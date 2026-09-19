@@ -353,11 +353,28 @@ modifying a sync script; don't re-derive research already documented here.
     team's home city outside its state's top 10) were all removed in the same 2026-09-01 revamp,
     at the user's explicit prompt ("i don't even understand the need to have a city page link") —
     the FK's only actual use was rendering a team's home city as plain text next to its name ("New
-    England Patriots (Foxborough)"); no `/city/[id]` page exists or was ever planned, so
+    England Patriots (Foxborough)"); no `/city/[id]` page existed at the time, so
     normalizing that relationship through a join (and everything needed to keep a
     Foxborough/Sunrise/NYC-borough-shaped row alive for it without polluting the "most populous
     cities" ranking) was solving a problem plain text already solved. `sports.mjs` has no
     dependency on `sync:geography` having already run.
+    - **A city page did arrive later (`/city/[state]/[slug]`, 2026-09-19) and none of this was
+      reinstated — deliberately.** The page matches teams to cities by normalized name at read
+      time; a team in a genuine suburb simply has no city page to link to, which is the right
+      answer and needs no `is_support_row` row to represent it. **Do not read
+      `src/lib/city-aliases.ts` as a revival of the deleted `CITY_NAME_ALIASES`**: the old one
+      lived in the sync script and existed to force a Wikidata FK resolution; the new one is an
+      app-layer read-time lookup and exists only because Wikipedia's infoboxes locate some teams
+      by borough ("Bronx", "Queens", "Brooklyn", "Manhattan") or Chicago side ("North Side
+      Chicago"), which meant New York City's page listed exactly one team and Chicago's was
+      missing both the Cubs and the White Sox. Nothing in `sports_teams` changed to support it.
+    - **If you ever re-source this script's city names, re-audit that alias list** — a stale
+      entry fails silently (it just stops matching, no error). The quickest live check is to
+      slug-compare every `sports_teams`/college `city_name` against `cities` per state and eyeball
+      the unmatched set; when last run (2026-09-19) it was 37/172 pro rows unmatched, all but the
+      aliased ones genuine separate municipalities. A `Saint `→`St. ` normalization is built into
+      `citySlug()` itself rather than the alias table (it recovered 6 rows — Saint Paul, Saint
+      Louis, Saint George, Saint Charles — with no slug collision across all 510 cities).
   - **Schema migration `20260901130000_cities_sports_wpr_revamp.sql`** drops `cities.latitude`/
     `longitude` (confirmed via a full `src/` grep that nothing ever rendered them) and
     `cities.is_support_row` (no longer needed — see above), and replaces `sports_teams.city_id`

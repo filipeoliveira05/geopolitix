@@ -87,6 +87,21 @@ Build order: **Phase 1 politics → Phase 2 geography → Phase 3 quiz.** Don't 
   - **`src/lib/pending-primary-states.ts` is a small, self-expiring hardcoded list** of states
     with a known-pending 2026 primary — check it's still accurate (or trim expired entries) when
     touching anything primary/race-related.
+  - **A city's URL identity is `(state, slug-of-name)`, never its uuid** (`citySlug()`/`cityHref()`/
+    `getCityBySlug()` in `geography-data.ts`, added 2026-09-19 for `/city/[state]/[slug]`):
+    `geography.mjs` fully deletes and reinserts a state's `cities` rows on every run, so every row
+    gets a fresh uuid each sync and a `/city/<uuid>` link would rot after the very next one.
+    `(state_id, name)` is already UNIQUE, so no slug column, migration or sync change is needed —
+    a lookup resolves against the state's ~11 rows. Anything else keyed off a delete-and-reinsert
+    table has the same trap.
+  - **`src/lib/city-aliases.ts` is a small explicit exception list** (added 2026-09-19) mapping a
+    `sports_teams`/college row's `city_name` onto the `cities` row that actually has a page — the
+    sports tables locate some teams by borough (Bronx/Queens/Brooklyn/Manhattan) or Chicago side
+    ("North Side Chicago"), so without it New York City's page listed exactly one team and
+    Chicago's was missing the Cubs and White Sox. Every team-side city lookup must go through
+    `teamCitySlug()`, never bare `citySlug()`, or the alias applies in one place and not another.
+    A team that genuinely plays in a separate municipality (Foxborough, East Rutherford,
+    Inglewood, Arlington TX) is deliberately NOT aliased.
   - **A page with no dynamic route params that reads live Supabase data needs
     `export const dynamic = "force-dynamic"`**, or Next.js prerenders it once at build time and
     every visitor gets that frozen snapshot forever (the app's Supabase client wraps `fetch` with
@@ -160,8 +175,13 @@ Build order: **Phase 1 politics → Phase 2 geography → Phase 3 quiz.** Don't 
 - **`GlobalHeader`** is a persistent header shown on every route (`src/app/layout.tsx`) — carries
   "Midterms 2026"/"Quiz" nav links and the global search icon. **Global search** (`SearchOverlay`)
   matches client-side against a pre-fetched flat index (`src/lib/search-index.ts`) via Fuse.js —
-  legislators, governors, candidates, states, sports teams, and college programs. Full design
-  history for both in `docs/ui-notes.md`.
+  legislators, governors, candidates, states, cities, sports teams, and college programs. A result
+  with no image of its own falls back to a **per-type** glyph in `ResultAvatar` (a skyline for a
+  city, a person silhouette otherwise) — adding a non-person entry type without adding its glyph
+  is how ~510 cities briefly rendered as people. The input's placeholder is length-constrained:
+  the full type list measured 524px against a 510px input and truncated mid-word, swallowing its
+  own ellipsis, so "college programs" is indexed but not advertised there. Full design history for
+  both in `docs/ui-notes.md`.
 
 ## Open decisions
 
@@ -220,7 +240,8 @@ version bump, check this first — verify those two files still exist in
 
 **All three phases are complete.** Phase 1 (politics) shipped first, fully automated; Phase 2
 (geography/sports) shipped 2026-08-31, extended 2026-09-02 with logos/bios and individual
-team/program pages; Phase 3 (quiz) shipped 2026-09-03 across 5 incremental plans and has since
+team/program pages and again 2026-09-19 with individual city pages (`/city/[state]/[slug]`, no
+schema or sync change needed); Phase 3 (quiz) shipped 2026-09-03 across 5 incremental plans and has since
 grown well past its v1 scope through several same-day question-type-expansion sessions (see
 `docs/quiz-notes.md`). A full visual design-system overhaul shipped 2026-08-31 on top of all of
 this — the app's actual pages/data/routing are unchanged by it.
@@ -265,7 +286,18 @@ step genuinely errored. **Full workflow history/design reasoning in `docs/status
   `wikidata_person_id`; a candidate's `id` is a stable slug, not a uuid.
 - **`/team/[id]`, `/college-football/[id]`, `/college-basketball/[id]`** — one shared
   `TeamProfile` component for all three tables' individual pages (logo, bio, home city link, own
-  `last_synced_at`).
+  `last_synced_at`). The home city splits into two links (city + state) when that city has its own
+  page, and falls back to a single state-wide link over the whole "Foxborough, Massachusetts"
+  phrase when it doesn't.
+- **`/city/[state]/[slug]`** (added 2026-09-19) — one page per *synced* city, i.e. exactly the
+  `cities` table (each state's top 10 + capital, ~510 rows): name + `Capital` badge, an Overview
+  stat row (population, state), and that city's pro teams/college programs grouped by
+  league/division, then a `This city's info was synced Y ago` note. A team whose home city isn't
+  one of those (most pro venues sit in a suburb) deliberately gets no page and keeps rendering as
+  plain text rather than linking to a 404. Reached from the state page's Overview capital, its
+  "Most populous cities" table, every `(City)` label in its sports lists, a team profile, and
+  global search. **No state flag on it, capitals included** (deliberate, user call — don't
+  re-add); see `docs/ui-notes.md` for the full layout history.
 - **`/quiz`, `/quiz/[category]`** — five categories (Geography, Officeholders, 2026 Midterms,
   Sports, Mashups), each a mix of multiple-choice/map-click/search-and-select question types plus,
   for Sports and Mashups, an extra matching-pairs/speed-round session type. Search-and-select
