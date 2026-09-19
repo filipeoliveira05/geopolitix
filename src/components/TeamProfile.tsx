@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { getStateName } from "@/lib/states";
+import { cityHref, getCityBySlug, teamCitySlug } from "@/lib/geography-data";
 import { SyncFreshnessNote } from "@/components/SyncFreshnessNote";
 import { WikipediaSourcedBadge } from "@/components/WikipediaVerifiedBadge";
 import { SectionHeading } from "@/components/SectionHeading";
@@ -30,8 +31,21 @@ export type TeamProfileData = {
   lastSyncedAt: Date | null;
 };
 
-export function TeamProfile({ team, syncLabel }: { team: TeamProfileData; syncLabel: string }) {
+// Async because the home-city link has to be resolved server-side: only a city that's actually in
+// the `cities` table (each state's top 10 + capital) has a /city page, and most pro venues sit in
+// a suburb that isn't one — Foxborough, East Rutherford, Inglewood. All three consumers are
+// server components, so the lookup lives here once instead of being duplicated in each route.
+export async function TeamProfile({
+  team,
+  syncLabel,
+}: {
+  team: TeamProfileData;
+  syncLabel: string;
+}) {
   const stateName = getStateName(team.stateId) ?? team.stateId;
+  // teamCitySlug, not citySlug: the Yankees' own city_name is "Bronx", whose page is New York's.
+  // The visible label below still says "Bronx" — only the destination is canonicalized.
+  const homeCity = await getCityBySlug(team.stateId, teamCitySlug(team.stateId, team.cityName));
   return (
     <div className="mx-auto w-full max-w-3xl flex-1 animate-fade-in p-6 sm:p-10">
       <BackToMapLink />
@@ -47,11 +61,26 @@ export function TeamProfile({ team, syncLabel }: { team: TeamProfileData; syncLa
             {team.name}
             {team.nickname && <span className="text-muted"> {team.nickname}</span>}
           </h1>
+          {/* City and state link separately when the city has its own page; a suburb with no
+              `cities` row falls back to the original single state-wide link over the whole
+              "Foxborough, Massachusetts" phrase rather than rendering half of it dead. */}
           <p className="text-sm text-muted">
             {team.categoryLabel} —{" "}
-            <Link href={`/state/${team.stateId}`} className="link-accent">
-              {team.cityName}, {stateName}
-            </Link>
+            {homeCity ? (
+              <>
+                <Link href={cityHref(team.stateId, homeCity.name)} className="link-accent">
+                  {team.cityName}
+                </Link>
+                ,{" "}
+                <Link href={`/state/${team.stateId}`} className="link-accent">
+                  {stateName}
+                </Link>
+              </>
+            ) : (
+              <Link href={`/state/${team.stateId}`} className="link-accent">
+                {team.cityName}, {stateName}
+              </Link>
+            )}
           </p>
         </div>
       </div>

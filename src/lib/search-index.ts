@@ -1,5 +1,6 @@
 import { supabase } from "./supabase";
 import { getAllStates } from "./states";
+import { cityHref, citySlug, getAllCitiesWithState } from "./geography-data";
 
 // Powers the global search overlay (GlobalHeader/SearchOverlay) — a flat,
 // client-side index of every page the app can send you to for a specific
@@ -16,6 +17,7 @@ export type SearchEntryType =
   | "governor"
   | "candidate"
   | "state"
+  | "city"
   | "team"
   | "college-football"
   | "college-basketball";
@@ -269,11 +271,28 @@ function buildStateEntries(): SearchEntry[] {
   }));
 }
 
+// Every synced city (~510 rows — each state's top 10 + capital, exactly the set that has a
+// /city/[state]/[slug] page). The id is the state-prefixed slug rather than cities.id: the uuid
+// is regenerated on every geography sync (see citySlug's comment), and this entry's id is only
+// ever used as a React key, so the stable value is the better one to carry.
+async function fetchCityEntries(): Promise<SearchEntry[]> {
+  const cities = await getAllCitiesWithState();
+  return cities.map((c) => ({
+    id: `${c.stateId}-${citySlug(c.cityName)}`,
+    name: c.cityName,
+    type: "city" as const,
+    subtitle: `${c.isCapital ? "State capital" : "City"} · ${c.stateName}`,
+    href: cityHref(c.stateId, c.cityName),
+    photoUrl: null,
+  }));
+}
+
 export async function buildSearchIndex(): Promise<SearchEntry[]> {
   const [
     legislatorEntries,
     governorEntries,
     candidateEntries,
+    cityEntries,
     teamEntries,
     collegeFootballEntries,
     collegeBasketballEntries,
@@ -281,6 +300,7 @@ export async function buildSearchIndex(): Promise<SearchEntry[]> {
     fetchLegislatorEntries(),
     fetchGovernorEntries(),
     fetchCandidateEntries(),
+    fetchCityEntries(),
     fetchSportsTeamEntries(),
     fetchCollegeFootballEntries(),
     fetchCollegeBasketballEntries(),
@@ -289,6 +309,7 @@ export async function buildSearchIndex(): Promise<SearchEntry[]> {
     ...legislatorEntries,
     ...governorEntries,
     ...candidateEntries,
+    ...cityEntries,
     ...teamEntries,
     ...collegeFootballEntries,
     ...collegeBasketballEntries,

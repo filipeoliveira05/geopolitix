@@ -11,7 +11,14 @@ import {
 } from "@/lib/legislators-data";
 import type { GovernorTerm } from "@/lib/governors-data";
 import { candidateHref, primaryPendingMessage, type Race } from "@/lib/races-data";
-import type { City, SportsTeam, CollegeProgram } from "@/lib/geography-data";
+import {
+  cityHref,
+  citySlug,
+  teamCitySlug,
+  type City,
+  type SportsTeam,
+  type CollegeProgram,
+} from "@/lib/geography-data";
 import { CollapsibleGroup } from "@/components/CollapsibleGroup";
 import { formatPopulation } from "@/lib/format";
 
@@ -425,10 +432,14 @@ function CollegeProgramGroup({
   title,
   programs,
   hrefBase,
+  abbr,
+  citiesWithPage,
 }: {
   title: string;
   programs: CollegeProgram[];
   hrefBase: "/college-football" | "/college-basketball";
+  abbr: string;
+  citiesWithPage: Set<string>;
 }) {
   if (programs.length === 0) return null;
   return (
@@ -463,7 +474,9 @@ function CollegeProgramGroup({
                   {program.conference}
                 </span>
               )}
-              <span className="text-muted">({program.cityName})</span>
+              <span className="text-muted">
+                (<CityLabel abbr={abbr} cityName={program.cityName} citiesWithPage={citiesWithPage} />)
+              </span>
             </li>
           ))}
         </ul>
@@ -472,7 +485,32 @@ function CollegeProgramGroup({
   );
 }
 
+// A team/program's home city, linked to its own page when that city is one of the state's synced
+// ones and left as plain text when it isn't — the majority of pro venues sit in a suburb with no
+// `cities` row of its own, so an unconditional link here would 404 more often than not.
+function CityLabel({
+  abbr,
+  cityName,
+  citiesWithPage,
+}: {
+  abbr: string;
+  cityName: string;
+  citiesWithPage: Set<string>;
+}) {
+  // Resolved through teamCitySlug, so "Bronx"/"North Side Chicago" link to New York's/Chicago's
+  // page — but the label keeps the row's own real city_name rather than being rewritten to the
+  // page's name, same honesty the city page's own "(The Bronx)" parenthetical provides.
+  const slug = teamCitySlug(abbr, cityName);
+  if (!citiesWithPage.has(slug)) return <>{cityName}</>;
+  return (
+    <Link href={`/city/${abbr}/${slug}`} className="link-accent">
+      {cityName}
+    </Link>
+  );
+}
+
 function GeographyTab({
+  abbr,
   capital,
   population,
   region,
@@ -486,6 +524,10 @@ function GeographyTab({
     league,
     teams: sportsTeams.filter((t) => t.league === league),
   })).filter((g) => g.teams.length > 0);
+  // Only the state's synced cities have a /city page, so a team based in a suburb that isn't one
+  // of them (Foxborough MA, East Rutherford NJ, Inglewood CA) must stay plain text rather than
+  // link to a guaranteed 404 — see the /city/[state]/[slug] page's own comment.
+  const citiesWithPage = new Set(cities.map((c) => citySlug(c.name)));
   return (
     <div className="flex flex-col gap-6">
       <Section title="Overview">
@@ -499,7 +541,13 @@ function GeographyTab({
               {capital && (
                 <div>
                   <div className="text-[10px] font-medium uppercase tracking-wide text-muted">Capital</div>
-                  <div className="font-display text-lg">{capital}</div>
+                  {/* Goes through CityLabel like every other city reference here, so a capital
+                      that somehow has no `cities` row degrades to plain text instead of linking
+                      to a 404 — it always should have one (states.capital_city_id points at it),
+                      but that's one FK away from being an assumption rather than a guarantee. */}
+                  <div className="font-display text-lg">
+                    <CityLabel abbr={abbr} cityName={capital} citiesWithPage={citiesWithPage} />
+                  </div>
                 </div>
               )}
               {population && (
@@ -529,7 +577,9 @@ function GeographyTab({
                 {cities.map((city) => (
                   <tr key={city.id} className="border-b border-rule last:border-0">
                     <td className="py-1.5 pr-3 align-middle">
-                      {city.name}
+                      <Link href={cityHref(city.stateId, city.name)} className="link-accent">
+                        {city.name}
+                      </Link>
                       {city.isCapital && (
                         <span className="ml-1.5 rounded bg-seal-soft px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-seal">
                           Capital
@@ -567,7 +617,9 @@ function GeographyTab({
                         <Link href={`/team/${team.id}`} className="link-accent">
                           {team.name}
                         </Link>
-                        <span className="text-muted">({team.cityName})</span>
+                        <span className="text-muted">
+                          (<CityLabel abbr={abbr} cityName={team.cityName} citiesWithPage={citiesWithPage} />)
+                        </span>
                       </li>
                     ))}
                   </ul>
@@ -578,11 +630,15 @@ function GeographyTab({
               title="NCAA Football (FBS)"
               programs={collegeFootball}
               hrefBase="/college-football"
+              abbr={abbr}
+              citiesWithPage={citiesWithPage}
             />
             <CollegeProgramGroup
               title="NCAA Basketball (D1)"
               programs={collegeBasketball}
               hrefBase="/college-basketball"
+              abbr={abbr}
+              citiesWithPage={citiesWithPage}
             />
           </div>
         ) : (

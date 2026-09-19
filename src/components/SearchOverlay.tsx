@@ -117,7 +117,10 @@ export function SearchOverlay({ onClose, entries, isLoading }: SearchOverlayProp
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={handleInputKeyDown}
-          placeholder="Search legislators, governors, candidates, states, teams, college programs…"
+          // "college programs" was dropped from the end when "cities" was added: the full list
+          // measured 524px against a 510px input, so it truncated mid-word and swallowed its own
+          // ellipsis. College programs are still indexed and searchable, just not advertised here.
+          placeholder="Search legislators, governors, candidates, states, cities, teams…"
           className="w-full border-b border-rule bg-transparent px-4 py-3 text-sm text-ink outline-none placeholder:text-muted"
         />
 
@@ -168,16 +171,52 @@ function ResultAvatar({ entry }: { entry: SearchEntry }) {
       </div>
     );
   }
+  // A city has no photo of its own to show (nothing in `cities` carries an image, and its state's
+  // flag belongs to the state entry sitting right beside it in these same results), so it falls
+  // through to this slot — which used to be an unconditional person silhouette, i.e. every city
+  // rendered as if it were a legislator. The fallback is per-type now; the person glyph stays the
+  // default, since the only other entry types that can reach it are actual people.
   return (
     <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-paper text-muted">
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        viewBox="0 0 24 24"
-        fill="currentColor"
-        className="h-4 w-4"
-      >
-        <path d="M12 12a5 5 0 1 0 0-10 5 5 0 0 0 0 10Zm0 2c-4.4 0-8 2.2-8 5v1a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-1c0-2.8-3.6-5-8-5Z" />
-      </svg>
+      {entry.type === "city" ? <CityGlyph /> : <PersonGlyph />}
     </span>
+  );
+}
+
+function PersonGlyph() {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      className="h-4 w-4"
+      aria-hidden="true"
+    >
+      <path d="M12 12a5 5 0 1 0 0-10 5 5 0 0 0 0 10Zm0 2c-4.4 0-8 2.2-8 5v1a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-1c0-2.8-3.6-5-8-5Z" />
+    </svg>
+  );
+}
+
+// Stroked rather than filled (same treatment as the chevrons in CollapsibleGroup/
+// SyncFreshnessNote) — a filled skyline at 16px turns into an unreadable dark blob, and cutting
+// windows out of a filled path would need a hardcoded background color that can't follow the
+// theme tokens.
+function CityGlyph() {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="h-4 w-4"
+      aria-hidden="true"
+    >
+      <path d="M2 21h20" />
+      <path d="M5 21V10h6v11" />
+      <path d="M13 21V4h6v17" />
+    </svg>
   );
 }

@@ -1,4 +1,5 @@
 import { supabase } from "./supabase";
+import { lookupCityAlias } from "./city-aliases";
 
 // Reads the Supabase `states`/`cities`/`sports_teams`/`college_football_programs`/
 // `college_basketball_programs` tables (plan §4, Phase 2), synced via `npm run sync:geography` /
@@ -126,6 +127,64 @@ export async function getCitiesForState(stateAbbr: string): Promise<City[]> {
   return (data as unknown as CityRow[])
     .map(cityFromRow)
     .sort((a, b) => (b.population ?? 0) - (a.population ?? 0));
+}
+
+/**
+ * A city's URL identity for `/city/[state]/[slug]` — a (state, slug-of-name) pair, deliberately
+ * NOT its uuid. `cities` is fully deleted-and-reinserted per state on every
+ * `npm run sync:geography` run (see scripts/sync/geography.mjs), so every row gets a brand new
+ * uuid each time and a `/city/<uuid>` link would rot after the very next sync. `(state_id, name)`
+ * already carries a UNIQUE constraint (cities_state_id_name_key), so the slug is unique within a
+ * state too — verified live across all 510 synced rows, zero collisions.
+ *
+ * A leading "saint-" collapses to "st-" so the `sports_teams`/college tables' spelled-out city
+ * names ("Saint Paul", "Saint Louis", "Saint George", "Saint Charles") still match the `cities`
+ * row's abbreviated spelling ("St. Paul", "St. Louis", ...). Both sides run through this same
+ * function, so the rule can never disagree with itself; verified live to recover 6 real rows and
+ * introduce no new collision.
+ */
+export function citySlug(name: string): string {
+  return name
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .replace(/^saint-/, "st-");
+}
+
+/**
+ * The slug of the city PAGE a team/program belongs to, which isn't always the slug of its own
+ * `city_name`: the sports tables locate a few teams by borough or by Chicago side rather than by
+ * city (see city-aliases.ts). Every team-side name lookup goes through this rather than bare
+ * citySlug(), so the alias table can never apply in one place and not another.
+ */
+export function teamCitySlug(stateId: string, cityName: string): string {
+  const slug = citySlug(cityName);
+  return lookupCityAlias(stateId, slug)?.citySlug ?? slug;
+}
+
+/**
+ * The sub-place to show in parentheses beside a team on its city's page ("The Bronx"), or null
+ * when the team's own city_name already IS the page's city, or is a pure spelling variant of it.
+ */
+export function teamCitySubPlace(stateId: string, cityName: string): string | null {
+  return lookupCityAlias(stateId, citySlug(cityName))?.label ?? null;
+}
+
+/** Href for a city's page — the single place `/city/...` URLs are constructed. */
+export function cityHref(stateId: string, name: string): string {
+  return `/city/${stateId}/${citySlug(name)}`;
+}
+
+/**
+ * A single city by its state + slug, for /city/[state]/[slug]. Resolves against the state's own
+ * ~11 rows rather than querying by slug, since no slug column exists (and adding one would mean a
+ * migration plus a sync-script change for a lookup that is only ever 11 rows wide).
+ */
+export async function getCityBySlug(stateAbbr: string, slug: string): Promise<City | null> {
+  const cities = await getCitiesForState(stateAbbr);
+  return cities.find((city) => citySlug(city.name) === slug) ?? null;
 }
 
 type SportsTeamRow = {
